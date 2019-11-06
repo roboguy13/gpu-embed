@@ -1,3 +1,6 @@
+-- Boehm-Berrarduci encoding (which doesn't seem to be an encoding that
+-- works for our use-case).
+
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveGeneric #-}
