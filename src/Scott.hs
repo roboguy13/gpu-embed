@@ -5,6 +5,9 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE AllowAmbiguousTypes #-} -- XXX: Is this ok?
 
 module Scott where
 
@@ -29,6 +32,15 @@ data Nat = Z | S Nat deriving (Generic, Show)
 
 data Example = N Nat | B Bool deriving (Generic, Show)
 
+scottElim :: forall a r. ScottRep'' a -> ScottRep (ScottRep'' a) (Rep a Void) r
+scottElim (ScottRep'' (Proxy :: Proxy r, rep)) = rep
+
+-- class Scott a where
+--   scottElim :: ScottRep'' a -> ScottRep' a r
+
+-- instance Scott a where
+--   scottElim (ScottRep'' (Proxy :: Proxy _, rep)) = rep
+
 scott_False :: ScottRep'' Bool
 scott_False = ScottRep'' (Proxy, \f _g -> f U1)
 
@@ -47,6 +59,18 @@ scott_ExampleN nat = ScottRep'' (Proxy, \f _g -> f nat)
 scott_ExampleB :: ScottRep'' Bool -> ScottRep'' Example
 scott_ExampleB bool = ScottRep'' (Proxy, \_f g -> g bool)
 
+-- scottElim_Bool :: ScottRep'' Bool -> (U1 Void -> r) -> (U1 Void -> r) -> r
+-- scottElim_Bool = scottElim
+-- -- scottElim_Bool (ScottRep'' (Proxy, bool)) = bool
+
+-- scottElim_Nat :: ScottRep'' Nat -> (U1 Void -> r) -> (ScottRep'' Nat -> r) -> r
+-- -- scottElim_Nat (ScottRep'' (Proxy, nat)) = nat
+-- scottElim_Nat = scottElim
+
+
+-- scottElim_Example :: ScottRep'' Example -> (ScottRep'' Nat -> r) -> (ScottRep'' Bool -> r) -> r
+-- scottElim_Example = scottElim
+
 scottBoolToBool :: ScottRep'' Bool -> Bool
 scottBoolToBool (ScottRep'' (Proxy, bool)) = bool (\_ -> False) (\_ -> True)
 
@@ -57,4 +81,43 @@ scottNatToNat (ScottRep'' (Proxy, nat)) = nat (\_ -> Z) (S . scottNatToNat)
 scottExampleToExample :: ScottRep'' Example -> Example
 scottExampleToExample (ScottRep'' (Proxy, ex)) =
   ex (N . scottNatToNat) (B . scottBoolToBool)
+
+
+scottExample :: Example -> ScottRep'' Example
+scottExample (N n) = scott_ExampleN (scott_Nat n)
+scottExample (B b) = scott_ExampleB (scott_Bool b)
+
+scott_Nat :: Nat -> ScottRep'' Nat
+scott_Nat Z = scott_Z
+scott_Nat (S n) = scott_S (scott_Nat n)
+
+scott_Bool :: Bool -> ScottRep'' Bool
+scott_Bool False = scott_False
+scott_Bool True = scott_True
+
+exampleFn :: Example -> Example
+exampleFn (N Z) = B False
+exampleFn (N (S n)) = N n
+exampleFn (B b) = B (not b)
+
+scott_exampleFn :: ScottRep'' Example -> ScottRep'' Example
+scott_exampleFn ex =
+  scottElim ex natPart boolPart
+  where
+    natPart :: ScottRep'' Nat -> ScottRep'' Example
+    natPart nat0 =
+      scottElim
+        nat0
+        (\U1 -> scott_ExampleN scott_Z)
+        (\nat -> scott_ExampleN nat)
+
+    boolPart :: ScottRep'' Bool -> ScottRep'' Example
+    boolPart bool =
+      scott_ExampleB $ scottElim bool (const scott_True) (const scott_False)
+
+overScottEx :: (ScottRep'' Example -> ScottRep'' Example) -> Example -> Example
+overScottEx f ex = scottExampleToExample (f (scottExample ex))
+
+retranslated_scott_exampleFn :: Example -> Example
+retranslated_scott_exampleFn = overScottEx scott_exampleFn
 
