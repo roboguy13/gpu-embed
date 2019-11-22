@@ -7,6 +7,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE AllowAmbiguousTypes #-} -- XXX: Is this ok?
 
 module Scott where
@@ -17,6 +18,11 @@ import           Data.Proxy
 
 type family ScottRep rec rep r where
   ScottRep rec (M1 i c f p) r  = ScottRep rec (f p) r
+
+  -- "Base types" go here
+  ScottRep rec (Rec0 Int p) r  = Int
+  --
+
   ScottRep rec (Rec0 rec p) r  = rec
   ScottRep rec (Rec0 t p) r    = ScottRep'' t
   ScottRep rec ((f :+: g) x) r = (ScottRep rec (f x) r -> r) -> (ScottRep rec (g x) r -> r) -> r
@@ -34,12 +40,6 @@ data Example = N Nat | B Bool deriving (Generic, Show)
 
 scottElim :: forall a r. ScottRep'' a -> ScottRep (ScottRep'' a) (Rep a Void) r
 scottElim (ScottRep'' (Proxy :: Proxy r, rep)) = rep
-
--- class Scott a where
---   scottElim :: ScottRep'' a -> ScottRep' a r
-
--- instance Scott a where
---   scottElim (ScottRep'' (Proxy :: Proxy _, rep)) = rep
 
 scott_False :: ScottRep'' Bool
 scott_False = ScottRep'' (Proxy, \f _g -> f U1)
@@ -120,4 +120,30 @@ overScottEx f ex = scottExampleToExample (f (scottExample ex))
 
 retranslated_scott_exampleFn :: Example -> Example
 retranslated_scott_exampleFn = overScottEx scott_exampleFn
+
+scottEncode :: (Generic a, ScottEncodeRep a (Rep a Void)) => a -> ScottRep'' a
+scottEncode = scottEncodeRep . from
+
+class (Generic a, Rep a Void ~ repr) => ScottEncodeRep a repr where
+  scottEncodeRep :: repr -> ScottRep'' a
+
+instance (ScottEncodeRep a (f Void), Rep a Void ~ M1 i c f Void, Generic a) =>
+    ScottEncodeRep a (M1 i c f Void) where
+  scottEncodeRep (M1 x) = scottEncodeRep x
+
+instance forall a. (Generic a, Rep a Void ~ Rec0 a Void) =>
+    ScottEncodeRep a (Rec0 a Void) where
+
+  scottEncodeRep :: Rec0 a Void -> ScottRep'' a
+  scottEncodeRep (K1 x) = scottEncodeRep (from x)
+
+
+
+data Example2 = B2 Bool | I2 Int deriving (Generic, Show)
+
+scott_Example2B2 :: ScottRep'' Bool -> ScottRep'' Example2
+scott_Example2B2 bool = ScottRep'' (Proxy, \f _g -> f bool)
+
+scott_Example2I2 :: Int -> ScottRep'' Example2
+scott_Example2I2 int = ScottRep'' (Proxy, \_f g -> g int)
 
