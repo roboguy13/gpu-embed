@@ -42,6 +42,7 @@ import           Control.Monad.Identity
 import           Control.Monad.Writer
 import           Data.Monoid
 
+type Case = (Exp, [Match])
 
 countCases :: Q Exp -> Q Int
 countCases = fmap (getSum . execWriter . transformBiM go)
@@ -52,17 +53,52 @@ countCases = fmap (getSum . execWriter . transformBiM go)
       return e
     go e = return e
 
--- Get the list of matches from the first 'case' encountered
-getCaseMatchesFirst :: Q Exp -> Q [Match]
-getCaseMatchesFirst exp0 = do
+-- | (case e of A -> a; B -> b)   ==>   (\f -> f a b) (\x y -> case e of A -> x; B -> y)
+--
+-- This is just for simple enumerations right now
+factorOutCase :: Case -> Q Exp
+factorOutCase (scrutinee, matches) =
+  return undefined
+  where
+    lam1Q :: Q Exp
+    lam1Q = do
+      f <- newName "f"
+      return (LamE [VarP f]
+               (foldl1 AppE (VarE f:map matchBody matches)))
+
+    lam2Q :: Q Exp
+    lam2Q = do
+      matchArgs <- mapM newName (map (('x':) . show) [1..length matches])
+      return (LamE (map VarP matchArgs)
+                (CaseE
+                   scrutinee
+                   (zipWith (\m name -> Match (matchPat m) (NormalB (VarE name)) [])
+                            matches
+                            matchArgs)))
+
+    matchPat :: Match -> Pat
+    matchPat (Match pat _ _) = pat
+
+    matchBody :: Match -> Exp
+    matchBody (Match _ (NormalB b) _) = b
+    matchBody _ = error "factorOutCase.matchBody"
+
+
+-- Get the first 'case' expression
+getFirstCase :: Q Exp -> Q Case
+getFirstCase exp0 = do
   Just r <- fmap (getFirst . execWriter . transformBiM go) exp0
   return r
   where
-    go :: Exp -> Writer (First [Match]) Exp
-    go e@(CaseE _ matches) = do
-      tell $ First (Just matches)
+    go :: Exp -> Writer (First Case) Exp
+    go e@(CaseE scrutinee matches) = do
+      tell $ First (Just (scrutinee, matches))
       return e
     go e = return e
+
+-- Get the list of matches from the first 'case' encountered
+getCaseMatchesFirst :: Q Exp -> Q [Match]
+getCaseMatchesFirst = fmap snd . getFirstCase
 
 -- Represent 'case' alternatives as a list of functions (taking in the
 -- variables from each pattern match) with the associated constructor name.
@@ -82,6 +118,13 @@ gatherCaseAlts = mapM go
 -- TODO: Write a 'caseExpand' TH function which turns each 'case'
 -- expression into "simplified" case expressions where each alternative
 -- only has one pattern match.
+
+-- caseExpandOne :: Q Case -> Q Exp
+-- caseExpandOne = undefined
+
+
+
+
 
 newtype NatScott = NatScott (forall r. (() -> r) -> (NatScott -> r) -> r)
 type BoolScott = forall r. BBBool r
