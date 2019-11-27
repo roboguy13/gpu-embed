@@ -46,13 +46,22 @@ import           Data.Monoid
 type Case = (Exp, [Match])
 
 -- | Idea: Deep embedding for a pattern match (possibly using a non-regular
--- type?)
+-- type?). Convert types to a "canonical form" to use this (like 'Either's
+-- and '(,)'s)
 data MatchExp t where
   SumMatch  :: (a -> r) -> (b -> r) -> MatchExp (Either a b -> r)
   ProdMatch :: (a -> b -> r)        -> MatchExp ((a, b) -> r)
 
+-- Should this just produce an error?
 matchAbs :: MatchExp t -> t
-matchAbs = error "matchAbs"
+matchAbs (SumMatch p q) =
+  \x ->
+    case x of
+      Left  a -> p a
+      Right b -> q b
+matchAbs (ProdMatch f) = \(x, y) -> f x y
+
+-- matchAbs = error "matchAbs"
 
 -- TODO: Implement this idea for a deep embedding of pattern matching:
 -- (case e of A () -> a; B () -> b)   ==>   matchAbs ((\f -> f (const a) (const b)) SumMatch) e
