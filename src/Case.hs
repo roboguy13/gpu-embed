@@ -74,7 +74,7 @@ caseAbs (CaseExp x f) = matchAbs f x
 -- TODO: Implement this idea for a deep embedding of pattern matching:
 -- (case e of A () -> a; B () -> b)   ==>   matchAbs ((\f -> f (const a) (const b)) SumMatch) e
 --                                    ==>   matchAbs (SumMatch (const a) (const b)) e
---                                    ==>   CaseExp e (SumMatch (const a) (const b))
+--                                    ==>   caseAbs (CaseExp e (SumMatch (const a) (const b)))
 
 
 
