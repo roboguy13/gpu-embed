@@ -19,6 +19,7 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE GADTs #-}
 
 module Case
   where
@@ -43,6 +44,24 @@ import           Control.Monad.Writer
 import           Data.Monoid
 
 type Case = (Exp, [Match])
+
+-- | Idea: Deep embedding for a pattern match (possibly using a non-regular
+-- type?)
+data MatchExp t where
+  SumMatch  :: (a -> r) -> (b -> r) -> MatchExp (Either a b -> r)
+  ProdMatch :: (a -> b -> r)        -> MatchExp ((a, b) -> r)
+
+matchAbs :: MatchExp t -> t
+matchAbs = error "matchAbs"
+
+-- TODO: Implement this idea for a deep embedding of pattern matching:
+-- (case e of A () -> a; B () -> b)   ==>   matchAbs ((\f -> f (const a) (const b)) SumMatch) e
+--                                    ==>   matchAbs (SumMatch (const a) (const b)) e
+
+
+
+-- (case e of A () -> a; B () -> b)   ==>   (\f -> f (const a) (const b)) (\x y -> case e of A p -> x p; B q -> y q)
+-- match :: t
 
 countCases :: Q Exp -> Q Int
 countCases = fmap (getSum . execWriter . transformBiM go)
