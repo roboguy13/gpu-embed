@@ -52,6 +52,11 @@ data MatchExp t where
   SumMatch  :: (a -> r) -> (b -> r) -> MatchExp (Either a b -> r)
   ProdMatch :: (a -> b -> r)        -> MatchExp ((a, b) -> r)
 
+-- TODO: Figure out how these types should be related to each other or
+-- combined with each other
+data CaseExp t where
+  CaseExp :: t -> MatchExp (t -> r) -> CaseExp r
+
 -- Should this just produce an error?
 matchAbs :: MatchExp t -> t
 matchAbs (SumMatch p q) =
@@ -61,11 +66,15 @@ matchAbs (SumMatch p q) =
       Right b -> q b
 matchAbs (ProdMatch f) = \(x, y) -> f x y
 
+caseAbs :: CaseExp t -> t
+caseAbs (CaseExp x f) = matchAbs f x
+
 -- matchAbs = error "matchAbs"
 
 -- TODO: Implement this idea for a deep embedding of pattern matching:
 -- (case e of A () -> a; B () -> b)   ==>   matchAbs ((\f -> f (const a) (const b)) SumMatch) e
 --                                    ==>   matchAbs (SumMatch (const a) (const b)) e
+--                                    ==>   SumCase e (SumMatch (const a) (const b))
 
 
 
