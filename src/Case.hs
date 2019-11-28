@@ -48,26 +48,65 @@ type Case = (Exp, [Match])
 -- | Idea: Deep embedding for a pattern match (possibly using a non-regular
 -- type?). Convert types to a "canonical form" to use this (like 'Either's
 -- and '(,)'s)
-data MatchExp t where
-  SumMatch  :: (a -> r) -> (b -> r) -> MatchExp (Either a b -> r)
-  ProdMatch :: (a -> b -> r)        -> MatchExp ((a, b) -> r)
+data MatchExp s t where
+  SumMatch  :: (GPURep a, GPURep b) => (GPUExp a -> GPUExp r) -> (GPUExp b -> GPUExp r) -> MatchExp (Either a b) (GPUExp r)
+  ProdMatch :: (GPURep a, GPURep b) => (GPUExp a -> GPUExp b -> GPUExp r) -> MatchExp (a, b) (GPUExp r)
 
 -- TODO: Figure out how these types should be related to each other or
 -- combined with each other
-data CaseExp t where
-  CaseExp :: t -> MatchExp (t -> r) -> CaseExp r
+data GPUExp t where
+  CaseExp :: GPUExp t -> MatchExp t r -> GPUExp r
+
+  FalseExp :: GPUExp Bool
+  TrueExp :: GPUExp Bool
+
+  Lit :: Num a => a -> GPUExp a
+  Add :: Num a => GPUExp a -> GPUExp a -> GPUExp a
+  Sub :: Num a => GPUExp a -> GPUExp a -> GPUExp a
+
+  Equal :: Eq a => GPUExp a -> GPUExp a -> GPUExp Bool
+  Lte :: Ord a => GPUExp a -> GPUExp a -> GPUExp Bool
+
+  Not :: GPUExp Bool -> GPUExp Bool
+
+  LeftExp :: GPUExp a -> GPUExp (Either a b)
+  RightExp :: GPUExp b -> GPUExp (Either a b)
+
+  PairExp :: GPUExp a -> GPUExp b -> GPUExp (a, b)
+
+-- rep :: t -> GPUExp t
+-- rep = error "rep"
+
+class GPURep t where
+  rep :: t -> GPUExp t
+
+instance GPURep Float where rep = Lit
+instance GPURep Double where rep = Lit
+
+instance GPURep Bool where
+  rep False = FalseExp
+  rep True  = TrueExp
+
+instance (GPURep a, GPURep b) => GPURep (Either a b) where
+  rep (Left x) = LeftExp (rep x)
+  rep (Right y) = RightExp (rep y)
+
+instance (GPURep a, GPURep b) => GPURep (a, b) where
+  rep (x, y) = PairExp (rep x) (rep y)
 
 -- Should this just produce an error?
-matchAbs :: MatchExp t -> t
+matchAbs :: MatchExp s t -> s -> t
 matchAbs (SumMatch p q) =
   \x ->
     case x of
-      Left  a -> p a
-      Right b -> q b
-matchAbs (ProdMatch f) = \(x, y) -> f x y
+      Left  a -> p (rep a)
+      Right b -> q (rep b)
+matchAbs (ProdMatch f) = \p ->
+  case p of
+    (x, y) -> f (rep x) (rep y)
 
-caseAbs :: CaseExp t -> t
-caseAbs (CaseExp x f) = matchAbs f x
+gpuAbs :: GPUExp t -> t
+gpuAbs (CaseExp x f) = matchAbs f (gpuAbs x)
 
 -- matchAbs = error "matchAbs"
 
