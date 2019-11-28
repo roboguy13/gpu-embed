@@ -107,6 +107,17 @@ matchAbs (ProdMatch f) = \p ->
 
 gpuAbs :: GPUExp t -> t
 gpuAbs (CaseExp x f) = matchAbs f (gpuAbs x)
+gpuAbs FalseExp = False
+gpuAbs TrueExp  = True
+gpuAbs (Lit x)  = x
+gpuAbs (Add x y) = gpuAbs x + gpuAbs y
+gpuAbs (Sub x y) = gpuAbs x - gpuAbs y
+gpuAbs (Equal x y) = gpuAbs x == gpuAbs y
+gpuAbs (Lte x y) = gpuAbs x <= gpuAbs y
+gpuAbs (Not x) = not (gpuAbs x)
+gpuAbs (LeftExp x) = Left (gpuAbs x)
+gpuAbs (RightExp y) = Right (gpuAbs y)
+gpuAbs (PairExp x y) = (gpuAbs x, gpuAbs y)
 
 -- matchAbs = error "matchAbs"
 
