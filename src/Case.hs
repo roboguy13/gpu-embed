@@ -21,6 +21,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE DefaultSignatures #-}
 
 module Case
   where
@@ -28,6 +29,7 @@ module Case
 import           GHC.Generics
 
 import           Data.Proxy
+import           Data.Void
 
 import           Data.Coerce
 
@@ -44,10 +46,15 @@ import           Control.Monad.Identity
 import           Control.Monad.Writer
 import           Data.Monoid
 
+import           Data.Ord
+
+import           Data.Functor.Const
+
 infixl 0 :@
 pattern f :@ x = AppE f x
 
 type Case = (Exp, [Match])
+
 
 -- | Idea: Deep embedding for a pattern match (possibly using a non-regular
 -- type?). Convert types to a "canonical form" to use this (like 'Either's
@@ -59,10 +66,12 @@ data MatchExp s t where
 -- TODO: Figure out how these types should be related to each other or
 -- combined with each other
 data GPUExp t where
-  CaseExp :: GPUExp t -> MatchExp t r -> GPUExp r
+  CaseExp :: GPURep t => GPUExp t -> MatchExp (GPURepTy t) r -> GPUExp r
 
   FalseExp :: GPUExp Bool
   TrueExp :: GPUExp Bool
+
+  Repped :: GPURep a => GPURepTy a -> GPUExp a
 
   Lit :: Num a => a -> GPUExp a
   Add :: Num a => GPUExp a -> GPUExp a -> GPUExp a
@@ -82,7 +91,18 @@ data GPUExp t where
 -- rep = error "rep"
 
 class GPURep t where
+  type GPURepTy t
+  type GPURepTy t = t
+
   rep :: t -> GPUExp t
+
+  rep' :: t -> GPURepTy t
+  default rep' :: GPURepTy t ~ t => t -> GPURepTy t
+  rep' = id
+
+  unrep' :: GPURepTy t -> t
+  default unrep' :: GPURepTy t ~ t => GPURepTy t -> t
+  unrep' = id
 
 instance GPURep Int where rep = Lit
 
@@ -101,13 +121,17 @@ instance (GPURep a, GPURep b) => GPURep (a, b) where
   rep (x, y) = PairExp (rep x) (rep y)
 
 -- Should this just produce an error?
-matchAbs :: MatchExp s t -> s -> t
+matchAbs :: GPURep s => MatchExp (GPURepTy s) t -> s -> t
 matchAbs (SumMatch p q) =
-  \x ->
+  \x0 ->
+    let x = rep' x0
+    in
     case x of
       Left  a -> gpuAbs (p (rep a))
       Right b -> gpuAbs (q (rep b))
-matchAbs (ProdMatch f) = \p ->
+matchAbs (ProdMatch f) = \p0 ->
+  let p = rep' p0
+  in
   case p of
     (x, y) -> gpuAbs $ f (rep x) (rep y)
 
@@ -115,6 +139,7 @@ gpuAbs :: GPUExp t -> t
 gpuAbs (CaseExp x f) = matchAbs f (gpuAbs x)
 gpuAbs FalseExp = False
 gpuAbs TrueExp  = True
+gpuAbs (Repped x) = unrep' x
 gpuAbs (Lit x)  = x
 gpuAbs (Add x y) = gpuAbs x + gpuAbs y
 gpuAbs (Sub x y) = gpuAbs x - gpuAbs y
@@ -165,6 +190,26 @@ transformPairMatch :: Exp -> Q Exp
 transformPairMatch (CaseE scrutinee [Match (TupP [VarP var1, VarP var2]) (NormalB body) _]) =
     return (VarE 'gpuAbs :@ (VarE 'CaseExp :@ (VarE 'rep :@ scrutinee)
                 :@ (VarE 'ProdMatch :@ abstractOver var1 (abstractOver var2 (VarE 'rep :@ body)))))
+
+-- Does not necessarily preserve type argument order (sorts matches by
+-- constructor name)
+transformSumMatch :: Exp -> Q Exp
+transformSumMatch (CaseE scrutinee matches0) =
+    return (VarE 'gpuAbs :@ (VarE 'CaseExp :@ (VarE 'rep :@ scrutinee)
+              :@ sumMatches (map abstractSimpleMatch sortedMatches)))
+  where
+    sortedMatches = sortBy (comparing getMatchPatName) matches0
+
+    sumMatches [m] = m
+    sumMatches [m1,m2] = VarE 'SumMatch :@ m1 :@ m2
+    sumMatches (m1:m2:rest) = VarE 'SumMatch :@ m1 :@ (VarE 'SumMatch :@ m2 :@ (sumMatches rest))
+
+abstractSimpleMatch :: Match -> Exp
+abstractSimpleMatch (Match (ConP _ [VarP var]) (NormalB body) _) =
+  abstractOver var (VarE 'rep :@ body)
+
+getMatchPatName :: Match -> Name
+getMatchPatName (Match (ConP name _) _ _) = name
 
 getMatchPat :: Match -> Pat
 getMatchPat (Match pat _ _) = pat
