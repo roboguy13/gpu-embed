@@ -20,6 +20,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Case
   where
@@ -43,14 +44,17 @@ import           Control.Monad.Identity
 import           Control.Monad.Writer
 import           Data.Monoid
 
+infixl 0 :@
+pattern f :@ x = AppE f x
+
 type Case = (Exp, [Match])
 
 -- | Idea: Deep embedding for a pattern match (possibly using a non-regular
 -- type?). Convert types to a "canonical form" to use this (like 'Either's
 -- and '(,)'s)
 data MatchExp s t where
-  SumMatch  :: (GPURep a, GPURep b) => (GPUExp a -> GPUExp r) -> (GPUExp b -> GPUExp r) -> MatchExp (Either a b) (GPUExp r)
-  ProdMatch :: (GPURep a, GPURep b) => (GPUExp a -> GPUExp b -> GPUExp r) -> MatchExp (a, b) (GPUExp r)
+  SumMatch  :: (GPURep a, GPURep b) => (GPUExp a -> GPUExp r) -> (GPUExp b -> GPUExp r) -> MatchExp (Either a b) r
+  ProdMatch :: (GPURep a, GPURep b) => (GPUExp a -> GPUExp b -> GPUExp r) -> MatchExp (a, b) r
 
 -- TODO: Figure out how these types should be related to each other or
 -- combined with each other
@@ -80,6 +84,8 @@ data GPUExp t where
 class GPURep t where
   rep :: t -> GPUExp t
 
+instance GPURep Int where rep = Lit
+
 instance GPURep Float where rep = Lit
 instance GPURep Double where rep = Lit
 
@@ -99,11 +105,11 @@ matchAbs :: MatchExp s t -> s -> t
 matchAbs (SumMatch p q) =
   \x ->
     case x of
-      Left  a -> p (rep a)
-      Right b -> q (rep b)
+      Left  a -> gpuAbs (p (rep a))
+      Right b -> gpuAbs (q (rep b))
 matchAbs (ProdMatch f) = \p ->
   case p of
-    (x, y) -> f (rep x) (rep y)
+    (x, y) -> gpuAbs $ f (rep x) (rep y)
 
 gpuAbs :: GPUExp t -> t
 gpuAbs (CaseExp x f) = matchAbs f (gpuAbs x)
@@ -118,6 +124,50 @@ gpuAbs (Not x) = not (gpuAbs x)
 gpuAbs (LeftExp x) = Left (gpuAbs x)
 gpuAbs (RightExp y) = Right (gpuAbs y)
 gpuAbs (PairExp x y) = (gpuAbs x, gpuAbs y)
+
+-- Looks for a 'ConP' get the type info
+-- TODO: Make this work in more circumstances
+getMatchType :: Case -> Q Type
+getMatchType (_, matches) = do
+  Just r <- fmap (getFirst . mconcat) $ mapM go matches
+  return r
+  where
+    go (Match (ConP name _) _ _) = do
+      DataConI _ ty _ <- reify name
+      return (First (Just ty))
+    go _ = return (First Nothing)
+
+-- e  ==>  (\x -> (\x -> e) (gpuAbs x))    {where x is a free variable in e)
+abstractOver :: Name -> Exp -> Exp
+abstractOver name exp = LamE [VarP name] (LamE [VarP name] exp :@ (VarE 'gpuAbs :@ VarE name))
+
+-- Assumes "simple match" form
+transformEitherMatch :: Exp -> Q Exp
+transformEitherMatch (CaseE scrutinee matches) =
+    return (VarE 'gpuAbs :@ (VarE 'CaseExp :@ (VarE 'rep :@ scrutinee)
+              :@ (VarE 'SumMatch :@ leftFn :@ rightFn)))
+  where
+    leftFn = abstractOver leftVar (VarE 'rep :@ leftBody)
+    rightFn = abstractOver rightVar (VarE 'rep :@ rightBody)
+
+    Match (ConP _ [VarP leftVar]) _ _ = leftMatch
+    Match (ConP _ [VarP rightVar]) _ _ = rightMatch
+
+    Match _ (NormalB leftBody) _ = leftMatch
+    Match _ (NormalB rightBody) _ = rightMatch
+
+    leftMatch, rightMatch :: Match
+    Just leftMatch = find (patHasName 'Left . getMatchPat) matches
+    Just rightMatch = find (patHasName 'Right . getMatchPat) matches
+
+getMatchPat :: Match -> Pat
+getMatchPat (Match pat _ _) = pat
+
+patHasName :: Name -> Pat -> Bool
+patHasName name1 (ConP name2 _) = name1 == name2
+patHasName _ _ = False
+
+
 
 -- matchAbs = error "matchAbs"
 

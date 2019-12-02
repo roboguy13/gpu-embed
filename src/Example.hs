@@ -5,6 +5,8 @@ import           Case
 
 import           Language.Haskell.TH
 
+import           Data.Char (ord)
+
 thExample :: IO Int
 thExample =
   runQ $ countCases
@@ -27,10 +29,23 @@ thExample2 = do
     |]
   runQ $ gatherCaseAlts matches
 
+thExample3 :: IO Exp
+thExample3 = do
+  exp <- runQ
+    [|
+      case Left 4 of
+        Left x -> x * 2
+        Right y -> fromEnum (y :: Bool)
+    |]
+  runQ $ transformEitherMatch exp
+
 main :: IO ()
 main = do
-  x <- thExample2
-  print x
+  transformed <- thExample3
+  putStrLn (pprint transformed)
+  -- print $transformed
+  -- x <- thExample2
+  -- print x
 
 
 -- $(iHateDelete
