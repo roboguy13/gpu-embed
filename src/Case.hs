@@ -160,6 +160,12 @@ transformEitherMatch (CaseE scrutinee matches) =
     Just leftMatch = find (patHasName 'Left . getMatchPat) matches
     Just rightMatch = find (patHasName 'Right . getMatchPat) matches
 
+-- Assumes "simple match" form
+transformPairMatch :: Exp -> Q Exp
+transformPairMatch (CaseE scrutinee [Match (TupP [VarP var1, VarP var2]) (NormalB body) _]) =
+    return (VarE 'gpuAbs :@ (VarE 'CaseExp :@ (VarE 'rep :@ scrutinee)
+                :@ (VarE 'ProdMatch :@ abstractOver var1 (abstractOver var2 (VarE 'rep :@ body)))))
+
 getMatchPat :: Match -> Pat
 getMatchPat (Match pat _ _) = pat
 

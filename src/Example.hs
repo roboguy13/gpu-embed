@@ -39,10 +39,19 @@ thExample3 = do
     |]
   runQ $ transformEitherMatch exp
 
+thExample4 :: IO Exp
+thExample4 = do
+  exp <- runQ
+    [| case (True, 7 :: Int) of
+         (x, y) -> fromEnum (x :: Bool) + y
+    |]
+  runQ $ transformPairMatch exp
+
 main :: IO ()
 main = do
-  transformed <- thExample3
+  transformed <- thExample4
   putStrLn (pprint transformed)
+
   -- print $transformed
   -- x <- thExample2
   -- print x
