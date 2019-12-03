@@ -95,33 +95,62 @@ data GPUExp t where
 
 class GPURep t where
   type GPURepTy t
-  type GPURepTy t = t
+  type GPURepTy t = GPURepTy (Rep t Void)
 
   rep :: t -> GPUExp t
+  rep = Repped . rep'
 
   rep' :: t -> GPURepTy t
-  default rep' :: GPURepTy t ~ t => t -> GPURepTy t
-  rep' = id
+
+  default rep' :: (Canonical x, Bifunctor x, GPURep (p Void), GPURep (q Void), Generic t
+                  ,Rep t Void ~ M1 i c (GenericOp x p q) Void
+                  ,(GPURepTy t) ~ x (GPURepTy (p Void)) (GPURepTy (q Void)))
+       => t -> GPURepTy t
+  rep' = genericRep'
 
   unrep' :: GPURepTy t -> t
-  default unrep' :: GPURepTy t ~ t => GPURepTy t -> t
+
+  default unrep' :: (Canonical x, Bifunctor x, GPURep (p Void), GPURep (q Void), Generic t
+                    ,Rep t Void ~ M1 i c (GenericOp x p q) Void
+                    ,(GPURepTy t) ~ x (GPURepTy (p Void)) (GPURepTy (q Void)))
+       => GPURepTy t -> t
+  unrep' = genericUnrep'
+
+instance GPURep Int where
+  type GPURepTy Int = Int
+  rep = Lit
+  rep' = id
+  unrep' = id
+instance GPURep Float where
+  type GPURepTy Float = Float
+  rep = Lit
+  rep' = id
+  unrep' = id
+instance GPURep Double where
+  type GPURepTy Double = Double
+  rep = Lit
+  rep' = id
   unrep' = id
 
-instance GPURep Int where rep = Lit
-
-instance GPURep Float where rep = Lit
-instance GPURep Double where rep = Lit
-
 instance GPURep Bool where
+  type GPURepTy Bool = Bool
   rep False = FalseExp
   rep True  = TrueExp
+  rep' = id
+  unrep' = id
 
 instance (GPURep a, GPURep b) => GPURep (Either a b) where
+  type GPURepTy (Either a b) = Either a b
   rep (Left x) = LeftExp (rep x)
   rep (Right y) = RightExp (rep y)
+  rep' = id
+  unrep' = id
 
 instance (GPURep a, GPURep b) => GPURep (a, b) where
+  type GPURepTy (a, b) = (a, b)
   rep (x, y) = PairExp (rep x) (rep y)
+  rep' = id
+  unrep' = id
 
 -- Generics instances
 instance GPURep (f p) => GPURep (M1 i c f p) where
@@ -289,7 +318,6 @@ instance Canonical (,) where
 
   toCanonical (x :*: y) = (x, y)
   fromCanonical (x, y) = x :*: y
-
 
 -- matchAbs = error "matchAbs"
 

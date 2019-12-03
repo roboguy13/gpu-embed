@@ -69,14 +69,7 @@ thExample5 = do
     |]
   runQ $ transformSumMatch exp
 
-instance GPURep Example' where
-  type GPURepTy Example' = Either Int Bool
-
-  rep = Repped . rep'
-
-  rep' = genericRep'
-
-  unrep' = genericUnrep'
+instance GPURep Example'
 
 main :: IO ()
 main = do
