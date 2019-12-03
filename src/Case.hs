@@ -225,6 +225,7 @@ transformSumMatch (CaseE scrutinee matches0) =
     return (VarE 'gpuAbs :@ (VarE 'CaseExp :@ (VarE 'rep :@ scrutinee)
               :@ sumMatches (map abstractSimpleMatch sortedMatches)))
   where
+    -- TODO: This needs to sort to the order listed in the data declaration
     sortedMatches = sortBy (comparing getMatchPatName) matches0
 
     sumMatches [m] = m
@@ -245,6 +246,13 @@ patHasName :: Name -> Pat -> Bool
 patHasName name1 (ConP name2 _) = name1 == name2
 patHasName _ _ = False
 
+toEither :: (p :+: q) x -> Either (p x) (q x)
+toEither (L1 x) = Left x
+toEither (R1 y) = Right y
+
+fromEither :: Either (p x) (q x) -> (p :+: q) x
+fromEither (Left x) = L1 x
+fromEither (Right y) = R1 y
 
 
 -- matchAbs = error "matchAbs"

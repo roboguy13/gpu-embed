@@ -14,6 +14,8 @@ import           Data.Char (ord)
 import           GHC.Generics
 import           Data.Void
 
+import           Data.Bifunctor
+
 thExample :: IO Int
 thExample =
   runQ $ countCases
@@ -68,35 +70,12 @@ thExample5 = do
   runQ $ transformSumMatch exp
 
 instance GPURep Example' where
-  -- type GPURepTy Example' = Either Bool Int
-  -- type GPURepTy Example' = Either (GPURepTy (K1 R Int Void)) (GPURepTy (K1 R Bool Void))
+  type GPURepTy Example' = Either (GPURepTy (K1 R Int Void)) (GPURepTy (K1 R Bool Void))
 
-  -- type GPURepTy Example' = GPURepTy (Rep Example' Void)
-
-  type GPURepTy Example' = Rep Example' Void
   rep = Repped . rep'
 
-  rep' = (from :: Example' -> Rep Example' Void)
-  unrep' = to
-
-  -- rep :: Example' -> GPUExp Example'
-  -- rep = Repped . rep' . (from :: Example' -> Rep Example' Void)
-
-  -- rep' :: Example' -> GPURepTy Example'
-  -- rep' = (rep' @(Rep Example' Void)) . (from :: Example' -> Rep Example' Void)
-
-  -- unrep' :: GPURepTy Example' -> Example'
-  -- unrep' = _ . rep'
-
-
-
-  -- rep = Repped . rep'
-
-  -- rep' (N' n) = Right n
-  -- rep' (B' b) = Left b
-
-  -- unrep' (Right n) = N' n
-  -- unrep' (Left b) = B' b
+  rep' = bimap rep' rep' . toEither . unM1 . (from @Example' @Void)
+  unrep' = to . M1 . fromEither . bimap (M1 . M1 . K1) (M1 . M1 . K1)
 
 main :: IO ()
 main = do
