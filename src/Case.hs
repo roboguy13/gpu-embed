@@ -121,15 +121,15 @@ instance (GPURep a, GPURep b) => GPURep (a, b) where
   rep (x, y) = PairExp (rep x) (rep y)
 
 -- Generics instances
-instance GPURep (f Void) => GPURep (M1 i c f Void) where
-  type GPURepTy (M1 i c f Void) = GPURepTy (f Void)
+instance GPURep (f p) => GPURep (M1 i c f p) where
+  type GPURepTy (M1 i c f p) = GPURepTy (f p)
 
   rep = Repped . rep'
   rep' (M1 x) = rep' x
   unrep' = M1 . unrep'
 
-instance (GPURep (p Void), GPURep (q Void)) => GPURep ((p :+: q) Void) where
-  type GPURepTy ((p :+: q) Void) = Either (GPURepTy (p Void)) (GPURepTy (q Void))
+instance (GPURep (p x), GPURep (q x)) => GPURep ((p :+: q) x) where
+  type GPURepTy ((p :+: q) x) = Either (GPURepTy (p x)) (GPURepTy (q x))
 
   rep = Repped . rep'
 
@@ -253,6 +253,7 @@ toEither (R1 y) = Right y
 fromEither :: Either (p x) (q x) -> (p :+: q) x
 fromEither (Left x) = L1 x
 fromEither (Right y) = R1 y
+
 
 
 -- matchAbs = error "matchAbs"

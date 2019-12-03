@@ -75,7 +75,7 @@ instance GPURep Example' where
   rep = Repped . rep'
 
   rep' = bimap rep' rep' . toEither . unM1 . (from @Example' @Void)
-  unrep' = to . M1 . fromEither . bimap (M1 . M1 . K1) (M1 . M1 . K1)
+  unrep' = to . M1 . fromEither . bimap unrep' unrep'
 
 main :: IO ()
 main = do
