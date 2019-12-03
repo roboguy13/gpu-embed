@@ -1,4 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE TypeApplications #-}
 
 import           Data.List
 import           Case
@@ -6,6 +10,9 @@ import           Case
 import           Language.Haskell.TH
 
 import           Data.Char (ord)
+
+import           GHC.Generics
+import           Data.Void
 
 thExample :: IO Int
 thExample =
@@ -48,7 +55,7 @@ thExample4 = do
     |]
   runQ $ transformPairMatch exp
 
-data Example' = N' Int | B' Bool deriving (Show)
+data Example' = N' Int | B' Bool deriving (Show, Generic)
 
 thExample5 :: IO Exp
 thExample5 = do
@@ -61,14 +68,35 @@ thExample5 = do
   runQ $ transformSumMatch exp
 
 instance GPURep Example' where
-  type GPURepTy Example' = Either Bool Int
+  -- type GPURepTy Example' = Either Bool Int
+  -- type GPURepTy Example' = Either (GPURepTy (K1 R Int Void)) (GPURepTy (K1 R Bool Void))
+
+  -- type GPURepTy Example' = GPURepTy (Rep Example' Void)
+
+  type GPURepTy Example' = Rep Example' Void
   rep = Repped . rep'
 
-  rep' (N' n) = Right n
-  rep' (B' b) = Left b
+  rep' = (from :: Example' -> Rep Example' Void)
+  unrep' = to
 
-  unrep' (Right n) = N' n
-  unrep' (Left b) = B' b
+  -- rep :: Example' -> GPUExp Example'
+  -- rep = Repped . rep' . (from :: Example' -> Rep Example' Void)
+
+  -- rep' :: Example' -> GPURepTy Example'
+  -- rep' = (rep' @(Rep Example' Void)) . (from :: Example' -> Rep Example' Void)
+
+  -- unrep' :: GPURepTy Example' -> Example'
+  -- unrep' = _ . rep'
+
+
+
+  -- rep = Repped . rep'
+
+  -- rep' (N' n) = Right n
+  -- rep' (B' b) = Left b
+
+  -- unrep' (Right n) = N' n
+  -- unrep' (Left b) = B' b
 
 main :: IO ()
 main = do

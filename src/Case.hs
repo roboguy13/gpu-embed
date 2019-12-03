@@ -120,6 +120,33 @@ instance (GPURep a, GPURep b) => GPURep (Either a b) where
 instance (GPURep a, GPURep b) => GPURep (a, b) where
   rep (x, y) = PairExp (rep x) (rep y)
 
+-- Generics instances
+instance GPURep (f Void) => GPURep (M1 i c f Void) where
+  type GPURepTy (M1 i c f Void) = GPURepTy (f Void)
+
+  rep = Repped . rep'
+  rep' (M1 x) = rep' x
+  unrep' = M1 . unrep'
+
+instance (GPURep (p Void), GPURep (q Void)) => GPURep ((p :+: q) Void) where
+  type GPURepTy ((p :+: q) Void) = Either (GPURepTy (p Void)) (GPURepTy (q Void))
+
+  rep = Repped . rep'
+
+  rep' (L1 x) = Left (rep' x)
+  rep' (R1 y) = Right (rep' y)
+
+  unrep' (Left x) = L1 (unrep' x)
+  unrep' (Right y) = R1 (unrep' y)
+
+instance GPURep c => GPURep (K1 i c p) where
+  type GPURepTy (K1 i c p) = GPURepTy c
+
+  rep = Repped . rep'
+
+  rep' (K1 x) = rep' x
+  unrep' = K1 . unrep'
+
 -- Should this just produce an error?
 matchAbs :: GPURep s => MatchExp (GPURepTy s) t -> s -> t
 matchAbs (SumMatch p q) =
