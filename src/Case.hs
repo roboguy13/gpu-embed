@@ -179,6 +179,13 @@ instance GPURep c => GPURep (K1 i c p) where
   rep' (K1 x) = rep' x
   unrep' = K1 . unrep'
 
+instance GPURep (U1 p) where
+  type GPURepTy (U1 p) = ()
+
+  rep' U1 = ()
+  unrep' () = U1
+
+
 genericRep' :: forall a i c p q t.
   (Canonical t, Bifunctor t, GPURep (p Void), GPURep (q Void), Generic a
   ,Rep a Void ~ M1 i c (GenericOp t p q) Void)
