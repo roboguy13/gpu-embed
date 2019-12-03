@@ -22,6 +22,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 module Case
   where
@@ -49,6 +50,8 @@ import           Data.Monoid
 import           Data.Ord
 
 import           Data.Functor.Const
+
+import           Data.Bifunctor
 
 infixl 0 :@
 pattern f :@ x = AppE f x
@@ -146,6 +149,18 @@ instance GPURep c => GPURep (K1 i c p) where
 
   rep' (K1 x) = rep' x
   unrep' = K1 . unrep'
+
+genericRep' :: forall a i c p q t.
+  (Canonical t, Bifunctor t, GPURep (p Void), GPURep (q Void), Generic a
+  ,Rep a Void ~ M1 i c (GenericOp t p q) Void)
+   => a -> t (GPURepTy (p Void)) (GPURepTy (q Void))
+genericRep' = bimap rep' rep' . toCanonical . unM1 . (from :: a -> Rep a Void)
+
+genericUnrep' :: forall a i c p q t.
+  (Canonical t, Bifunctor t, GPURep (p Void), GPURep (q Void), Generic a
+  ,Rep a Void ~ M1 i c (GenericOp t p q) Void)
+   => t (GPURepTy (p Void)) (GPURepTy (q Void)) -> a
+genericUnrep' = (to :: Rep a Void -> a) . M1 . fromCanonical . bimap unrep' unrep'
 
 -- Should this just produce an error?
 matchAbs :: GPURep s => MatchExp (GPURepTy s) t -> s -> t
@@ -254,6 +269,26 @@ fromEither :: Either (p x) (q x) -> (p :+: q) x
 fromEither (Left x) = L1 x
 fromEither (Right y) = R1 y
 
+class Canonical t where
+  type GenericOp t :: (* -> *) -> (* -> *) -> * -> *
+
+  toCanonical :: GenericOp t p q x -> t (p x) (q x)
+  fromCanonical :: t (p x) (q x) -> GenericOp t p q x
+
+instance Canonical Either where
+  type GenericOp Either = (:+:)
+
+  toCanonical (L1 x) = Left x
+  toCanonical (R1 y) = Right y
+
+  fromCanonical (Left x) = L1 x
+  fromCanonical (Right y) = R1 y
+
+instance Canonical (,) where
+  type GenericOp (,) = (:*:)
+
+  toCanonical (x :*: y) = (x, y)
+  fromCanonical (x, y) = x :*: y
 
 
 -- matchAbs = error "matchAbs"

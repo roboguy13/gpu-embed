@@ -70,12 +70,13 @@ thExample5 = do
   runQ $ transformSumMatch exp
 
 instance GPURep Example' where
-  type GPURepTy Example' = Either (GPURepTy (K1 R Int Void)) (GPURepTy (K1 R Bool Void))
+  type GPURepTy Example' = Either Int Bool
 
   rep = Repped . rep'
 
-  rep' = bimap rep' rep' . toEither . unM1 . (from @Example' @Void)
-  unrep' = to . M1 . fromEither . bimap unrep' unrep'
+  rep' = genericRep'
+
+  unrep' = genericUnrep'
 
 main :: IO ()
 main = do
