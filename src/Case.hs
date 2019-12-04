@@ -102,19 +102,16 @@ class GPURep t where
 
   rep' :: t -> GPURepTy t
 
-  default rep' :: (Canonical x, Bifunctor x, GPURep (p Void), GPURep (q Void), Generic t
-                  ,Rep t Void ~ M1 i c (GenericOp x p q) Void
-                  ,(GPURepTy t) ~ x (GPURepTy (p Void)) (GPURepTy (q Void)))
-       => t -> GPURepTy t
-  rep' = genericRep'
+  default rep' :: (Generic t, GenericRep (Rep t Void), GPURepTy t ~ GenericRepTy (Rep t Void))
+    => t -> GPURepTy t
+  rep' = genericRep' . (from :: t -> Rep t Void)
+
 
   unrep' :: GPURepTy t -> t
 
-  default unrep' :: (Canonical x, Bifunctor x, GPURep (p Void), GPURep (q Void), Generic t
-                    ,Rep t Void ~ M1 i c (GenericOp x p q) Void
-                    ,(GPURepTy t) ~ x (GPURepTy (p Void)) (GPURepTy (q Void)))
-       => GPURepTy t -> t
-  unrep' = genericUnrep'
+  default unrep' :: (Generic t, GenericRep (Rep t Void), GPURepTy t ~ GenericRepTy (Rep t Void))
+    => GPURepTy t -> t
+  unrep' = (to :: Rep t Void -> t) . genericUnrep'
 
 instance GPURep Int where
   type GPURepTy Int = Int
@@ -171,6 +168,12 @@ instance (GPURep (p x), GPURep (q x)) => GPURep ((p :+: q) x) where
   unrep' (Left x) = L1 (unrep' x)
   unrep' (Right y) = R1 (unrep' y)
 
+instance (GPURep (p x), GPURep (q x)) => GPURep ((p :*: q) x) where
+  type GPURepTy ((p :*: q) x) = (GPURepTy (p x), GPURepTy (q x))
+
+  rep' (x :*: y) = (rep' x, rep' y)
+  unrep' (x, y) = (unrep' x :*: unrep' y)
+
 instance GPURep c => GPURep (K1 i c p) where
   type GPURepTy (K1 i c p) = GPURepTy c
 
@@ -186,17 +189,35 @@ instance GPURep (U1 p) where
   unrep' () = U1
 
 
-genericRep' :: forall a i c p q t.
-  (Canonical t, Bifunctor t, GPURep (p Void), GPURep (q Void), Generic a
-  ,Rep a Void ~ M1 i c (GenericOp t p q) Void)
-   => a -> t (GPURepTy (p Void)) (GPURepTy (q Void))
-genericRep' = bimap rep' rep' . toCanonical . unM1 . (from :: a -> Rep a Void)
+class GenericRep repr where
+    type GenericRepTy repr
 
-genericUnrep' :: forall a i c p q t.
-  (Canonical t, Bifunctor t, GPURep (p Void), GPURep (q Void), Generic a
-  ,Rep a Void ~ M1 i c (GenericOp t p q) Void)
-   => t (GPURepTy (p Void)) (GPURepTy (q Void)) -> a
-genericUnrep' = (to :: Rep a Void -> a) . M1 . fromCanonical . bimap unrep' unrep'
+    genericRep' :: repr -> GenericRepTy repr
+    genericUnrep' :: GenericRepTy repr -> repr
+
+instance (GPURep (p Void), GPURep (q Void)) =>
+  GenericRep ((p :+: q) Void) where
+
+    type GenericRepTy ((p :+: q) Void) = Either (GPURepTy (p Void)) (GPURepTy (q Void))
+
+    genericRep' = bimap rep' rep' . toCanonical
+    genericUnrep' = fromCanonical . bimap unrep' unrep'
+
+instance (GPURep (p Void), GPURep (q Void)) =>
+  GenericRep ((p :*: q) Void) where
+
+    type GenericRepTy ((p :*: q) Void) = (GPURepTy (p Void), GPURepTy (q Void))
+
+    genericRep' = bimap rep' rep' . toCanonical
+    genericUnrep' = fromCanonical . bimap unrep' unrep'
+
+instance (GenericRep (f Void)) =>
+  GenericRep (M1 i c f Void) where
+    type GenericRepTy (M1 i c f Void) = GenericRepTy (f Void)
+
+    genericRep' = genericRep' . unM1
+    genericUnrep' = M1 . genericUnrep'
+
 
 -- Should this just produce an error?
 matchAbs :: GPURep s => MatchExp (GPURepTy s) t -> s -> t
@@ -283,9 +304,11 @@ transformSumMatch (CaseE scrutinee matches0) =
     sumMatches [m1,m2] = VarE 'SumMatch :@ m1 :@ m2
     sumMatches (m1:m2:rest) = VarE 'SumMatch :@ m1 :@ (VarE 'SumMatch :@ m2 :@ (sumMatches rest))
 
+-- TODO: Match constructors that don't have exactly one field
 abstractSimpleMatch :: Match -> Exp
 abstractSimpleMatch (Match (ConP _ [VarP var]) (NormalB body) _) =
   abstractOver var (VarE 'rep :@ body)
+abstractSimpleMatch x = error ("abstractSimpleMatch: " ++ show x)
 
 getMatchPatName :: Match -> Name
 getMatchPatName (Match (ConP name _) _ _) = name

@@ -71,9 +71,30 @@ thExample5 = do
 
 instance GPURep Example'
 
+
+
+data Example3 = X Int Float deriving (Show, Generic)
+
+instance GPURep Example3 where
+
+data Example4 = E1 Int | E2 Float | E3 Bool deriving (Show, Generic)
+
+instance GPURep Example4
+
+-- NOTE: This does not work yet
+thExample6 :: IO Exp
+thExample6 = do
+  exp <- runQ
+    [| case E2 of
+        E1 x -> 2
+        E2 y -> 4
+        E3 z -> 6
+    |]
+  runQ $ transformSumMatch exp
+
 main :: IO ()
 main = do
-  transformed <- thExample5
+  transformed <- thExample6
   putStrLn (pprint transformed)
 
   -- print $transformed
