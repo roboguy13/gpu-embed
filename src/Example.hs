@@ -4,6 +4,8 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE TypeApplications #-}
 
+module Example where
+
 import           Data.List
 import           Case
 
@@ -86,15 +88,18 @@ thExample6 = do
     [| case E2 23.0 of
         E1 x -> 2
         E2 y -> 4
-        E3 z -> 6
+        E3 z -> 6 :: Int
     |]
   transformCase exp
 
-main :: IO ()
-main = do
+-- main :: IO ()
+-- main = do
   -- print $(thExample5)
-  transformed <- runQ thExample6
-  putStrLn (pprint transformed)
+
+  -- $(thExample6)
+
+  -- transformed <- runQ thExample6
+  -- putStrLn (pprint transformed)
 
   -- print $transformed
   -- x <- thExample2

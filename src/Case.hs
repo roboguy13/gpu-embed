@@ -139,27 +139,33 @@ class GPURep t where
     => GPURepTy t -> t
   unrep' = (to :: Rep t Void -> t) . genericUnrep'
 
-  -- -- Get "constructor index" (the order it was declared in the "data"
-  -- -- definition for algebraic data types)
-  -- conIndex :: Proxy t -> Name -> Int
+  -- Get "constructor index" (the order it was declared in the "data"
+  -- definition for algebraic data types)
+  conIndex :: Proxy t -> Name -> Int
 
-  -- default conIndex :: (Generic t)
+  default conIndex :: (ConNames (Rep t Void)) => Proxy t -> Name -> Int
+  conIndex Proxy name =
+    let Just ix = name `elemIndex` (conNames (Proxy @(Rep t Void)))
+    in ix
 
 instance GPURep Int where
   type GPURepTy Int = Int
   rep = Lit
   rep' = id
   unrep' = id
+  conIndex = error "conIndex @Int"
 instance GPURep Float where
   type GPURepTy Float = Float
   rep = Lit
   rep' = id
   unrep' = id
+  conIndex = error "conIndex @Float"
 instance GPURep Double where
   type GPURepTy Double = Double
   rep = Lit
   rep' = id
   unrep' = id
+  conIndex = error "conIndex @Double"
 
 instance GPURep Bool where
   type GPURepTy Bool = Bool
@@ -167,6 +173,7 @@ instance GPURep Bool where
   rep True  = TrueExp
   rep' = id
   unrep' = id
+  conIndex = error "conIndex @Bool"
 
 instance (GPURep a, GPURep b) => GPURep (Either a b) where
   type GPURepTy (Either a b) = Either a b
@@ -328,15 +335,15 @@ abstractOver :: Name -> Exp -> Exp
 abstractOver name exp = LamE [VarP name] (LamE [VarP name] exp :@ (VarE 'gpuAbs :@ VarE name))
 
 transformProdMatch :: Match -> Exp
-transformProdMatch (Match scrutinee (NormalB body) _) =
+transformProdMatch (Match match (NormalB body) _) =
   go vars0
   where
-    go [] = VarE 'NullaryMatch :@ (VarE 'rep :@ body)
-    go [var] = VarE 'OneProdMatch :@ abstractOver var (VarE 'rep :@ body)
-    go (var:vars) = VarE 'ProdMatch :@ abstractOver var (go vars)
+    go [] = ConE 'NullaryMatch :@ (VarE 'rep :@ body)
+    go [var] = ConE 'OneProdMatch :@ abstractOver var (VarE 'rep :@ body)
+    go (var:vars) = ConE 'ProdMatch :@ abstractOver var (go vars)
 
     vars0 =
-      case scrutinee of
+      case match of
         ConP _ args -> map getVar args
         TupP args -> map getVar args
 
@@ -344,18 +351,46 @@ transformProdMatch (Match scrutinee (NormalB body) _) =
 
 -- Does not necessarily preserve type argument order (sorts matches by
 -- constructor name)
+-- NOTE: Requires at least one match to find the type
 transformCase :: Exp -> Q Exp
 transformCase (CaseE scrutinee matches0@(firstMatch:_)) = do
-    return (VarE 'gpuAbs :@ (VarE 'CaseExp :@ (VarE 'rep :@ scrutinee)
+    reifiedFirstMatchMaybe <- sequence $ fmap reify firstMatchConMaybe
+
+    conIxMaybe <- case reifiedFirstMatchMaybe of
+      Just (DataConI _ _ parentName) -> do
+        parent <- reify parentName
+        case parent of
+          TyConI (DataD _ _ _ _ constrs _) ->
+            return $ Just $ \conName -> conName `elemIndex` map getConName constrs
+      Nothing -> return Nothing
+
+    let sortedMatches =
+          case conIxMaybe of
+            Nothing -> matches0
+            Just conIx -> sortBy (comparing (conIx . getMatchPatName)) matches0
+
+    return (VarE 'gpuAbs :@ (ConE 'CaseExp :@ (VarE 'rep :@ scrutinee)
               :@ sumMatches sortedMatches))
   where
-    -- TODO: This needs to sort to the order listed in the data declaration
-    sortedMatches = sortBy (comparing getMatchPatName) matches0
+    firstMatchConMaybe =
+      case firstMatch of
+        Match (ConP name _) _ _ -> Just name
+        Match (TupP _) _ _ -> Nothing
+        _ -> Nothing
 
-    sumMatches [] = VarE 'EmptyMatch
-    sumMatches [x] = VarE 'OneSumMatch :@ transformProdMatch x
+    -- -- TODO: This needs to sort to the order listed in the data declaration
+    -- sortedMatches = sortBy (comparing getMatchPatName) matches0
+
+    sumMatches [] = ConE 'EmptyMatch
+    sumMatches [x] = ConE 'OneSumMatch :@ transformProdMatch x
     sumMatches (x:xs) =
-      VarE 'SumMatch :@ transformProdMatch x :@ sumMatches xs
+      ConE 'SumMatch :@ transformProdMatch x :@ sumMatches xs
+
+getConName :: Con -> Name
+getConName (NormalC name _) = name
+getConName (RecC name _) = name
+getConName (InfixC _ name _) = name
+getConName (ForallC _ _ con) = getConName con
 
 -- TODO: Match constructors that don't have exactly one field
 abstractSimpleMatch :: Match -> Exp
