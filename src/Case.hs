@@ -78,6 +78,7 @@ data ProdMatch s t where
                       -> ProdMatch (a, b) r
 
   OneProdMatch :: (GPURep a) => (GPUExp a -> GPUExp r) -> ProdMatch a r
+  NullaryMatch :: GPURep r => GPUExp r -> ProdMatch a r
 
 data SumMatch s t where
   SumMatch ::
@@ -87,7 +88,7 @@ data SumMatch s t where
 
   EmptyMatch :: SumMatch () r
 
-  OneSumMatch :: (GPURep a, GPURep b) => ProdMatch a b -> SumMatch (GPURepTy a) b
+  OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~a) => ProdMatch a b -> SumMatch (GPURepTy a) b
 
   
 
@@ -293,6 +294,7 @@ prodMatchAbs (ProdMatch f) =
       (x, y) -> prodMatchAbs (f (rep x)) y
 
 prodMatchAbs (OneProdMatch f) = \x -> gpuAbs (f (rep x))
+prodMatchAbs (NullaryMatch x) = \_ -> gpuAbs x
 
 gpuAbs :: GPUExp t -> t
 gpuAbs (CaseExp x f) = sumMatchAbs f (gpuAbs x)
@@ -326,13 +328,17 @@ abstractOver :: Name -> Exp -> Exp
 abstractOver name exp = LamE [VarP name] (LamE [VarP name] exp :@ (VarE 'gpuAbs :@ VarE name))
 
 transformProdMatch :: Match -> Exp
-transformProdMatch (Match (ConP _ args) (NormalB body) _) =
+transformProdMatch (Match scrutinee (NormalB body) _) =
   go vars0
   where
+    go [] = VarE 'NullaryMatch :@ (VarE 'rep :@ body)
     go [var] = VarE 'OneProdMatch :@ abstractOver var (VarE 'rep :@ body)
     go (var:vars) = VarE 'ProdMatch :@ abstractOver var (go vars)
 
-    vars0 = map getVar args
+    vars0 =
+      case scrutinee of
+        ConP _ args -> map getVar args
+        TupP args -> map getVar args
 
     getVar (VarP var) = var
 

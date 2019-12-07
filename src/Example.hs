@@ -38,26 +38,23 @@ thExample2 = do
     |]
   runQ $ gatherCaseAlts matches
 
-thExample3 :: IO Exp
+thExample3 :: Q Exp
 thExample3 = do
-  exp <- runQ
+  exp <-
     [|
       case Left 4 of
         Left x -> x * 2
         Right y -> fromEnum (y :: Bool)
     |]
-  undefined
-  -- runQ $ transformEitherMatch exp
-  -- runQ $ transformSumMatch exp
+  transformCase exp
 
-thExample4 :: IO Exp
+thExample4 :: Q Exp
 thExample4 = do
-  exp <- runQ
+  exp <-
     [| case (True, 7 :: Int) of
          (x, y) -> fromEnum (x :: Bool) + y
     |]
-  undefined
-  -- runQ $ transformPairMatch exp
+  transformCase exp
 
 data Example' = N' Int | B' Bool deriving (Show, Generic)
 
@@ -83,22 +80,20 @@ data Example4 = E1 Int | E2 Float | E3 Bool deriving (Show, Generic)
 
 instance GPURep Example4
 
--- NOTE: This does not work yet
-thExample6 :: IO Exp
+thExample6 :: Q Exp
 thExample6 = do
-  exp <- runQ
-    [| case E2 of
+  exp <-
+    [| case E2 23.0 of
         E1 x -> 2
         E2 y -> 4
         E3 z -> 6
     |]
-  undefined
-  -- runQ $ transformSumMatch exp
+  transformCase exp
 
 main :: IO ()
 main = do
   -- print $(thExample5)
-  transformed <- runQ thExample5
+  transformed <- runQ thExample6
   putStrLn (pprint transformed)
 
   -- print $transformed
