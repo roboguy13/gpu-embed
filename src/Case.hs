@@ -23,6 +23,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
 
 module Case
   where
@@ -53,23 +54,45 @@ import           Data.Functor.Const
 
 import           Data.Bifunctor
 
+import           GHC.TypeLits hiding (Nat)
+
 infixl 0 :@
 pattern f :@ x = AppE f x
 
 type Case = (Exp, [Match])
 
 
+-- Idea: Represent a pattern match of a particular type as
+--    KnownSymbol name => Proxy name -> MatchType name
+-- with 'MatchType' being a type family that gives the type of the match
+-- associated to matching on the constructor named 'name'. Maybe these
+-- could be stored in a heterogenous list.
+
 -- | Idea: Deep embedding for a pattern match (possibly using a non-regular
 -- type?). Convert types to a "canonical form" to use this (like 'Either's
 -- and '(,)'s)
-data MatchExp s t where
-  SumMatch  :: (GPURep a, GPURep b) => (GPUExp a -> GPUExp r) -> (GPUExp b -> GPUExp r) -> MatchExp (Either a b) r
-  ProdMatch :: (GPURep a, GPURep b) => (GPUExp a -> GPUExp b -> GPUExp r) -> MatchExp (a, b) r
+
+data ProdMatch s t where
+  ProdMatch :: (GPURep a, GPURep b)
+                  => (GPUExp a -> ProdMatch b r)
+                      -> ProdMatch (a, b) r
+
+  OneMatch :: (GPURep a) => (GPUExp a -> GPUExp r) -> ProdMatch a r
+
+data SumMatch s t where
+  SumMatch ::
+    (GPURep a, GPURep b)
+        => ProdMatch a r -> SumMatch b r
+            -> SumMatch (Either a b) r
+
+  NullaryMatch :: GPUExp r -> SumMatch () r
+
+  
 
 -- TODO: Figure out how these types should be related to each other or
 -- combined with each other
 data GPUExp t where
-  CaseExp :: GPURep t => GPUExp t -> MatchExp (GPURepTy t) r -> GPUExp r
+  CaseExp :: GPURep t => GPUExp t -> SumMatch (GPURepTy t) r -> GPUExp r
 
   FalseExp :: GPUExp Bool
   TrueExp :: GPUExp Bool
@@ -112,6 +135,12 @@ class GPURep t where
   default unrep' :: (Generic t, GenericRep (Rep t Void), GPURepTy t ~ GenericRepTy (Rep t Void))
     => GPURepTy t -> t
   unrep' = (to :: Rep t Void -> t) . genericUnrep'
+
+  -- Get "constructor index" (the order it was declared in the "data"
+  -- definition for algebraic data types)
+  conIndex :: Proxy t -> Name -> Int
+
+  -- default conIndex :: (Generic t)
 
 instance GPURep Int where
   type GPURepTy Int = Int
@@ -195,7 +224,7 @@ class GenericRep repr where
     genericRep' :: repr -> GenericRepTy repr
     genericUnrep' :: GenericRepTy repr -> repr
 
-instance (GPURep (p Void), GPURep (q Void)) =>
+instance forall p q. (GPURep (p Void), GPURep (q Void)) =>
   GenericRep ((p :+: q) Void) where
 
     type GenericRepTy ((p :+: q) Void) = Either (GPURepTy (p Void)) (GPURepTy (q Void))
@@ -218,9 +247,33 @@ instance (GenericRep (f Void)) =>
     genericRep' = genericRep' . unM1
     genericUnrep' = M1 . genericUnrep'
 
+class ConNames repr where
+  conNames :: Proxy repr -> [Name]
+
+instance forall p q. (ConNames (p Void), ConNames (q Void)) =>
+  ConNames ((p :+: q) Void) where
+
+    conNames Proxy = conNames (Proxy @(p Void)) ++ conNames (Proxy @(q Void))
+
+instance ConNames ((p :*: q) Void) where
+    conNames Proxy = []
+
+instance forall sym fixity b x. (KnownSymbol sym, ConNames (x Void))
+  => ConNames (C1 ('MetaCons sym fixity b) x Void) where
+
+    conNames Proxy = mkName (symbolVal (Proxy @sym)) : conNames (Proxy @(x Void))
+
+instance {-# INCOHERENT #-} ConNames (f Void) => ConNames (M1 i c f p) where
+    conNames Proxy = conNames (Proxy @(f Void))
+
+instance ConNames (K1 i c p) where
+    conNames Proxy = []
+
+instance ConNames (U1 x) where
+    conNames Proxy = []
 
 -- Should this just produce an error?
-matchAbs :: GPURep s => MatchExp (GPURepTy s) t -> s -> t
+matchAbs :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
 matchAbs (SumMatch p q) =
   \x0 ->
     let x = rep' x0
@@ -292,8 +345,11 @@ transformPairMatch (CaseE scrutinee [Match (TupP [VarP var1, VarP var2]) (Normal
 
 -- Does not necessarily preserve type argument order (sorts matches by
 -- constructor name)
+-- NOTE: Requires at least one pattern match
 transformSumMatch :: Exp -> Q Exp
-transformSumMatch (CaseE scrutinee matches0) =
+transformSumMatch (CaseE scrutinee matches0@(firstMatch:_)) = do
+    firstMatchReified <- reify (getMatchPatName firstMatch)
+
     return (VarE 'gpuAbs :@ (VarE 'CaseExp :@ (VarE 'rep :@ scrutinee)
               :@ sumMatches (map abstractSimpleMatch sortedMatches)))
   where
