@@ -92,22 +92,17 @@ thExample6 = do
     |]
   transformCase exp
 
--- main :: IO ()
--- main = do
-  -- print $(thExample5)
+data Example5 = A1 Float Float | A2 Int deriving (Show, Generic)
 
-  -- $(thExample6)
+instance GPURep Example5
 
-  -- transformed <- runQ thExample6
-  -- putStrLn (pprint transformed)
+thExample7 :: Q Exp
+thExample7 = do
+  exp <-
+    [| case A1 2.3 7.5 of
+        A2 x -> fromIntegral x
+        A1 x y -> x + y
+    |]
 
-  -- print $transformed
-  -- x <- thExample2
-  -- print x
+  transformCase exp
 
-
--- $(iHateDelete
---     [d|
---         mapDelete x = map (delete x)
---         myElem x xs = length (delete x (delete x xs)) /= length xs
---     |])

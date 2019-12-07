@@ -378,9 +378,6 @@ transformCase (CaseE scrutinee matches0@(firstMatch:_)) = do
         Match (TupP _) _ _ -> Nothing
         _ -> Nothing
 
-    -- -- TODO: This needs to sort to the order listed in the data declaration
-    -- sortedMatches = sortBy (comparing getMatchPatName) matches0
-
     sumMatches [] = ConE 'EmptyMatch
     sumMatches [x] = ConE 'OneSumMatch :@ transformProdMatch x
     sumMatches (x:xs) =

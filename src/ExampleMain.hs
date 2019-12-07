@@ -9,5 +9,5 @@ import Case
 import qualified Case
 
 main :: IO ()
-main = print $(thExample6)
+main = print $(thExample7)
 
