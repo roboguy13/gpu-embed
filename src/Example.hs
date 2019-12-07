@@ -46,8 +46,9 @@ thExample3 = do
         Left x -> x * 2
         Right y -> fromEnum (y :: Bool)
     |]
+  undefined
   -- runQ $ transformEitherMatch exp
-  runQ $ transformSumMatch exp
+  -- runQ $ transformSumMatch exp
 
 thExample4 :: IO Exp
 thExample4 = do
@@ -55,19 +56,20 @@ thExample4 = do
     [| case (True, 7 :: Int) of
          (x, y) -> fromEnum (x :: Bool) + y
     |]
-  runQ $ transformPairMatch exp
+  undefined
+  -- runQ $ transformPairMatch exp
 
 data Example' = N' Int | B' Bool deriving (Show, Generic)
 
-thExample5 :: IO Exp
+thExample5 :: Q Exp
 thExample5 = do
-  exp <- runQ
+  exp <-
     [|
       case B' False of
         N' n -> N' (n+2)
         B' b -> B' (not b)
     |]
-  runQ $ transformSumMatch exp
+  transformCase exp
 
 instance GPURep Example'
 
@@ -90,11 +92,13 @@ thExample6 = do
         E2 y -> 4
         E3 z -> 6
     |]
-  runQ $ transformSumMatch exp
+  undefined
+  -- runQ $ transformSumMatch exp
 
 main :: IO ()
 main = do
-  transformed <- thExample6
+  -- print $(thExample5)
+  transformed <- runQ thExample5
   putStrLn (pprint transformed)
 
   -- print $transformed

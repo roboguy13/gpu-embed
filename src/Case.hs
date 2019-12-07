@@ -77,15 +77,17 @@ data ProdMatch s t where
                   => (GPUExp a -> ProdMatch b r)
                       -> ProdMatch (a, b) r
 
-  OneMatch :: (GPURep a) => (GPUExp a -> GPUExp r) -> ProdMatch a r
+  OneProdMatch :: (GPURep a) => (GPUExp a -> GPUExp r) -> ProdMatch a r
 
 data SumMatch s t where
   SumMatch ::
-    (GPURep a, GPURep b)
+    (GPURep a, GPURep b, GPURepTy b ~ b)
         => ProdMatch a r -> SumMatch b r
             -> SumMatch (Either a b) r
 
-  NullaryMatch :: GPUExp r -> SumMatch () r
+  EmptyMatch :: SumMatch () r
+
+  OneSumMatch :: (GPURep a, GPURep b) => ProdMatch a b -> SumMatch (GPURepTy a) b
 
   
 
@@ -136,9 +138,9 @@ class GPURep t where
     => GPURepTy t -> t
   unrep' = (to :: Rep t Void -> t) . genericUnrep'
 
-  -- Get "constructor index" (the order it was declared in the "data"
-  -- definition for algebraic data types)
-  conIndex :: Proxy t -> Name -> Int
+  -- -- Get "constructor index" (the order it was declared in the "data"
+  -- -- definition for algebraic data types)
+  -- conIndex :: Proxy t -> Name -> Int
 
   -- default conIndex :: (Generic t)
 
@@ -273,22 +275,27 @@ instance ConNames (U1 x) where
     conNames Proxy = []
 
 -- Should this just produce an error?
-matchAbs :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
-matchAbs (SumMatch p q) =
+sumMatchAbs :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
+sumMatchAbs (SumMatch p q) =
   \x0 ->
     let x = rep' x0
     in
     case x of
-      Left  a -> gpuAbs (p (rep a))
-      Right b -> gpuAbs (q (rep b))
-matchAbs (ProdMatch f) = \p0 ->
-  let p = rep' p0
-  in
-  case p of
-    (x, y) -> gpuAbs $ f (rep x) (rep y)
+      Left  a -> prodMatchAbs p a
+      Right b -> sumMatchAbs q b
+sumMatchAbs EmptyMatch = \_ -> error "Non-exhaustive match"
+sumMatchAbs (OneSumMatch f) = prodMatchAbs f . unrep' . rep' -- TODO: Is this reasonable?
+
+prodMatchAbs :: GPURep s => ProdMatch s t -> s -> t
+prodMatchAbs (ProdMatch f) =
+  \pair ->
+    case pair of
+      (x, y) -> prodMatchAbs (f (rep x)) y
+
+prodMatchAbs (OneProdMatch f) = \x -> gpuAbs (f (rep x))
 
 gpuAbs :: GPUExp t -> t
-gpuAbs (CaseExp x f) = matchAbs f (gpuAbs x)
+gpuAbs (CaseExp x f) = sumMatchAbs f (gpuAbs x)
 gpuAbs FalseExp = False
 gpuAbs TrueExp  = True
 gpuAbs (Repped x) = unrep' x
@@ -318,47 +325,31 @@ getMatchType (_, matches) = do
 abstractOver :: Name -> Exp -> Exp
 abstractOver name exp = LamE [VarP name] (LamE [VarP name] exp :@ (VarE 'gpuAbs :@ VarE name))
 
--- Assumes "simple match" form
-transformEitherMatch :: Exp -> Q Exp
-transformEitherMatch (CaseE scrutinee matches) =
-    return (VarE 'gpuAbs :@ (VarE 'CaseExp :@ (VarE 'rep :@ scrutinee)
-              :@ (VarE 'SumMatch :@ leftFn :@ rightFn)))
+transformProdMatch :: Match -> Exp
+transformProdMatch (Match (ConP _ args) (NormalB body) _) =
+  go vars0
   where
-    leftFn = abstractOver leftVar (VarE 'rep :@ leftBody)
-    rightFn = abstractOver rightVar (VarE 'rep :@ rightBody)
+    go [var] = VarE 'OneProdMatch :@ abstractOver var (VarE 'rep :@ body)
+    go (var:vars) = VarE 'ProdMatch :@ abstractOver var (go vars)
 
-    Match (ConP _ [VarP leftVar]) _ _ = leftMatch
-    Match (ConP _ [VarP rightVar]) _ _ = rightMatch
+    vars0 = map getVar args
 
-    Match _ (NormalB leftBody) _ = leftMatch
-    Match _ (NormalB rightBody) _ = rightMatch
-
-    leftMatch, rightMatch :: Match
-    Just leftMatch = find (patHasName 'Left . getMatchPat) matches
-    Just rightMatch = find (patHasName 'Right . getMatchPat) matches
-
--- Assumes "simple match" form
-transformPairMatch :: Exp -> Q Exp
-transformPairMatch (CaseE scrutinee [Match (TupP [VarP var1, VarP var2]) (NormalB body) _]) =
-    return (VarE 'gpuAbs :@ (VarE 'CaseExp :@ (VarE 'rep :@ scrutinee)
-                :@ (VarE 'ProdMatch :@ abstractOver var1 (abstractOver var2 (VarE 'rep :@ body)))))
+    getVar (VarP var) = var
 
 -- Does not necessarily preserve type argument order (sorts matches by
 -- constructor name)
--- NOTE: Requires at least one pattern match
-transformSumMatch :: Exp -> Q Exp
-transformSumMatch (CaseE scrutinee matches0@(firstMatch:_)) = do
-    firstMatchReified <- reify (getMatchPatName firstMatch)
-
+transformCase :: Exp -> Q Exp
+transformCase (CaseE scrutinee matches0@(firstMatch:_)) = do
     return (VarE 'gpuAbs :@ (VarE 'CaseExp :@ (VarE 'rep :@ scrutinee)
-              :@ sumMatches (map abstractSimpleMatch sortedMatches)))
+              :@ sumMatches sortedMatches))
   where
     -- TODO: This needs to sort to the order listed in the data declaration
     sortedMatches = sortBy (comparing getMatchPatName) matches0
 
-    sumMatches [m] = m
-    sumMatches [m1,m2] = VarE 'SumMatch :@ m1 :@ m2
-    sumMatches (m1:m2:rest) = VarE 'SumMatch :@ m1 :@ (VarE 'SumMatch :@ m2 :@ (sumMatches rest))
+    sumMatches [] = VarE 'EmptyMatch
+    sumMatches [x] = VarE 'OneSumMatch :@ transformProdMatch x
+    sumMatches (x:xs) =
+      VarE 'SumMatch :@ transformProdMatch x :@ sumMatches xs
 
 -- TODO: Match constructors that don't have exactly one field
 abstractSimpleMatch :: Match -> Exp
