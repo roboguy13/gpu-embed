@@ -90,7 +90,7 @@ data SumMatch s t where
 
   OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch (GPURepTy a) b
 
--- Done (case ... of A -> x; B -> y)  ==>  case ... of A -> Done x; B -> y)
+-- Done (case ... of A -> x; B -> y)  ==>  case ... of A -> Done x; B -> Done y)
 data Iter a b
   = Step b
   | Done a
