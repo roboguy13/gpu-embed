@@ -290,8 +290,9 @@ gpuAbs (PairExp x y) = (gpuAbs x, gpuAbs y)
 gpuAbs (StepExp x) = Step $ gpuAbs x
 gpuAbs (DoneExp y) = Done $ gpuAbs y
 gpuAbs (TailRec f) = \x ->
-  let Done r = gpuAbs (f (rep x))
-  in r
+  case gpuAbs (f (rep x)) of
+    Step x' -> gpuAbs (TailRec f) x'
+    Done r  -> r
 
 -- Looks for a 'ConP' get the type info
 -- TODO: Make this work in more circumstances
