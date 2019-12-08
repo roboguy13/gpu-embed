@@ -18,30 +18,12 @@ import           Data.Void
 
 import           Data.Bifunctor
 
-thExample :: IO Int
-thExample =
-  runQ $ countCases
-     [|
-        case 'a' of
-          'b' -> case True of
-                    _ -> 27
-          'c' -> 42
-          'd' -> 500
-          _ -> case [] of [] -> 100
-     |]
+data Nat = Z | S Nat deriving (Generic, Show)
 
-thExample2 :: IO [(Name, Exp)]
-thExample2 = do
-  matches <- runQ $ getCaseMatchesFirst
-    [|
-      case B False of
-        N n -> N (S (S n))
-        B b -> B (not b)
-    |]
-  runQ $ gatherCaseAlts matches
+data Example = N Nat | B Bool deriving (Generic, Show)
 
-thExample3 :: Q Exp
-thExample3 = do
+thExample1 :: Q Exp
+thExample1 = do
   exp <-
     [|
       case Left 4 of
@@ -50,8 +32,8 @@ thExample3 = do
     |]
   transformCase exp
 
-thExample4 :: Q Exp
-thExample4 = do
+thExample2 :: Q Exp
+thExample2 = do
   exp <-
     [| case (True, 7 :: Int) of
          (x, y) -> fromEnum (x :: Bool) + y
@@ -60,8 +42,8 @@ thExample4 = do
 
 data Example' = N' Int | B' Bool deriving (Show, Generic)
 
-thExample5 :: Q Exp
-thExample5 = do
+thExample3 :: Q Exp
+thExample3 = do
   exp <-
     [|
       case B' False of
@@ -82,8 +64,8 @@ data Example4 = E1 Int | E2 Float | E3 Bool deriving (Show, Generic)
 
 instance GPURep Example4
 
-thExample6 :: Q Exp
-thExample6 = do
+thExample4 :: Q Exp
+thExample4 = do
   exp <-
     [| case E2 23.0 of
         E1 x -> 2
@@ -96,8 +78,8 @@ data Example5 = A1 Float Float | A2 Int deriving (Show, Generic)
 
 instance GPURep Example5
 
-thExample7 :: Q Exp
-thExample7 = do
+thExample5 :: Q Exp
+thExample5 = do
   exp <-
     [| case A1 2.3 7.5 of
         A2 x -> fromIntegral x
