@@ -88,12 +88,14 @@ data SumMatch s t where
 
   EmptyMatch :: SumMatch () r
 
-  OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~a) => ProdMatch a b -> SumMatch (GPURepTy a) b
+  OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch (GPURepTy a) b
 
+data Iter a b
+  = Step b
+  | Done a
+  deriving (Functor)
   
 
--- TODO: Figure out how these types should be related to each other or
--- combined with each other
 data GPUExp t where
   CaseExp :: GPURep t => GPUExp t -> SumMatch (GPURepTy t) r -> GPUExp r
 
@@ -115,6 +117,11 @@ data GPUExp t where
   RightExp :: GPUExp b -> GPUExp (Either a b)
 
   PairExp :: GPUExp a -> GPUExp b -> GPUExp (a, b)
+
+  StepExp :: GPURep b => GPUExp b -> GPUExp (Iter a b)
+  DoneExp :: GPURep a => GPUExp a -> GPUExp (Iter a b)
+
+  TailRec :: (GPURep a, GPURep b) => (GPUExp b -> GPUExp (Iter a b)) -> GPUExp (b -> a)
 
 -- rep :: t -> GPUExp t
 -- rep = error "rep"
@@ -317,6 +324,11 @@ gpuAbs (Not x) = not (gpuAbs x)
 gpuAbs (LeftExp x) = Left (gpuAbs x)
 gpuAbs (RightExp y) = Right (gpuAbs y)
 gpuAbs (PairExp x y) = (gpuAbs x, gpuAbs y)
+gpuAbs (StepExp x) = Step $ gpuAbs x
+gpuAbs (DoneExp y) = Done $ gpuAbs y
+gpuAbs (TailRec f) = \x ->
+  let Done r = gpuAbs (f (rep x))
+  in r
 
 -- Looks for a 'ConP' get the type info
 -- TODO: Make this work in more circumstances
@@ -352,6 +364,8 @@ transformProdMatch (Match match (NormalB body) _) =
 -- Does not necessarily preserve type argument order (sorts matches by
 -- constructor name)
 -- NOTE: Requires at least one match to find the type
+-- NOTE: This must be used in a splice, not in something like runQ
+-- evaluated in the IO monad (this is because 'transformCase' uses 'reify')
 transformCase :: Exp -> Q Exp
 transformCase (CaseE scrutinee matches0@(firstMatch:_)) = do
     reifiedFirstMatchMaybe <- sequence $ fmap reify firstMatchConMaybe
