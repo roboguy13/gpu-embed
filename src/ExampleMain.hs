@@ -5,9 +5,12 @@
 {-# OPTIONS_GHC -ddump-splices #-}
 
 import Example
-import Case
-import qualified Case
 
 main :: IO ()
-main = print $(thExample7)
+main = do
+  print $(thExample3)
+  print $(thExample4)
+  print $(thExample5)
+  print $(thExample6)
+  print $(thExample7)
 
