@@ -90,6 +90,7 @@ data SumMatch s t where
 
   OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch (GPURepTy a) b
 
+-- Done (case ... of A -> x; B -> y)  ==>  case ... of A -> Done x; B -> y)
 data Iter a b
   = Step b
   | Done a
@@ -146,33 +147,21 @@ class GPURep t where
     => GPURepTy t -> t
   unrep' = (to :: Rep t Void -> t) . genericUnrep'
 
-  -- Get "constructor index" (the order it was declared in the "data"
-  -- definition for algebraic data types)
-  conIndex :: Proxy t -> Name -> Int
-
-  default conIndex :: (ConNames (Rep t Void)) => Proxy t -> Name -> Int
-  conIndex Proxy name =
-    let Just ix = name `elemIndex` (conNames (Proxy @(Rep t Void)))
-    in ix
-
 instance GPURep Int where
   type GPURepTy Int = Int
   rep = Lit
   rep' = id
   unrep' = id
-  conIndex = error "conIndex @Int"
 instance GPURep Float where
   type GPURepTy Float = Float
   rep = Lit
   rep' = id
   unrep' = id
-  conIndex = error "conIndex @Float"
 instance GPURep Double where
   type GPURepTy Double = Double
   rep = Lit
   rep' = id
   unrep' = id
-  conIndex = error "conIndex @Double"
 
 instance GPURep Bool where
   type GPURepTy Bool = Bool
@@ -180,7 +169,6 @@ instance GPURep Bool where
   rep True  = TrueExp
   rep' = id
   unrep' = id
-  conIndex = error "conIndex @Bool"
 
 instance (GPURep a, GPURep b) => GPURep (Either a b) where
   type GPURepTy (Either a b) = Either a b
@@ -263,31 +251,6 @@ instance (GenericRep (f Void)) =>
 
     genericRep' = genericRep' . unM1
     genericUnrep' = M1 . genericUnrep'
-
-class ConNames repr where
-  conNames :: Proxy repr -> [Name]
-
-instance forall p q. (ConNames (p Void), ConNames (q Void)) =>
-  ConNames ((p :+: q) Void) where
-
-    conNames Proxy = conNames (Proxy @(p Void)) ++ conNames (Proxy @(q Void))
-
-instance ConNames ((p :*: q) Void) where
-    conNames Proxy = []
-
-instance forall sym fixity b x. (KnownSymbol sym, ConNames (x Void))
-  => ConNames (C1 ('MetaCons sym fixity b) x Void) where
-
-    conNames Proxy = mkName (symbolVal (Proxy @sym)) : conNames (Proxy @(x Void))
-
-instance {-# INCOHERENT #-} ConNames (f Void) => ConNames (M1 i c f p) where
-    conNames Proxy = conNames (Proxy @(f Void))
-
-instance ConNames (K1 i c p) where
-    conNames Proxy = []
-
-instance ConNames (U1 x) where
-    conNames Proxy = []
 
 -- Should this just produce an error?
 sumMatchAbs :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
