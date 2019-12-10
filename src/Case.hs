@@ -37,7 +37,7 @@ import           Data.Coerce
 
 import           Language.Haskell.TH
 
-import           Data.Generics.Uniplate
+-- import           Data.Generics.Uniplate
 import           Data.Generics.Uniplate.Data
 
 import           Data.Data
@@ -46,6 +46,7 @@ import           Data.List
 
 import           Control.Monad.Identity
 import           Control.Monad.Writer
+import           Control.Monad.State
 import           Data.Monoid
 
 import           Data.Ord
@@ -73,9 +74,9 @@ type Case = (Exp, [Match])
 -- and '(,)'s)
 
 data ProdMatch s t where
-  ProdMatch :: (GPURep a, GPURep b)
-                  => (GPUExp a -> ProdMatch b r)
-                      -> ProdMatch (a, b) r
+  ProdMatch ::
+    (GPURep a, GPURep b)
+       => (GPUExp a -> ProdMatch b r) -> ProdMatch (a, b) r
 
   OneProdMatch :: (GPURep a) => (GPUExp a -> GPUExp r) -> ProdMatch a r
   NullaryMatch :: GPURep r => GPUExp r -> ProdMatch a r
@@ -83,8 +84,7 @@ data ProdMatch s t where
 data SumMatch s t where
   SumMatch ::
     (GPURep a, GPURep b, GPURepTy b ~ b)
-        => ProdMatch a r -> SumMatch b r
-            -> SumMatch (Either a b) r
+        => ProdMatch a r -> SumMatch b r -> SumMatch (Either a b) r
 
   EmptyMatch :: SumMatch () r
 
@@ -94,7 +94,7 @@ data SumMatch s t where
 data Iter a b
   = Step b
   | Done a
-  deriving (Functor)
+  deriving (Functor, Generic)
   
 
 data GPUExp t where
@@ -119,13 +119,12 @@ data GPUExp t where
 
   PairExp :: GPUExp a -> GPUExp b -> GPUExp (a, b)
 
-  StepExp :: GPURep b => GPUExp b -> GPUExp (Iter a b)
-  DoneExp :: GPURep a => GPUExp a -> GPUExp (Iter a b)
+  StepExp :: GPUExp b -> GPUExp (Iter a b)
+  DoneExp :: GPUExp a -> GPUExp (Iter a b)
+
+  IfThenElse :: GPUExp Bool -> GPUExp a -> GPUExp a -> GPUExp a
 
   TailRec :: (GPURep a, GPURep b) => (GPUExp b -> GPUExp (Iter a b)) -> GPUExp (b -> a)
-
--- rep :: t -> GPUExp t
--- rep = error "rep"
 
 class GPURep t where
   type GPURepTy t
@@ -182,6 +181,10 @@ instance (GPURep a, GPURep b) => GPURep (a, b) where
   rep (x, y) = PairExp (rep x) (rep y)
   rep' = id
   unrep' = id
+
+-- XXX: Should this instance exist?
+instance (GPURep a, GPURep b) => GPURep (Iter a b) where
+
 
 -- Generics instances
 instance GPURep (f p) => GPURep (M1 i c f p) where
@@ -293,6 +296,34 @@ gpuAbs (TailRec f) = \x ->
   case gpuAbs (f (rep x)) of
     Step x' -> gpuAbs (TailRec f) x'
     Done r  -> r
+gpuAbs (IfThenElse cond t f)
+  | gpuAbs cond = gpuAbs t
+  | otherwise = gpuAbs f
+
+transformPrims :: Exp -> Exp
+transformPrims = go
+  where
+    go expr@(LitE _) = ConE 'Lit :@ expr
+    go expr@(ConE c)
+      | c == 'True = ConE 'TrueExp
+      | c == 'False = ConE 'FalseExp
+
+    go (InfixE (Just x0) (VarE op) (Just y0))
+      | op == '(+) = ConE 'Add :@ x :@ y
+      | op == '(-) = ConE 'Sub :@ x :@ y
+      | op == '(==) = ConE 'Equal :@ x :@ y
+      | op == '(<=) = ConE 'Lte :@ x :@ y
+      where
+        x = transformPrims x0
+        y = transformPrims y0
+        -- x = go $ descend go x0
+        -- y = go $ descend go y0
+
+    go (AppE (ConE fn) x)
+      | fn == 'not = ConE 'Not :@ transformPrims x
+    go (CondE cond t f) = ConE 'IfThenElse :@ transformPrims cond :@ transformPrims t :@ transformPrims f
+    go (AppE fn x) = transformPrims fn :@ transformPrims x
+    go expr = expr
 
 -- Looks for a 'ConP' get the type info
 -- TODO: Make this work in more circumstances
@@ -306,7 +337,7 @@ getMatchType (_, matches) = do
       return (First (Just ty))
     go _ = return (First Nothing)
 
--- e  ==>  (\x -> (\x -> e) (gpuAbs x))    {where x is a free variable in e)
+-- e  ==>  (\x -> (\x -> e) (gpuAbs x))    {where x is a free variable in e}
 abstractOver :: Name -> Exp -> Exp
 abstractOver name exp = LamE [VarP name] (LamE [VarP name] exp :@ (VarE 'gpuAbs :@ VarE name))
 
@@ -367,12 +398,6 @@ getConName (RecC name _) = name
 getConName (InfixC _ name _) = name
 getConName (ForallC _ _ con) = getConName con
 
--- TODO: Match constructors that don't have exactly one field
-abstractSimpleMatch :: Match -> Exp
-abstractSimpleMatch (Match (ConP _ [VarP var]) (NormalB body) _) =
-  abstractOver var (VarE 'rep :@ body)
-abstractSimpleMatch x = error ("abstractSimpleMatch: " ++ show x)
-
 getMatchPatName :: Match -> Name
 getMatchPatName (Match (ConP name _) _ _) = name
 
@@ -390,6 +415,57 @@ toEither (R1 y) = Right y
 fromEither :: Either (p x) (q x) -> (p :+: q) x
 fromEither (Left x) = L1 x
 fromEither (Right y) = R1 y
+
+-- TODO: Transform prims first
+transformTailRec :: Name -> [Name] -> Exp -> Exp
+transformTailRec recName args =
+  (VarE 'gpuAbs :@) . (ConE 'TailRec :@) . stepIntro . LamE (map VarP args) . (transform go)
+  where
+    stepIntro x = LamE [VarP recName] x :@ ConE 'StepExp
+
+    -- | See if the argument has a recursive call
+    hasRec0 :: Exp -> Writer Any Exp
+    hasRec0 expr@(AppE (VarE fn) _) | fn == recName = do
+      tell (Any True)
+      pure expr
+    hasRec0 expr = do
+      pure expr
+
+    hasRec :: Exp -> Bool
+    hasRec = getAny . execWriter . transformM hasRec0
+
+    -- Look for expressions that do not contain a recursive call in
+    -- a subexpression, and wrap them in a 'Done'
+    go :: Exp -> Exp
+    go exp@(CaseE scrutinee branches) =
+      CaseE scrutinee
+        $ map (\branch@(Match pat (NormalB matchExp) decs) ->
+                  if hasRec matchExp
+                  then branch
+                  else Match pat (NormalB (ConE 'DoneExp :@ matchExp)) decs)
+              branches
+    -- go exp@(CondE cond true false) =
+    go exp@(ConE fn :@ cond :@ true :@ false)
+      | fn == 'IfThenElse =
+        ConE 'IfThenElse :@ cond
+              :@ (if hasRec true
+               then true
+               else ConE 'DoneExp :@ true)
+              :@ (if hasRec false
+               then false
+               else ConE 'DoneExp :@ false)
+    go exp = exp
+
+transformDecTailRec0 :: Dec -> Q Dec
+transformDecTailRec0 sig@SigD{} = return sig
+transformDecTailRec0 (FunD fnName [Clause [VarP arg] (NormalB body) []]) = do
+  return $ FunD fnName [Clause [VarP arg] (NormalB (transformTailRec fnName [arg] (transformPrims body) :@ VarE arg)) []]
+transformDecTailRec0 expr = error ("transformDecTailRec0: " ++ show expr)
+
+transformDecTailRec :: Q [Dec] -> Q [Dec]
+transformDecTailRec qdecs = do
+  decs <- qdecs
+  mapM transformDecTailRec0 decs
 
 class Canonical t where
   type GenericOp t :: (* -> *) -> (* -> *) -> * -> *

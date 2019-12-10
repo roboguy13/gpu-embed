@@ -88,3 +88,14 @@ thExample5 = do
 
   transformCase exp
 
+transformDecTailRec
+  [d|
+  thExample6 :: Int -> Bool
+  thExample6 x =
+    if x == 0
+      then True
+      else if x == 1
+            then False
+            else thExample6 (x - 2)
+  |]
+
