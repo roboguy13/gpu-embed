@@ -34,7 +34,7 @@ thExample1 = do
         Left x -> x * 2
         Right y -> fromEnum y
     |]
-  transformCase exp
+  transformExpr exp
 
 thExample2 :: Q Exp
 thExample2 = do
@@ -42,7 +42,7 @@ thExample2 = do
     [| case (True, 7) of
          (x, y) -> fromEnum x + y
     |]
-  transformCase exp
+  transformExpr exp
 
 data Example' = N' Int | B' Bool deriving (Show, Generic)
 
@@ -54,7 +54,7 @@ thExample3 = do
         N' n -> N' (n+2)
         B' b -> B' (not b)
     |]
-  transformCase exp
+  transformExpr exp
 
 instance GPURep Example'
 
@@ -76,7 +76,7 @@ thExample4 = do
         E2 y -> 4
         E3 z -> 6
     |]
-  transformCase exp
+  transformExpr exp
 
 data Example5 = A1 Float Float | A2 Int deriving (Show, Generic)
 
@@ -90,7 +90,7 @@ thExample5 = do
         A1 x y -> x + y
     |]
 
-  transformCase exp
+  transformExpr exp
 
 transformDecTailRec
   [d|
@@ -116,7 +116,7 @@ thExample7 = do
             then y
             else y
     |]
-  r <- transformCase exp
+  r <- transformExpr exp
   traceM (pprint r)
   return r
 
@@ -128,16 +128,40 @@ thExample7 = do
 --                                                          then y_1
 --                                                          else y_1)) (Case.gpuAbs y_1))) (Case.gpuAbs x_0)))))
 
--- transformDecTailRec 
---   [d|
---   thExample8 :: IntPair -> Int
---   thExample8 p =
---     case p of
---       IntPair x y ->
---         if x == 0
---           then y
---           else thExample7 (IntPair (x-1) (x*y))
---   |]
+transformDecTailRec 
+  [d|
+  thExample8 :: IntPair -> Int
+  thExample8 p =
+    case p of
+      IntPair x y ->
+        if x == 0
+          then y
+          else thExample8 (IntPair (x-1) (x*y))
+  |]
+
+
+
+-- thExample8_ahOY :: IntPair -> Int
+-- thExample8_ahOY p_ahOZ
+--   = (gpuAbs
+--        (TailRec
+--           ((\ thExample8_ahOY
+--               -> \ p_ahOZ
+--                    -> gpuAbs
+--                         ((CaseExp p_ahOZ)
+--                            (OneSumMatch
+--                               (ProdMatch
+--                                  (\ x_ahP0
+--                                     -> OneProdMatch
+--                                          (\ y_ahP1
+--                                             -> ((IfThenElse ((Equal x_ahP0) (Lit 0)))
+--                                                   (DoneExp y_ahP1))
+--                                                  (thExample8_ahOY
+--                                                     (((construct' IntPair)
+--                                                         ((Sub x_ahP0) (Lit 1)))
+--                                                        ((Mul x_ahP0) y_ahP1)))))))))
+--              StepExp)))
+--       p_ahOZ
 
 -- thExample7_agO1 :: IntPair -> Int
 -- thExample7_agO1 p_agO2
@@ -155,4 +179,5 @@ thExample7 = do
 --                                               y_agO4))
 --                                      (y_agO4)))
 --                        (x_agO3)))))
+
 

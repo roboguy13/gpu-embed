@@ -433,8 +433,8 @@ transformCase0 (CaseE scrutinee matches0@(firstMatch:_)) = do
             Nothing -> matches0
             Just conIx -> sortBy (comparing (conIx . getMatchPatName)) matches0
 
-    return (VarE 'gpuAbs :@ (ConE 'CaseExp :@ scrutinee --(VarE 'rep :@ scrutinee)
-              :@ sumMatches sortedMatches))
+    return (ConE 'CaseExp :@ scrutinee --(VarE 'rep :@ scrutinee)
+              :@ sumMatches sortedMatches)
   where
     firstMatchConMaybe =
       case firstMatch of
@@ -486,7 +486,6 @@ hasRec recName = getAny . execWriter . transformM hasRec0
     hasRec0 expr = do
       pure expr
 
--- TODO: Transform prims first
 transformTailRec :: Name -> [Name] -> Exp -> Exp
 transformTailRec recName args =
     (VarE 'gpuAbs :@) . (ConE 'TailRec :@) . stepIntro . LamE (map VarP args) . (transform go)
@@ -525,6 +524,9 @@ transformDecTailRec0 (FunD fnName [Clause [VarP arg] (NormalB body) []]) = do
     else
       return $ FunD fnName [Clause [VarP arg] (NormalB (transformTailRec fnName [arg] body' :@ VarE arg)) []]
 transformDecTailRec0 expr = error ("transformDecTailRec0: " ++ show expr)
+
+transformExpr :: Exp -> Q Exp
+transformExpr = fmap (VarE 'gpuAbs :@) . transformCase
 
 transformDecTailRec :: Q [Dec] -> Q [Dec]
 transformDecTailRec qdecs = do
