@@ -120,13 +120,6 @@ thExample7 = do
   traceM (pprint r)
   return r
 
--- Case.gpuAbs (Case.CaseExp (Case.rep (Case.construct' Example.IntPair (Case.Lit 1) (Case.Lit 2))) (Case.OneSumMatch (Case.ProdMatch (\x_0 -> (\x_0 -> Case.OneProdMatch (\y_1 -> (\y_1 -> Case.rep (Case.IfThenElse (Case.Equal x_0 (Case.Lit 0)) y_1 y_1)) (Case.gpuAbs y_1))) (Case.gpuAbs x_0)))))
-
--- Case.gpuAbs (Case.CaseExp (Case.rep (Case.construct' Example.IntPair (Case.Lit 1) (Case.Lit 2))) (Case.OneSumMatch (Case.ProdMatch (\x_0 -> Case.OneProdMatch (\y_1 -> Case.rep (Case.IfThenElse (Case.Equal x_0 (Case.Lit 0)) y_1 y_1))))))
-
--- Case.gpuAbs (Case.CaseExp (Case.rep (Example.IntPair 1 2)) (Case.OneSumMatch (Case.ProdMatch (\x_0 -> (\x_0 -> Case.OneProdMatch (\y_1 -> (\y_1 -> Case.rep (if x_0 GHC.Classes.== 0
---                                                          then y_1
---                                                          else y_1)) (Case.gpuAbs y_1))) (Case.gpuAbs x_0)))))
 
 transformDecTailRec 
   [d|
@@ -139,45 +132,5 @@ transformDecTailRec
           else thExample8 (IntPair (x-1) (x*y))
   |]
 
-
-
--- thExample8_ahOY :: IntPair -> Int
--- thExample8_ahOY p_ahOZ
---   = (gpuAbs
---        (TailRec
---           ((\ thExample8_ahOY
---               -> \ p_ahOZ
---                    -> gpuAbs
---                         ((CaseExp p_ahOZ)
---                            (OneSumMatch
---                               (ProdMatch
---                                  (\ x_ahP0
---                                     -> OneProdMatch
---                                          (\ y_ahP1
---                                             -> ((IfThenElse ((Equal x_ahP0) (Lit 0)))
---                                                   (DoneExp y_ahP1))
---                                                  (thExample8_ahOY
---                                                     (((construct' IntPair)
---                                                         ((Sub x_ahP0) (Lit 1)))
---                                                        ((Mul x_ahP0) y_ahP1)))))))))
---              StepExp)))
---       p_ahOZ
-
--- thExample7_agO1 :: IntPair -> Int
--- thExample7_agO1 p_agO2
---   = gpuAbs
---       ((CaseExp (rep p_agO2))
---          (OneSumMatch
---             (ProdMatch
---                (\ x_agO3
---                   -> (\ x_agO3
---                         -> OneProdMatch
---                              (\ y_agO4
---                                 -> (\ y_agO4
---                                       ->
---                                            (((IfThenElse ((Equal x_agO3) (Lit 0))) y_agO4)
---                                               y_agO4))
---                                      (y_agO4)))
---                        (x_agO3)))))
 
 
