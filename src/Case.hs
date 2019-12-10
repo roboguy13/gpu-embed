@@ -108,6 +108,10 @@ data GPUExp t where
   Lit :: Num a => a -> GPUExp a
   Add :: Num a => GPUExp a -> GPUExp a -> GPUExp a
   Sub :: Num a => GPUExp a -> GPUExp a -> GPUExp a
+  Mul :: Num a => GPUExp a -> GPUExp a -> GPUExp a
+
+  FromEnum :: Enum a => GPUExp a -> GPUExp Int
+  FromIntegral :: (Integral a, Num b) => GPUExp a -> GPUExp b
 
   Equal :: Eq a => GPUExp a -> GPUExp a -> GPUExp Bool
   Lte :: Ord a => GPUExp a -> GPUExp a -> GPUExp Bool
@@ -125,6 +129,8 @@ data GPUExp t where
   IfThenElse :: GPUExp Bool -> GPUExp a -> GPUExp a -> GPUExp a
 
   TailRec :: (GPURep a, GPURep b) => (GPUExp b -> GPUExp (Iter a b)) -> GPUExp (b -> a)
+
+  Construct :: (GPURep a) => a -> GPUExp a
 
 class GPURep t where
   type GPURepTy t
@@ -255,6 +261,24 @@ instance (GenericRep (f Void)) =>
     genericRep' = genericRep' . unM1
     genericUnrep' = M1 . genericUnrep'
 
+type family LiftedFn t where
+  LiftedFn (a -> b) = GPUExp a -> LiftedFn b
+  LiftedFn b = GPUExp b
+
+class Construct t where
+    construct' :: t -> LiftedFn t
+
+instance (GPURep a, Construct b) => Construct (a -> b) where
+    construct' :: (a -> b) -> GPUExp a -> (LiftedFn b)
+    construct' f = \x -> construct' (f (gpuAbs x))
+
+instance {-# INCOHERENT #-} (GPURep (GPURepTy b), GPURep b, LiftedFn b ~ GPUExp b) => Construct b where
+    construct' :: b -> GPUExp b
+    construct' = Construct
+
+-- construct :: Construct t => t -> GPUExp (RetTy t)
+-- construct c = rep 
+
 -- Should this just produce an error?
 sumMatchAbs :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
 sumMatchAbs (SumMatch p q) =
@@ -284,6 +308,9 @@ gpuAbs (Repped x) = unrep' x
 gpuAbs (Lit x)  = x
 gpuAbs (Add x y) = gpuAbs x + gpuAbs y
 gpuAbs (Sub x y) = gpuAbs x - gpuAbs y
+gpuAbs (Mul x y) = gpuAbs x * gpuAbs y
+gpuAbs (FromEnum x) = fromEnum (gpuAbs x)
+gpuAbs (FromIntegral x) = fromIntegral (gpuAbs x)
 gpuAbs (Equal x y) = gpuAbs x == gpuAbs y
 gpuAbs (Lte x y) = gpuAbs x <= gpuAbs y
 gpuAbs (Not x) = not (gpuAbs x)
@@ -299,31 +326,58 @@ gpuAbs (TailRec f) = \x ->
 gpuAbs (IfThenElse cond t f)
   | gpuAbs cond = gpuAbs t
   | otherwise = gpuAbs f
+gpuAbs (Construct x) = x
+
 
 transformPrims :: Exp -> Exp
-transformPrims = go
+transformPrims = transform go
   where
+    -- -- go' (AppE (ConE con) x) = VarE 'rep :@ (AppE (ConE con) (transformPrims x))
+    -- go' (AppE f x)
+    --   | go2 f = VarE 'rep :@ (go f :@ go' x)
+    --   | otherwise = go' f :@ go' x
+    --   where
+    --     go2 (ConE _) = True
+    --     go2 (AppE f2 _) = go2 f2
+    --     go2 _ = False
+    -- go' expr = go expr
+
     go expr@(LitE _) = ConE 'Lit :@ expr
     go expr@(ConE c)
       | c == 'True = ConE 'TrueExp
       | c == 'False = ConE 'FalseExp
 
+    go expr@(ConE _) = VarE 'construct' :@ expr
+    go expr@(TupE [x, y]) = VarE 'construct' :@ ConE '(,) :@ x :@ y
+    go expr@(TupE [x, y, z]) = VarE 'construct' :@ ConE '(,,) :@ x :@ y
+    go expr@(TupE [x, y, z, w]) = VarE 'construct' :@ ConE '(,,,) :@ x :@ y
+    go expr@(VarE fn :@ ConE _)
+      | fn == 'construct' = expr
+
+    -- go expr@(ConE c) = VarE 'rep :@ expr
+
     go (InfixE (Just x0) (VarE op) (Just y0))
       | op == '(+) = ConE 'Add :@ x :@ y
+      | op == '(*) = ConE 'Mul :@ x :@ y
       | op == '(-) = ConE 'Sub :@ x :@ y
       | op == '(==) = ConE 'Equal :@ x :@ y
       | op == '(<=) = ConE 'Lte :@ x :@ y
       where
-        x = transformPrims x0
-        y = transformPrims y0
+        x = go x0
+        y = go y0
         -- x = go $ descend go x0
         -- y = go $ descend go y0
 
-    go (AppE (ConE fn) x)
-      | fn == 'not = ConE 'Not :@ transformPrims x
-    go (CondE cond t f) = ConE 'IfThenElse :@ transformPrims cond :@ transformPrims t :@ transformPrims f
-    go (AppE fn x) = transformPrims fn :@ transformPrims x
-    go expr = expr
+    go (VarE x)
+      | x == 'not = ConE 'Not
+      | x == 'fromEnum = ConE 'FromEnum
+      | x == 'fromIntegral = ConE 'FromIntegral
+
+    -- go (AppE (VarE fn) x)
+    --   | fn == 'not = ConE 'Not :@ x
+    go (CondE cond t f) = ConE 'IfThenElse :@ cond :@ t :@ f
+    -- go expr@(AppE fn x) = go fn :@ go x
+    go expr = expr --descend go expr
 
 -- Looks for a 'ConP' get the type info
 -- TODO: Make this work in more circumstances
@@ -339,14 +393,15 @@ getMatchType (_, matches) = do
 
 -- e  ==>  (\x -> (\x -> e) (gpuAbs x))    {where x is a free variable in e}
 abstractOver :: Name -> Exp -> Exp
-abstractOver name exp = LamE [VarP name] (LamE [VarP name] exp :@ (VarE 'gpuAbs :@ VarE name))
+abstractOver name = LamE [VarP name]
+-- abstractOver name exp = LamE [VarP name] (LamE [VarP name] exp :@ (VarE 'gpuAbs :@ VarE name))
 
 transformProdMatch :: Match -> Exp
 transformProdMatch (Match match (NormalB body) _) =
   go vars0
   where
-    go [] = ConE 'NullaryMatch :@ (VarE 'rep :@ body)
-    go [var] = ConE 'OneProdMatch :@ abstractOver var (VarE 'rep :@ body)
+    go [] = ConE 'NullaryMatch :@ body --(VarE 'rep :@ body)
+    go [var] = ConE 'OneProdMatch :@ abstractOver var body --(VarE 'rep :@ body)
     go (var:vars) = ConE 'ProdMatch :@ abstractOver var (go vars)
 
     vars0 =
@@ -361,8 +416,8 @@ transformProdMatch (Match match (NormalB body) _) =
 -- NOTE: Requires at least one match to find the type
 -- NOTE: This must be used in a splice, not in something like runQ
 -- evaluated in the IO monad (this is because 'transformCase' uses 'reify')
-transformCase :: Exp -> Q Exp
-transformCase (CaseE scrutinee matches0@(firstMatch:_)) = do
+transformCase0 :: Exp -> Q Exp
+transformCase0 (CaseE scrutinee matches0@(firstMatch:_)) = do
     reifiedFirstMatchMaybe <- sequence $ fmap reify firstMatchConMaybe
 
     conIxMaybe <- case reifiedFirstMatchMaybe of
@@ -378,7 +433,7 @@ transformCase (CaseE scrutinee matches0@(firstMatch:_)) = do
             Nothing -> matches0
             Just conIx -> sortBy (comparing (conIx . getMatchPatName)) matches0
 
-    return (VarE 'gpuAbs :@ (ConE 'CaseExp :@ (VarE 'rep :@ scrutinee)
+    return (VarE 'gpuAbs :@ (ConE 'CaseExp :@ scrutinee --(VarE 'rep :@ scrutinee)
               :@ sumMatches sortedMatches))
   where
     firstMatchConMaybe =
@@ -391,6 +446,10 @@ transformCase (CaseE scrutinee matches0@(firstMatch:_)) = do
     sumMatches [x] = ConE 'OneSumMatch :@ transformProdMatch x
     sumMatches (x:xs) =
       ConE 'SumMatch :@ transformProdMatch x :@ sumMatches xs
+transformCase0 exp = return exp
+
+transformCase :: Exp -> Q Exp
+transformCase = transformM transformCase0 . transformPrims
 
 getConName :: Con -> Name
 getConName (NormalC name _) = name
@@ -416,13 +475,9 @@ fromEither :: Either (p x) (q x) -> (p :+: q) x
 fromEither (Left x) = L1 x
 fromEither (Right y) = R1 y
 
--- TODO: Transform prims first
-transformTailRec :: Name -> [Name] -> Exp -> Exp
-transformTailRec recName args =
-  (VarE 'gpuAbs :@) . (ConE 'TailRec :@) . stepIntro . LamE (map VarP args) . (transform go)
+hasRec :: Name -> Exp -> Bool
+hasRec recName = getAny . execWriter . transformM hasRec0
   where
-    stepIntro x = LamE [VarP recName] x :@ ConE 'StepExp
-
     -- | See if the argument has a recursive call
     hasRec0 :: Exp -> Writer Any Exp
     hasRec0 expr@(AppE (VarE fn) _) | fn == recName = do
@@ -431,8 +486,13 @@ transformTailRec recName args =
     hasRec0 expr = do
       pure expr
 
-    hasRec :: Exp -> Bool
-    hasRec = getAny . execWriter . transformM hasRec0
+-- TODO: Transform prims first
+transformTailRec :: Name -> [Name] -> Exp -> Exp
+transformTailRec recName args =
+    (VarE 'gpuAbs :@) . (ConE 'TailRec :@) . stepIntro . LamE (map VarP args) . (transform go)
+  where
+    stepIntro x = LamE [VarP recName] x :@ ConE 'StepExp
+
 
     -- Look for expressions that do not contain a recursive call in
     -- a subexpression, and wrap them in a 'Done'
@@ -440,7 +500,7 @@ transformTailRec recName args =
     go exp@(CaseE scrutinee branches) =
       CaseE scrutinee
         $ map (\branch@(Match pat (NormalB matchExp) decs) ->
-                  if hasRec matchExp
+                  if hasRec recName matchExp
                   then branch
                   else Match pat (NormalB (ConE 'DoneExp :@ matchExp)) decs)
               branches
@@ -448,10 +508,10 @@ transformTailRec recName args =
     go exp@(ConE fn :@ cond :@ true :@ false)
       | fn == 'IfThenElse =
         ConE 'IfThenElse :@ cond
-              :@ (if hasRec true
+              :@ (if hasRec recName true
                then true
                else ConE 'DoneExp :@ true)
-              :@ (if hasRec false
+              :@ (if hasRec recName false
                then false
                else ConE 'DoneExp :@ false)
     go exp = exp
@@ -459,7 +519,11 @@ transformTailRec recName args =
 transformDecTailRec0 :: Dec -> Q Dec
 transformDecTailRec0 sig@SigD{} = return sig
 transformDecTailRec0 (FunD fnName [Clause [VarP arg] (NormalB body) []]) = do
-  return $ FunD fnName [Clause [VarP arg] (NormalB (transformTailRec fnName [arg] (transformPrims body) :@ VarE arg)) []]
+  body' <- transformCase body
+  if not (hasRec fnName body')
+    then return (FunD fnName [Clause [VarP arg] (NormalB body') []])
+    else
+      return $ FunD fnName [Clause [VarP arg] (NormalB (transformTailRec fnName [arg] body' :@ VarE arg)) []]
 transformDecTailRec0 expr = error ("transformDecTailRec0: " ++ show expr)
 
 transformDecTailRec :: Q [Dec] -> Q [Dec]

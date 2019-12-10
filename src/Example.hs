@@ -4,6 +4,8 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE TypeApplications #-}
 
+{-# OPTIONS_GHC -ddump-splices #-}
+
 module Example where
 
 import           Data.List
@@ -18,6 +20,8 @@ import           Data.Void
 
 import           Data.Bifunctor
 
+import           Debug.Trace
+
 data Nat = Z | S Nat deriving (Generic, Show)
 
 data Example = N Nat | B Bool deriving (Generic, Show)
@@ -26,17 +30,17 @@ thExample1 :: Q Exp
 thExample1 = do
   exp <-
     [|
-      case Left 4 of
+      case Right False of
         Left x -> x * 2
-        Right y -> fromEnum (y :: Bool)
+        Right y -> fromEnum y
     |]
   transformCase exp
 
 thExample2 :: Q Exp
 thExample2 = do
   exp <-
-    [| case (True, 7 :: Int) of
-         (x, y) -> fromEnum (x :: Bool) + y
+    [| case (True, 7) of
+         (x, y) -> fromEnum x + y
     |]
   transformCase exp
 
@@ -70,7 +74,7 @@ thExample4 = do
     [| case E2 23.0 of
         E1 x -> 2
         E2 y -> 4
-        E3 z -> 6 :: Int
+        E3 z -> 6
     |]
   transformCase exp
 
@@ -98,4 +102,57 @@ transformDecTailRec
             then False
             else thExample6 (x - 2)
   |]
+
+data IntPair = IntPair Int Int deriving (Show, Generic)
+
+instance GPURep IntPair
+
+thExample7 :: Q Exp
+thExample7 = do
+  exp <-
+    [| case IntPair 1 2 of
+        IntPair x y ->
+          if x == 0
+            then y
+            else y
+    |]
+  r <- transformCase exp
+  traceM (pprint r)
+  return r
+
+-- Case.gpuAbs (Case.CaseExp (Case.rep (Case.construct' Example.IntPair (Case.Lit 1) (Case.Lit 2))) (Case.OneSumMatch (Case.ProdMatch (\x_0 -> (\x_0 -> Case.OneProdMatch (\y_1 -> (\y_1 -> Case.rep (Case.IfThenElse (Case.Equal x_0 (Case.Lit 0)) y_1 y_1)) (Case.gpuAbs y_1))) (Case.gpuAbs x_0)))))
+
+-- Case.gpuAbs (Case.CaseExp (Case.rep (Case.construct' Example.IntPair (Case.Lit 1) (Case.Lit 2))) (Case.OneSumMatch (Case.ProdMatch (\x_0 -> Case.OneProdMatch (\y_1 -> Case.rep (Case.IfThenElse (Case.Equal x_0 (Case.Lit 0)) y_1 y_1))))))
+
+-- Case.gpuAbs (Case.CaseExp (Case.rep (Example.IntPair 1 2)) (Case.OneSumMatch (Case.ProdMatch (\x_0 -> (\x_0 -> Case.OneProdMatch (\y_1 -> (\y_1 -> Case.rep (if x_0 GHC.Classes.== 0
+--                                                          then y_1
+--                                                          else y_1)) (Case.gpuAbs y_1))) (Case.gpuAbs x_0)))))
+
+-- transformDecTailRec 
+--   [d|
+--   thExample8 :: IntPair -> Int
+--   thExample8 p =
+--     case p of
+--       IntPair x y ->
+--         if x == 0
+--           then y
+--           else thExample7 (IntPair (x-1) (x*y))
+--   |]
+
+-- thExample7_agO1 :: IntPair -> Int
+-- thExample7_agO1 p_agO2
+--   = gpuAbs
+--       ((CaseExp (rep p_agO2))
+--          (OneSumMatch
+--             (ProdMatch
+--                (\ x_agO3
+--                   -> (\ x_agO3
+--                         -> OneProdMatch
+--                              (\ y_agO4
+--                                 -> (\ y_agO4
+--                                       ->
+--                                            (((IfThenElse ((Equal x_agO3) (Lit 0))) y_agO4)
+--                                               y_agO4))
+--                                      (y_agO4)))
+--                        (x_agO3)))))
 
