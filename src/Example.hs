@@ -117,7 +117,6 @@ thExample7 = do
             else y
     |]
   r <- transformExpr exp
-  traceM (pprint r)
   return r
 
 
@@ -126,11 +125,14 @@ transformDecTailRec
   thExample8 :: IntPair -> Int
   thExample8 p =
     case p of
+      IntPair x y -> y
+
+  thExample9 :: IntPair -> Int
+  thExample9 p =
+    case p of
       IntPair x y ->
         if x == 0
-          then y
-          else thExample8 (IntPair (x-1) (x*y))
+          then thExample8 p
+          else thExample9 (IntPair (x-1) (x*y))
   |]
-
-
 

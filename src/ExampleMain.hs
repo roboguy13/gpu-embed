@@ -16,7 +16,7 @@ main = do
   print (thExample6 8)
   print (thExample6 7)
   print $(thExample7)
-  print (thExample8 (IntPair 4 1))
+  print (thExample9 (IntPair 4 1))
   -- print thExample6
   -- print ($(thExample6) 3)
 

@@ -37,8 +37,11 @@ import           Data.Coerce
 
 import           Language.Haskell.TH
 
--- import           Data.Generics.Uniplate
-import           Data.Generics.Uniplate.Data
+import           Data.Generics.Uniplate.Operations
+-- import           Data.Generics.Uniplate.Data
+import           Data.Generics.Uniplate.Direct ((|-), (|*), plate)
+import qualified Data.Generics.Uniplate.Direct as Direct
+import qualified Data.Generics.Uniplate.DataOnly as Data
 
 import           Data.Data
 
@@ -73,6 +76,8 @@ type Case = (Exp, [Match])
 -- type?). Convert types to a "canonical form" to use this (like 'Either's
 -- and '(,)'s)
 
+
+-- TODO: Should we have a phantom type argument with the original type to preserve (possibly) more type safety?
 data ProdMatch s t where
   ProdMatch ::
     (GPURep a, GPURep b)
@@ -88,27 +93,43 @@ data SumMatch s t where
 
   EmptyMatch :: SumMatch () r
 
-  OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch (GPURepTy a) b
+  OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch a b
 
--- Done (case ... of A -> x; B -> y)  ==>  case ... of A -> Done x; B -> Done y)
+
+-- deriving instance (Data t, Data r, GPURepTy r ~ r) => Data (SumMatch t r)
+
+-- deriving instance (Data s, Data t) => Data (ProdMatch s t)
+
+-- Done (case ... of A -> x; B -> y)  ==>  (case ... of A -> Done x; B -> Done y)
 data Iter a b
   = Step b
   | Done a
   deriving (Functor, Generic)
-  
+
+data VarTy a
 
 data GPUExp t where
-  CaseExp :: GPURep t => GPUExp t -> SumMatch (GPURepTy t) r -> GPUExp r
+  CaseExp :: (GPURep t) => GPUExp t -> SumMatch (GPURepTy t) r -> GPUExp r
 
   FalseExp :: GPUExp Bool
   TrueExp :: GPUExp Bool
 
   Repped :: GPURep a => GPURepTy a -> GPUExp a
 
+  Lam :: GPURep a => Name -> GPUExp b -> GPUExp (a -> b)
+  Var :: Proxy a -> Name -> GPUExp a -- Constructed internally
+
+  -- Lam :: GPURep a =>  -> GPUExp (a -> b)
+
+  Apply :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
+
   Lit :: Num a => a -> GPUExp a
+
   Add :: Num a => GPUExp a -> GPUExp a -> GPUExp a
   Sub :: Num a => GPUExp a -> GPUExp a -> GPUExp a
   Mul :: Num a => GPUExp a -> GPUExp a -> GPUExp a
+
+  Twice :: GPUExp (a -> a) -> GPUExp a -> GPUExp a
 
   FromEnum :: Enum a => GPUExp a -> GPUExp Int
   FromIntegral :: (Integral a, Num b) => GPUExp a -> GPUExp b
@@ -132,7 +153,29 @@ data GPUExp t where
 
   Construct :: (GPURep a) => a -> GPUExp a
 
+-- deriving instance Generic (GPUExp a)
+
+-- deriving instance Data a => Data (GPUExp a)
+
+-- | For lambda demonstration purposes
+twice :: (a -> a) -> a -> a
+twice f x = f (f x)
+
+lam :: GPURep a => Name -> (GPUExp a -> GPUExp b) -> Q (GPUExp (a -> b))
+lam name0 f = do
+  name <- newName (show name0)
+  return $ Lam name (f (Var Proxy name))
+
+-- TODO: I believe all names should be unique, but this should be verified
+apply :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
+apply (Lam arg body) x = undefined --transform go body
+  where
+    go (Var Proxy name)
+      | arg == name = x
+
 class GPURep t where
+    -- Should we wrap these types in a 'Const t' in order to preserve more
+    -- type safety?
   type GPURepTy t
   type GPURepTy t = GPURepTy (Rep t Void)
 
@@ -266,18 +309,15 @@ type family LiftedFn t where
   LiftedFn b = GPUExp b
 
 class Construct t where
-    construct' :: t -> LiftedFn t
+    construct :: t -> LiftedFn t
 
 instance (GPURep a, Construct b) => Construct (a -> b) where
-    construct' :: (a -> b) -> GPUExp a -> (LiftedFn b)
-    construct' f = \x -> construct' (f (gpuAbs x))
+    construct :: (a -> b) -> GPUExp a -> (LiftedFn b)
+    construct f = \x -> construct (f (gpuAbs x))
 
 instance {-# INCOHERENT #-} (GPURep (GPURepTy b), GPURep b, LiftedFn b ~ GPUExp b) => Construct b where
-    construct' :: b -> GPUExp b
-    construct' = Construct
-
--- construct :: Construct t => t -> GPUExp (RetTy t)
--- construct c = rep 
+    construct :: b -> GPUExp b
+    construct = Construct
 
 -- Should this just produce an error?
 sumMatchAbs :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
@@ -305,6 +345,8 @@ gpuAbs (CaseExp x f) = sumMatchAbs f (gpuAbs x)
 gpuAbs FalseExp = False
 gpuAbs TrueExp  = True
 gpuAbs (Repped x) = unrep' x
+-- gpuAbs (Lam f) = gpuAbs . f . rep
+-- gpuAbs (Apply f x) = gpuAbs f (gpuAbs x)
 gpuAbs (Lit x)  = x
 gpuAbs (Add x y) = gpuAbs x + gpuAbs y
 gpuAbs (Sub x y) = gpuAbs x - gpuAbs y
@@ -330,31 +372,26 @@ gpuAbs (Construct x) = x
 
 
 transformPrims :: Exp -> Exp
-transformPrims = transform go
+transformPrims = Data.transform go
   where
-    -- -- go' (AppE (ConE con) x) = VarE 'rep :@ (AppE (ConE con) (transformPrims x))
-    -- go' (AppE f x)
-    --   | go2 f = VarE 'rep :@ (go f :@ go' x)
-    --   | otherwise = go' f :@ go' x
-    --   where
-    --     go2 (ConE _) = True
-    --     go2 (AppE f2 _) = go2 f2
-    --     go2 _ = False
-    -- go' expr = go expr
+    builtin :: Name -> Maybe Exp
+    builtin x
+      | x == 'not = Just $ ConE 'Not
+      | x == 'fromEnum = Just $ ConE 'FromEnum
+      | x == 'fromIntegral = Just $ ConE 'FromIntegral
+      | otherwise = Nothing
 
     go expr@(LitE _) = ConE 'Lit :@ expr
     go expr@(ConE c)
       | c == 'True = ConE 'TrueExp
       | c == 'False = ConE 'FalseExp
 
-    go expr@(ConE _) = VarE 'construct' :@ expr
-    go expr@(TupE [x, y]) = VarE 'construct' :@ ConE '(,) :@ x :@ y
-    go expr@(TupE [x, y, z]) = VarE 'construct' :@ ConE '(,,) :@ x :@ y
-    go expr@(TupE [x, y, z, w]) = VarE 'construct' :@ ConE '(,,,) :@ x :@ y
+    go expr@(ConE _) = VarE 'construct :@ expr
+    go expr@(TupE [x, y]) = VarE 'construct :@ ConE '(,) :@ x :@ y
+    go expr@(TupE [x, y, z]) = VarE 'construct :@ ConE '(,,) :@ x :@ y :@ z
+    go expr@(TupE [x, y, z, w]) = VarE 'construct :@ ConE '(,,,) :@ x :@ y :@ z :@ w
     go expr@(VarE fn :@ ConE _)
-      | fn == 'construct' = expr
-
-    -- go expr@(ConE c) = VarE 'rep :@ expr
+      | fn == 'construct = expr
 
     go (InfixE (Just x0) (VarE op) (Just y0))
       | op == '(+) = ConE 'Add :@ x :@ y
@@ -365,19 +402,17 @@ transformPrims = transform go
       where
         x = go x0
         y = go y0
-        -- x = go $ descend go x0
-        -- y = go $ descend go y0
 
     go (VarE x)
-      | x == 'not = ConE 'Not
-      | x == 'fromEnum = ConE 'FromEnum
-      | x == 'fromIntegral = ConE 'FromIntegral
+      | Just r <- builtin x = r
 
-    -- go (AppE (VarE fn) x)
-    --   | fn == 'not = ConE 'Not :@ x
+    go (VarE f :@ x)
+      | Just r <- builtin f = r :@ x
+
+    go (VarE f :@ x) = VarE 'construct :@ VarE f :@ x
+
     go (CondE cond t f) = ConE 'IfThenElse :@ cond :@ t :@ f
-    -- go expr@(AppE fn x) = go fn :@ go x
-    go expr = expr --descend go expr
+    go expr = expr
 
 -- Looks for a 'ConP' get the type info
 -- TODO: Make this work in more circumstances
@@ -391,10 +426,9 @@ getMatchType (_, matches) = do
       return (First (Just ty))
     go _ = return (First Nothing)
 
--- e  ==>  (\x -> (\x -> e) (gpuAbs x))    {where x is a free variable in e}
+-- e  ==>  (\x -> e)     {where x is a free variable in e}
 abstractOver :: Name -> Exp -> Exp
 abstractOver name = LamE [VarP name]
--- abstractOver name exp = LamE [VarP name] (LamE [VarP name] exp :@ (VarE 'gpuAbs :@ VarE name))
 
 transformProdMatch :: Match -> Exp
 transformProdMatch (Match match (NormalB body) _) =
@@ -433,7 +467,7 @@ transformCase0 (CaseE scrutinee matches0@(firstMatch:_)) = do
             Nothing -> matches0
             Just conIx -> sortBy (comparing (conIx . getMatchPatName)) matches0
 
-    return (ConE 'CaseExp :@ scrutinee --(VarE 'rep :@ scrutinee)
+    return (ConE 'CaseExp :@ scrutinee
               :@ sumMatches sortedMatches)
   where
     firstMatchConMaybe =
@@ -449,7 +483,7 @@ transformCase0 (CaseE scrutinee matches0@(firstMatch:_)) = do
 transformCase0 exp = return exp
 
 transformCase :: Exp -> Q Exp
-transformCase = transformM transformCase0 . transformPrims
+transformCase = Data.transformM transformCase0 . transformPrims
 
 getConName :: Con -> Name
 getConName (NormalC name _) = name
@@ -476,7 +510,7 @@ fromEither (Left x) = L1 x
 fromEither (Right y) = R1 y
 
 hasRec :: Name -> Exp -> Bool
-hasRec recName = getAny . execWriter . transformM hasRec0
+hasRec recName = getAny . execWriter . Data.transformM hasRec0
   where
     -- | See if the argument has a recursive call
     hasRec0 :: Exp -> Writer Any Exp
@@ -488,7 +522,7 @@ hasRec recName = getAny . execWriter . transformM hasRec0
 
 transformTailRec :: Name -> [Name] -> Exp -> Exp
 transformTailRec recName args =
-    (VarE 'gpuAbs :@) . (ConE 'TailRec :@) . stepIntro . LamE (map VarP args) . (transform go)
+    (VarE 'gpuAbs :@) . (ConE 'TailRec :@) . stepIntro . LamE (map VarP args) . (Data.transform go)
   where
     stepIntro x = LamE [VarP recName] x :@ ConE 'StepExp
 
@@ -503,7 +537,6 @@ transformTailRec recName args =
                   then branch
                   else Match pat (NormalB (ConE 'DoneExp :@ matchExp)) decs)
               branches
-    -- go exp@(CondE cond true false) =
     go exp@(ConE fn :@ cond :@ true :@ false)
       | fn == 'IfThenElse =
         ConE 'IfThenElse :@ cond
@@ -520,7 +553,7 @@ transformDecTailRec0 sig@SigD{} = return sig
 transformDecTailRec0 (FunD fnName [Clause [VarP arg] (NormalB body) []]) = do
   body' <- transformCase body
   if not (hasRec fnName body')
-    then return (FunD fnName [Clause [VarP arg] (NormalB body') []])
+    then return (FunD fnName [Clause [VarP arg] (NormalB (VarE 'gpuAbs :@ (LamE [VarP arg] body' :@ (VarE 'rep :@ VarE arg)))) []])
     else
       return $ FunD fnName [Clause [VarP arg] (NormalB (transformTailRec fnName [arg] body' :@ VarE arg)) []]
 transformDecTailRec0 expr = error ("transformDecTailRec0: " ++ show expr)
