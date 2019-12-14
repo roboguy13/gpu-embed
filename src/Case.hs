@@ -371,8 +371,8 @@ gpuAbs (IfThenElse cond t f)
 gpuAbs (Construct x) = x
 
 
-transformPrims :: Exp -> Exp
-transformPrims = Data.transform go
+transformPrims :: [Name] -> Exp -> Exp
+transformPrims skipFns = Data.transform go
   where
     builtin :: Name -> Maybe Exp
     builtin x
@@ -406,10 +406,13 @@ transformPrims = Data.transform go
     go (VarE x)
       | Just r <- builtin x = r
 
-    go (VarE f :@ x)
+    go expr@(VarE f :@ x)
       | Just r <- builtin f = r :@ x
 
-    go (VarE f :@ x) = VarE 'construct :@ VarE f :@ x
+    go expr@(VarE f :@ x) =
+        if f `elem` skipFns
+        then expr
+        else VarE 'construct :@ VarE f :@ x
 
     go (CondE cond t f) = ConE 'IfThenElse :@ cond :@ t :@ f
     go expr = expr
@@ -482,8 +485,12 @@ transformCase0 (CaseE scrutinee matches0@(firstMatch:_)) = do
       ConE 'SumMatch :@ transformProdMatch x :@ sumMatches xs
 transformCase0 exp = return exp
 
+-- | `skipFns` is for internal `transformPrims` call
+transformCase' :: [Name] -> Exp -> Q Exp
+transformCase' skipFns = Data.transformM transformCase0 . transformPrims skipFns
+
 transformCase :: Exp -> Q Exp
-transformCase = Data.transformM transformCase0 . transformPrims
+transformCase = transformCase' []
 
 getConName :: Con -> Name
 getConName (NormalC name _) = name
@@ -551,7 +558,7 @@ transformTailRec recName args =
 transformDecTailRec0 :: Dec -> Q Dec
 transformDecTailRec0 sig@SigD{} = return sig
 transformDecTailRec0 (FunD fnName [Clause [VarP arg] (NormalB body) []]) = do
-  body' <- transformCase body
+  body' <- transformCase' [fnName] body
   if not (hasRec fnName body')
     then return (FunD fnName [Clause [VarP arg] (NormalB (VarE 'gpuAbs :@ (LamE [VarP arg] body' :@ (VarE 'rep :@ VarE arg)))) []])
     else
