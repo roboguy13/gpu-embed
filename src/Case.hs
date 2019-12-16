@@ -312,7 +312,7 @@ type family LiftedFn t where
 
 construct :: forall a b. (Construct (a -> b))
   => (a -> b) -> LiftedFn (a -> b)
-construct f = construct' $ Construct f
+construct = construct' . Construct
 
 class Construct t where
     construct' :: GPUExp t -> LiftedFn t
@@ -321,7 +321,7 @@ instance (GPURep a, Construct b) => Construct (a -> b) where
     construct' :: GPUExp (a -> b) -> GPUExp a -> LiftedFn b
     construct' c = construct' . ConstructAp c
 
-instance {-# INCOHERENT #-} (GPURep (GPURepTy b), GPURep b, LiftedFn b ~ GPUExp b) => Construct b where
+instance {-# INCOHERENT #-} (LiftedFn b ~ GPUExp b) => Construct b where
     construct' :: GPUExp b -> GPUExp b
     construct' = id
 
