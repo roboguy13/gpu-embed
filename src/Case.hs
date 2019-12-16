@@ -151,7 +151,9 @@ data GPUExp t where
 
   TailRec :: (GPURep a, GPURep b) => (GPUExp b -> GPUExp (Iter a b)) -> GPUExp (b -> a)
 
-  Construct :: (GPURep a) => a -> GPUExp a
+  Construct :: (a -> b) -> GPUExp (a -> b)
+  ConstructAp :: (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
+
 
 -- deriving instance Generic (GPUExp a)
 
@@ -308,16 +310,20 @@ type family LiftedFn t where
   LiftedFn (a -> b) = GPUExp a -> LiftedFn b
   LiftedFn b = GPUExp b
 
+construct :: forall a b. (Construct (a -> b))
+  => (a -> b) -> LiftedFn (a -> b)
+construct f = construct' $ Construct f
+
 class Construct t where
-    construct :: t -> LiftedFn t
+    construct' :: GPUExp t -> LiftedFn t
 
 instance (GPURep a, Construct b) => Construct (a -> b) where
-    construct :: (a -> b) -> GPUExp a -> (LiftedFn b)
-    construct f = \x -> construct (f (gpuAbs x))
+    construct' :: GPUExp (a -> b) -> GPUExp a -> LiftedFn b
+    construct' c = construct' . ConstructAp c
 
 instance {-# INCOHERENT #-} (GPURep (GPURepTy b), GPURep b, LiftedFn b ~ GPUExp b) => Construct b where
-    construct :: b -> GPUExp b
-    construct = Construct
+    construct' :: GPUExp b -> GPUExp b
+    construct' = id
 
 -- Should this just produce an error?
 sumMatchAbs :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
@@ -369,6 +375,7 @@ gpuAbs (IfThenElse cond t f)
   | gpuAbs cond = gpuAbs t
   | otherwise = gpuAbs f
 gpuAbs (Construct x) = x
+gpuAbs (ConstructAp f x) = gpuAbs f (gpuAbs x)
 
 
 transformPrims :: [Name] -> Exp -> Exp
