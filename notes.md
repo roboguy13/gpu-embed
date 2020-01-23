@@ -55,7 +55,7 @@ The `SumMatch` type has the following definition:
       EmptyMatch :: SumMatch () r
 
       OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch a b
-    
+
 The `EmptyMatch` constructor represents an empty collection of match
 alternatives (something like `case e of {}`). The `OneSumMatch` constructor
 represents exactly one match (something like `case e of { C a b c ... -> ...
@@ -78,7 +78,7 @@ constructors right now:
       ...
       OneProdMatch :: (GPURep a) => (GPUExp a -> GPUExp r) -> ProdMatch a r
       ...
-    
+
 This represents a match on a product type which has exactly one field: `C x -> ...`.
 
 To put these things together in an example, an example of a `SumMatch` value with type
@@ -89,11 +89,12 @@ To put these things together in an example, an example of a `SumMatch` value wit
       SumMatch (OneProdMatch (\int -> FromIntegral int))
                (SumMatch (OneProdMatch (\bool -> FromIntegral (FromEnum bool)))
                          (OneSumMatch (OneProdMatch (\float -> Sub float (Lit 1.0)))))
-    
+
 
 If we combine this with the `CaseExp` constructor from the `GPUExp` type:
 
-    CaseExp x exampleSM
+    caseExpExample :: GPUExp Float
+    caseExpExample = CaseExp x exampleSM
 
 This expression represents the `case` match:
 
@@ -105,4 +106,8 @@ This expression represents the `case` match:
 as well as an equivalent `case` match on any type that is structurally
 identitical to `Either Int (Either Char Bool)` (that is, any type whose
 canonical form is `Either Int (Either Char Bool)`).
+
+### The rest of ProdMatch
+
+
 

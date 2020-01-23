@@ -1,2 +1,9 @@
 *.hi
 .*.swp
+.*.swo
+.*.swn
+*.log
+*.cut
+*.aux
+*.out
+*.pdf
