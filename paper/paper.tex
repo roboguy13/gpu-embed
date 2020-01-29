@@ -24,6 +24,9 @@
 %% The first command in your LaTeX source must be the \documentclass command.
 \documentclass[acmsmall]{acmart}
 \usepackage{booktabs}
+\usepackage{listings}
+
+\lstset{language=haskell, deletekeywords={abs}}
 
 %%
 %% \BibTeX command to typeset BibTeX logo in the docs
@@ -237,9 +240,36 @@ different problem domains. Haskell is a language which is particularly
 well-suited to EDSLs due to its lazy evaluation, first-class functions and
 lexical closures.
 
+\subsection{Translation Example} % TODO: Does it make sense for this to be a
+                                 % subsection of the intro?
+
+In the example below, \texttt{example} would get transformed into \texttt{example'}:
+
+\begin{lstlisting}
+import Data.Char (ord)
+
+x :: Either Char Int
+x = Left 'a'
+
+example :: Int
+example =
+  case x of
+    Left  c -> ord c
+    Right i -> i
+
+example' :: Int
+example' =
+  abs (CaseExp (rep x)
+               (SumMatch (OneProdMatch (\c -> ord c))
+                         (OneSumMatch
+                           (OneProdMatch (\i -> i)))))
+\end{lstlisting}
+
 [\ldots]
 
 \section{Representing Algebraic Datatypes}
+
+[Remove metadata from Generic representation and turn tree-like structure into a list-like structure]
 
 \subsection{E, Rep, RepTy}
 

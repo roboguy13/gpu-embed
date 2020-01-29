@@ -109,5 +109,8 @@ canonical form is `Either Int (Either Char Bool)`).
 
 ### The rest of ProdMatch
 
+A value of type `ProdMatch s t` corresponds to a match on a value of a product
+type (that is, a type which is isomorphic to a tuple).
+
 
 
