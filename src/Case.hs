@@ -11,7 +11,6 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
--- {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveDataTypeable #-}
@@ -24,6 +23,11 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
+
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
+
+{-# OPTIONS_GHC -ddump-splices #-}
 
 module Case
   where
@@ -60,11 +64,73 @@ import           Data.Bifunctor
 
 import           GHC.TypeLits hiding (Nat)
 
+import           Data.Singletons
+import           Data.Singletons.TH
+
+import           Language.Haskell.TH.Syntax (OccName, NameFlavour)
+
+import           GHC.TypeLits
+import           Data.Type.Bool
+
+import           DSMap
+import           Type.Set
+
+import Data.Char
+
+-- $(genSingletons [''Char])
+
+-- $(genSingletons [''OccName])
+
+-- $(genSingletons [''Name])
+
+nameToSymbol :: Name -> SomeSymbol
+nameToSymbol = someSymbolVal . show
+
 infixl 0 :@
 pattern f :@ x = AppE f x
 
 type Case = (Exp, [Match])
 
+data Nu f where 
+  Nu :: (a -> f a) -> a -> Nu f
+
+data ListF a r where
+  NilF :: ListF a r
+  ConsF :: a -> r -> ListF a r
+  deriving (Functor)
+
+newtype Fix f = Fix {unFix :: f (Fix f)}
+
+type List a = Nu (ListF a)
+
+conv :: Functor f => Nu f -> Fix f
+conv (Nu f x) =
+  Fix (fmap (conv . (\y -> Nu (const y) x) . f) (f x))
+
+fix2list :: Fix (ListF Int) -> [Int]
+fix2list (Fix NilF) = []
+fix2list (Fix (ConsF x xs)) = x : fix2list xs
+
+  -- conv (Nu _ (f x))
+
+  -- Fix $ _ $ f x
+
+-- listConv :: List a -> Fix (ListF a)
+-- listConv (Nu f x) =
+--   Fix $ case f x of
+--           NilF -> NilF
+--           ConsF y ys -> ConsF y $ listConv $ Nu f ys
+
+-- listConv2 :: List a -> [a]
+-- listConv2 (Nu f x) =
+--   case f x of
+--     NilF -> []
+--     ConsF y ys -> y : listConv2 (Nu f ys)
+
+testList :: List Int
+testList =
+  Nu (\x -> ConsF 1 x) NilF
+  -- Nu (\x -> (ConsF 1 x)) (ConsF 2 (Nu (\y -> ConsF 3 y) NilF))
 
 -- Idea: Represent a pattern match of a particular type as
 --    KnownSymbol name => Proxy name -> MatchType name
@@ -77,23 +143,124 @@ type Case = (Exp, [Match])
 -- and '(,)'s)
 
 
+-- Should this give back a `Maybe *`, representing the constructor product
+-- type (if it exists)?
+type family HasConstr0 t (c :: Symbol) where
+  HasConstr0 (M1 x (MetaCons c y z) r p) c' =
+    c == c' || HasConstr0 (r p) c'
+  HasConstr0 ((x :+: y) p) c' = HasConstr0 (x p) c' || HasConstr0 (y p) c'
+  HasConstr0 (U1 p) c' = False
+  HasConstr0 ((x :*: y) p) c' = False
+  HasConstr0 (K1 x y z) c' = False -- TODO: Is this correct?
+
+type HasConstr t c = HasConstr0 t c ~ True
+
+-- data Symbols t symbol where
+--   ThisName :: Sing Symbol -> Symbols t symbol
+
+
+-- -- ProdMatch (FindConstr t s) r
+-- data SumMatch2 t r where
+--   SumMatch2 :: (forall s. (KnownSymbol s, HasConstr t s) => Sing s -> GPUExp r) -> SumMatch2 t r
+
+-- SumMatch :: Proxy t -> (Symbols t symbol -> ProdMatch symbol r -> GPUExp r) -> SumMatch t r
+
+data Skeleton t name x where
+  SkLeft :: Sing name -> Skeleton a name0 x -> Skeleton (Either a b) name x
+  SkRight :: Sing name -> Skeleton b name0 x -> Skeleton (Either a b) name x
+  SkLeaf :: BaseTy x => Skeleton x name x
+
+-- test1 :: Skeleton (Either Int Char) Int
+-- test1 = SkLeft SkLeaf
+
+-- test2 :: Skeleton (Either Int Char) Char
+-- test2 = SkRight SkLeaf
+
+-- test3 :: SumMatch2 (Either Int (Either Bool Float)) Float
+-- test3 = SumMatch2
+--   (\sk ->
+--     case sk of
+--       SkLeft _name SkLeaf -> OneProdMatch (\int -> FromIntegral int)
+--       SkRight _name (SkLeft _name' SkLeaf) -> OneProdMatch (\bool -> FromIntegral (FromEnum bool))
+--       SkRight _name (SkRight _name' SkLeaf) -> OneProdMatch (\float -> Sub float (Lit 1.0))
+--   )
+
+type family BaseTy0 t where
+  BaseTy0 (Either a b) = False
+  BaseTy0 (a, b) = False
+  BaseTy0 t = True
+
+type BaseTy t = BaseTy0 t ~ True
+
+toSkeleton :: (GPURep t, Generic t) =>
+  (t -> r) -> (Skeleton t name x -> r)
+toSkeleton = undefined
+
+-- nameToSkeleton :: (GPURep t, Generic t, HasConstr t name)
+--   => Proxy t -> (Sing name -> f name r) -> (Skeleton (GPURepTy t) r -> f name r)
+-- nameToSkeleton Proxy f = go
+--   where
+--     go SkLeaf = _
+
+-- data SumMatch2 s t where
+--   SumMatch2 :: (Skeleton t name x -> ProdMatch x r) -> SumMatch2 t r
+
 -- TODO: Should we have a phantom type argument with the original type to preserve (possibly) more type safety?
-data ProdMatch s t where
+data ProdMatch origType s t where
   ProdMatch ::
-    (GPURep a, GPURep b)
-       => (GPUExp a -> ProdMatch b r) -> ProdMatch (a, b) r
+       (GPUExp (ConstrType origType b) -> r) -> ProdMatch origType r b
 
-  OneProdMatch :: (GPURep a) => (GPUExp a -> GPUExp r) -> ProdMatch a r
-  NullaryMatch :: GPURep r => GPUExp r -> ProdMatch a r
 
-data SumMatch s t where
+-- exampleSM :: SumMatch (Either Int (Either Bool Float)) Float
+-- exampleSM =
+--   SumMatch (OneProdMatch (\int -> FromIntegral int))
+--            (SumMatch (OneProdMatch (\bool -> FromIntegral (FromEnum bool)))
+--                      (OneSumMatch (OneProdMatch (\float -> Sub float (Lit 1.0)))))
+
+type family GetFirst x y where
+  GetFirst (Just x) y = Just x
+  GetFirst x (Just y) = Just y
+
+type family RemoveJust x where
+  RemoveJust (Just x) = x
+
+type family ConstrType0 t (name :: Symbol) where
+  ConstrType0 (M1 x ('MetaCons name y z) r p) name = Just (GPURepTy (r p))
+  ConstrType0 (M1 x m r p) name2 =
+    ConstrType0 (r p) name2
+
+  ConstrType0 ((x :+: y) p) name =
+    GetFirst (ConstrType0 (x p) name)
+             (ConstrType0 (y p) name)
+
+  ConstrType0 x name = Nothing
+
+type ConstrType t name = RemoveJust (ConstrType0 t name)
+
+type family ConstrNames t where
+  ConstrNames (M1 x ('MetaCons name y z) r p) = Insert name (ConstrNames (r p))
+  ConstrNames (M1 x m r p) = ConstrNames (r p)
+  ConstrNames ((x :+: y) p) = Merge (ConstrNames (x p)) (ConstrNames (y p))
+
+
+data SumMatch origType r where
   SumMatch ::
     (GPURep a, GPURep b, GPURepTy b ~ b)
-        => ProdMatch a r -> SumMatch b r -> SumMatch (Either a b) r
+      => SetSing (ProdMatch origType r) (ConstrNames origType) -> SumMatch origType r
 
-  EmptyMatch :: SumMatch () r
 
-  OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch a b
+  -- SumMatch ::
+  --   -- (GPURep a, GPURep b, GPURepTy b ~ b)
+  --   (GPURep a, GPURep t)
+  --       => Sing name -> SetSing (ProdMatch r) ns -> SumMatch origType t r -> SumMatch origType t r
+
+  -- EmptyMatch :: SumMatch origType () r -- TODO: This should probably be Void instead of ()
+
+  -- OneSumMatch ::
+  --   (GPURep a, GPURep t)
+  --       => Sing name -> ProdMatch (ConstrType t name) r -> SumMatch origType t r
+
+  -- OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch origType a b
 
 
 -- deriving instance (Data t, Data r, GPURepTy r ~ r) => Data (SumMatch t r)
@@ -106,10 +273,8 @@ data Iter a b
   | Done a
   deriving (Functor, Generic)
 
-data VarTy a
-
 data GPUExp t where
-  CaseExp :: (GPURep t) => GPUExp t -> SumMatch (GPURepTy t) r -> GPUExp r
+  CaseExp :: (GPURep a) => GPUExp a -> SumMatch a t -> GPUExp t
 
   FalseExp :: GPUExp Bool
   TrueExp :: GPUExp Bool
@@ -151,8 +316,8 @@ data GPUExp t where
 
   TailRec :: (GPURep a, GPURep b) => (GPUExp b -> GPUExp (Iter a b)) -> GPUExp (b -> a)
 
-  Construct :: (a -> b) -> GPUExp (a -> b)
-  ConstructAp :: (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
+  Construct :: (a -> b) -> GPUExp (a -> b) -- This is like a specialized 'pure'
+  ConstructAp :: (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b -- This is like '(<*>)'
 
 
 -- deriving instance Generic (GPUExp a)
@@ -234,27 +399,27 @@ instance (GPURep a, GPURep b) => GPURep (a, b) where
   unrep' = id
 
 -- XXX: Should this instance exist?
-instance (GPURep a, GPURep b) => GPURep (Iter a b) where
+-- instance (GPURep a, GPURep b) => GPURep (Iter a b) where
 
 
 -- Generics instances
-instance GPURep (f p) => GPURep (M1 i c f p) where
-  type GPURepTy (M1 i c f p) = GPURepTy (f p)
+instance GPURep (f p) => GPURep (M1 D c f p) where
+  type GPURepTy (M1 D c f p) = GPURepTy (f p)
 
   rep = Repped . rep'
   rep' (M1 x) = rep' x
   unrep' = M1 . unrep'
 
-instance (GPURep (p x), GPURep (q x)) => GPURep ((p :+: q) x) where
-  type GPURepTy ((p :+: q) x) = Either (GPURepTy (p x)) (GPURepTy (q x))
+instance (IsSetSing (SetSingMerge (GPURepTy (p x)) (GPURepTy (q x))), IsSetSing (GPURepTy (p x)), IsSetSing (GPURepTy (q x)), GPURep (p x), GPURep (q x)) => GPURep (M1 C (MetaCons name y z) (p :+: q) x) where
+  type GPURepTy (M1 C (MetaCons name y z) (p :+: q) x) = SetSingMerge (GPURepTy (p x)) (GPURepTy (q x))
 
   rep = Repped . rep'
 
-  rep' (L1 x) = Left (rep' x)
-  rep' (R1 y) = Right (rep' y)
+  rep' (M1 (L1 x)) = SetSingInsert _ (rep' x) _
+  rep' (M1 (R1 y)) = undefined --Right (rep' y)
 
-  unrep' (Left x) = L1 (unrep' x)
-  unrep' (Right y) = R1 (unrep' y)
+  unrep' (Left x) = M1 $ L1 (unrep' x)
+  unrep' (Right y) = M1 $ R1 (unrep' y)
 
 instance (GPURep (p x), GPURep (q x)) => GPURep ((p :*: q) x) where
   type GPURepTy ((p :*: q) x) = (GPURepTy (p x), GPURepTy (q x))
@@ -325,29 +490,29 @@ instance {-# INCOHERENT #-} (LiftedFn b ~ GPUExp b) => Construct b where
     construct' :: GPUExp b -> GPUExp b
     construct' = id
 
--- Should this just produce an error?
-sumMatchAbs :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
-sumMatchAbs (SumMatch p q) =
-  \x0 ->
-    let x = rep' x0
-    in
-    case x of
-      Left  a -> prodMatchAbs p a
-      Right b -> sumMatchAbs q b
-sumMatchAbs EmptyMatch = \_ -> error "Non-exhaustive match"
-sumMatchAbs (OneSumMatch f) = prodMatchAbs f . unrep' . rep' -- TODO: Is this reasonable?
+-- -- Should this just produce an error?
+-- sumMatchAbs :: forall origType s t. GPURep s => Proxy origType -> SumMatch origType (GPURepTy s) t -> s -> t
+-- sumMatchAbs Proxy (SumMatch name p q) =
+--   \x0 ->
+--     let x = rep' x0
+--     in
+--     case x of
+--       Left  a -> prodMatchAbs p a
+--       Right b -> sumMatchAbs (Proxy @origType) q b
+-- sumMatchAbs Proxy EmptyMatch = \_ -> error "Non-exhaustive match"
+-- sumMatchAbs Proxy (OneSumMatch name f) = prodMatchAbs f . unrep' . rep' -- TODO: Is this reasonable?
 
-prodMatchAbs :: GPURep s => ProdMatch s t -> s -> t
-prodMatchAbs (ProdMatch f) =
-  \pair ->
-    case pair of
-      (x, y) -> prodMatchAbs (f (rep x)) y
+-- prodMatchAbs :: GPURep s => ProdMatch s t -> s -> t
+-- prodMatchAbs (ProdMatch f) =
+--   \pair ->
+--     case pair of
+--       (x, y) -> prodMatchAbs (f (rep x)) y
 
-prodMatchAbs (OneProdMatch f) = \x -> gpuAbs (f (rep x))
-prodMatchAbs (NullaryMatch x) = \_ -> gpuAbs x
+-- prodMatchAbs (OneProdMatch f) = \x -> gpuAbs (f (rep x))
+-- prodMatchAbs (NullaryMatch x) = \_ -> gpuAbs x
 
 gpuAbs :: GPUExp t -> t
-gpuAbs (CaseExp x f) = sumMatchAbs f (gpuAbs x)
+gpuAbs (CaseExp (x :: GPUExp a) f) = sumMatchAbs (Proxy @a) f (gpuAbs x)
 gpuAbs FalseExp = False
 gpuAbs TrueExp  = True
 gpuAbs (Repped x) = unrep' x
@@ -444,8 +609,8 @@ transformProdMatch :: Match -> Exp
 transformProdMatch (Match match (NormalB body) _) =
   go vars0
   where
-    go [] = ConE 'NullaryMatch :@ body --(VarE 'rep :@ body)
-    go [var] = ConE 'OneProdMatch :@ abstractOver var body --(VarE 'rep :@ body)
+    -- go [] = ConE 'NullaryMatch :@ body --(VarE 'rep :@ body)
+    -- go [var] = ConE 'OneProdMatch :@ abstractOver var body --(VarE 'rep :@ body)
     go (var:vars) = ConE 'ProdMatch :@ abstractOver var (go vars)
 
     vars0 =
@@ -486,8 +651,8 @@ transformCase0 (CaseE scrutinee matches0@(firstMatch:_)) = do
         Match (TupP _) _ _ -> Nothing
         _ -> Nothing
 
-    sumMatches [] = ConE 'EmptyMatch
-    sumMatches [x] = ConE 'OneSumMatch :@ transformProdMatch x
+    -- sumMatches [] = ConE 'EmptyMatch
+    -- sumMatches [x] = ConE 'OneSumMatch :@ transformProdMatch x
     sumMatches (x:xs) =
       ConE 'SumMatch :@ transformProdMatch x :@ sumMatches xs
 transformCase0 exp = return exp
