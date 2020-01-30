@@ -28,6 +28,8 @@
 
 \lstset{language=haskell, deletekeywords={abs}}
 
+\newcommand{\ttt}{\texttt}
+
 %%
 %% \BibTeX command to typeset BibTeX logo in the docs
 \AtBeginDocument{%
@@ -243,7 +245,7 @@ lexical closures.
 \subsection{Translation Example} % TODO: Does it make sense for this to be a
                                  % subsection of the intro?
 
-In the example below, \texttt{example} would get transformed into \texttt{example'}:
+In the example below, \ttt{example} would get transformed into \ttt{example'}:
 
 \begin{lstlisting}
 import Data.Char (ord)
@@ -269,17 +271,118 @@ example' =
 
 \section{Representing Algebraic Datatypes}
 
-[Remove metadata from Generic representation and turn tree-like structure into a list-like structure]
+\subsection{GHC Generics \ttt{Rep}}
 
-\subsection{E, Rep, RepTy}
+[Remove metadata from Generic representation and turn tree-like structure into a (nested) list-like structure]
 
-[\ldots]
+\subsection{\ttt{E}, \ttt{ERep}, \ttt{ERepTy}}
+
+There are three interconnected foundational parts: \ttt{E}, \ttt{ERep} and
+\ttt{ERepTy}. \ttt{E} is the deep embedding of the EDSL (a GADT that encodes
+expressions in the DSL language). \ttt{ERep} is a type class which represents
+all Haskell types which can be represented in the DSL. \ttt{ERepTy} is a type
+family associated to the \ttt{ERep} type class, which represents a "canonical form"
+of the given type. This canonical form can be immediately constructed in the EDSL.
+Canonical form types crucially include \ttt{Either} and \ttt{(,)}, which
+allow all combinations of basic sum types and product types to be encoded. More
+information on this encoding is given in [a different section].
+
+This information is brought into the \ttt{E} type via the constructor
+\ttt{Repped}. The \ttt{E} also contains constructors representing \ttt{Either}
+and \ttt{(,)} values:
+
+\begin{lstlisting}
+data E t where
+  ...
+  Repped :: ERep t => ERepTy t -> E t
+
+  LeftExp :: E a -> E (Either a b)
+  RightExp :: E b -> E (Either a b)
+
+  PairExp :: E a -> E b -> E (a, b)
+  ...
+\end{lstlisting}
+
+\ttt{ERep} and \ttt{ERepTy} provide an interface for transferring values between the EDSL
+world and the Haskell world:
+
+\begin{lstlisting}
+class ERep t where
+  type ERepTy t
+
+  rep :: t -> E t
+  rep = Repped . rep'
+
+  unrep :: ERepTy t -> t
+
+  rep' :: t -> ERepTy t
+\end{lstlisting}
+
+The key algebraic instances mentioned before are as follows:
+
+\begin{lstlisting}
+instance (ERep a, ERep b) => ERep (Either a b) where
+  type ERepTy (Either a b) = Either a b
+
+  rep (Left x) = LeftExp (rep x)
+  rep (Right y) = RightExp (rep y)
+
+  unrep = id
+  rep'  = id
+
+instance (ERep a, ERep b) => ERep (a, b) where
+  type ERepTy (a, b) = (a, b)
+
+  rep (x, y) = PairExp (rep x) (rep y)
+  unrep = id
+  rep'  = id
+\end{lstlisting}
 
 \section{Representing pattern matches}
 
-\subsection{SumMatch}
+Within the \ttt{E} expression language, a pattern match is represented by the
+\ttt{CaseExp} constructor:
 
-\subsection{ProdMatch}
+\begin{lstlisting}
+data E t where
+  ...
+  CaseExp :: ERep t => E t -> SumMatch (ERepTy t) r -> E r
+  ...
+\end{lstlisting}
+
+A value of type \ttt{SumMatch a b} represents a computation within the EDSL
+which destructures a value of type \ttt{E a} and produces a value of type \ttt{E b}.
+Therefore, \ttt{SumMatch (ERepTy t) r} represents a computation which destructures
+a value of type \ttt{E (ERepTy t)} and produces a value of type \ttt{E b}.
+
+
+
+\subsection{\ttt{SumMatch}}
+
+The overall structure of \ttt{SumMatch} is a (heterogeneous) list of \ttt{ProdMatch} values.
+Each item of this list corresponds exactly to one branch in the original \ttt{case} match.
+
+\begin{lstlisting}
+data SumMatch s t where
+  SumMach ::
+    (ERep a, ERep b, ERepTy b ~ b)
+      => ProdMatch a r -> SumMatch b r -> SumMatch (Either a b) r
+
+  EmptyMatch :: SumMatch Void r
+
+  OneSumMatch ::
+    (ERep a, ERep b, ERepTy a ~ a)
+      => ProdMatch a b -> SumMatch a b
+\end{lstlisting}
+
+Note the \ttt{ERepTy a ~ a} constraints. This constraint ensures that the type \ttt{a}
+is already in canonical form (that is, consists entirely of \ttt{Either}, \ttt{(,)} and
+base types).
+
+\subsection{\ttt{ProdMatch}}
+
+\ttt{ProdMatch s t} is equivalent to a function a curried function from \ttt{s} to \ttt{t}.
+Note that \ttt{s} will be a (potentially nested) pair type.
 
 
 \section{Citations and Bibliographies}
