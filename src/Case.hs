@@ -91,7 +91,7 @@ data SumMatch s t where
     (GPURep a, GPURep b, GPURepTy b ~ b)
         => ProdMatch a r -> SumMatch b r -> SumMatch (Either a b) r
 
-  EmptyMatch :: SumMatch () r
+  EmptyMatch :: SumMatch Void r
 
   OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch a b
 
