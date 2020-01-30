@@ -324,7 +324,7 @@ The key algebraic instances mentioned before are as follows:
 instance (ERep a, ERep b) => ERep (Either a b) where
   type ERepTy (Either a b) = Either a b
 
-  rep (Left x) = LeftExp (rep x)
+  rep (Left x)  = LeftExp (rep x)
   rep (Right y) = RightExp (rep y)
 
   unrep = id
@@ -394,6 +394,41 @@ data ProdMatch s t where
   OneProdMatch :: ERep a => (E a -> E r) -> ProdMatch a r
 
   NullaryMatch :: ERep r => E r -> ProdMatch a r
+\end{lstlisting}
+
+
+\section{Constructing values}
+
+\begin{lstlisting}
+construct ::
+  Construct (a -> b)
+    => (a -> b) -> LiftedFn (a -> b)
+construct = construct' . Construct
+
+-- Example: LiftedFn (a -> b -> c) is: E a -> E b -> E c
+type family LiftedFn t where
+  LiftedFn (a -> b) = E a -> LiftedFn b
+  LiftedFn b = E b
+
+class Construct t where
+  construct' :: E t -> LiftedFn t
+\end{lstlisting}
+
+Example GHCi session, demonstrating \ttt{construct}:
+
+\begin{lstlisting}
+ghci> :t construct (,)
+construct (,)
+  :: (ERep a, ERep b) => E a -> E b -> E (a, b)
+
+ghci> :t construct (,,)
+construct (,,)
+  :: (ERep a, ERep b, ERep c) =>
+     E a -> E b -> E c -> E (a, b, c)
+
+ghci> :t construct (,,) (rep False) (rep 3.1 :: E Double) (rep 1 :: E Int)
+construct (,,) (rep False) (rep 3.1 :: E Double) (rep 1 :: E Int)
+  :: E (Bool, Double, Int)
 \end{lstlisting}
 
 
