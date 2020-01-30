@@ -424,7 +424,7 @@ abs (Repped x) = unrep x
 construct ::
   Construct (a -> b)
     => (a -> b) -> LiftedFn (a -> b)
-construct = construct' . Construct
+construct = construct' . ConstructE
 
 -- Example: LiftedFn (a -> b -> c) is: E a -> E b -> E c
 type family LiftedFn t where
@@ -435,12 +435,12 @@ class Construct t where
   construct' :: E t -> LiftedFn t
 \end{lstlisting}
 
-The "helper constructor" \ttt{Construct} is part of the \ttt{E} type:
+The "helper constructor" \ttt{ConstructE} is part of the \ttt{E} type:
 
 \begin{lstlisting}
 data E t where
   ...
-  Construct :: (a -> b) -> E (a -> b)
+  ConstructE :: (a -> b) -> E (a -> b)
   ...
 \end{lstlisting}
 
