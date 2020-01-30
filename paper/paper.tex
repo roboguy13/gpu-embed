@@ -435,12 +435,13 @@ class Construct t where
   construct' :: E t -> LiftedFn t
 \end{lstlisting}
 
-The "helper constructor" \ttt{ConstructE} is part of the \ttt{E} type:
+The "helper constructors" \ttt{ConstructE} and \ttt{ConstructAp} are part of the \ttt{E} type:
 
 \begin{lstlisting}
 data E t where
   ...
   ConstructE :: (a -> b) -> E (a -> b)
+  ConstructAp :: ERep a => E (a -> b) -> E a -> E b
   ...
 \end{lstlisting}
 
