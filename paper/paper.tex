@@ -418,6 +418,8 @@ abs (Repped x) = unrep x
 
 \section{Constructing values}
 
+\ttt{construct} is designed to bring Haskell constructors into the EDSL world.
+
 \begin{lstlisting}
 construct ::
   Construct (a -> b)
@@ -431,6 +433,15 @@ type family LiftedFn t where
 
 class Construct t where
   construct' :: E t -> LiftedFn t
+\end{lstlisting}
+
+The "helper constructor" \ttt{Construct} is part of the \ttt{E} type:
+
+\begin{lstlisting}
+data E t where
+  ...
+  Construct :: (a -> b) -> E (a -> b)
+  ...
 \end{lstlisting}
 
 Example GHCi session, demonstrating \ttt{construct}:
