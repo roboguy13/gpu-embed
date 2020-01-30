@@ -382,7 +382,19 @@ base types).
 \subsection{\ttt{ProdMatch}}
 
 \ttt{ProdMatch s t} is equivalent to a function a curried function from \ttt{s} to \ttt{t}.
-Note that \ttt{s} will be a (potentially nested) pair type.
+Note that \ttt{s} will be a (potentially nested) pair type. For example,
+\ttt{ProdMatch (a, (b, c)) r} will be equivalent to \ttt{a -> b -> c -> r}.
+
+\begin{lstlisting}
+data ProdMatch s t where
+  ProdMatch ::
+    (ERep a, ERep b)
+      => (E a -> ProdMatch b r) -> ProdMatch (a, b) r
+
+  OneProdMatch :: ERep a => (E a -> E r) -> ProdMatch a r
+
+  NullaryMatch :: ERep r => E r -> ProdMatch a r
+\end{lstlisting}
 
 
 \section{Citations and Bibliographies}
