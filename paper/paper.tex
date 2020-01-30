@@ -404,6 +404,9 @@ sumMatchAbs :: ERep s => SumMatch (ERepTy s) t -> s -> t
 
 prodMatchAbs :: ERep s => ProdMatch s t -> s -> t
 ...
+
+abs :: E t -> t
+abs (CaseExp x f) = sumMatchAbs f (abs x)
 \end{lstlisting}
 
 \section{Constructing values}
