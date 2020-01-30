@@ -407,6 +407,13 @@ prodMatchAbs :: ERep s => ProdMatch s t -> s -> t
 
 abs :: E t -> t
 abs (CaseExp x f) = sumMatchAbs f (abs x)
+
+abs (LeftExp x) = Left (abs x)
+abs (RightExp y) = Right (abs y)
+abs (PairExp x y) = (abs x, abs y)
+
+abs (Repped x) = unrep x
+...
 \end{lstlisting}
 
 \section{Constructing values}
