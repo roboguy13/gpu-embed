@@ -426,9 +426,9 @@ construct (,,)
   :: (ERep a, ERep b, ERep c) =>
      E a -> E b -> E c -> E (a, b, c)
 
-ghci> :t construct (,,) (rep False) (rep 3.1 :: E Double) (rep 1 :: E Int)
-construct (,,) (rep False) (rep 3.1 :: E Double) (rep 1 :: E Int)
-  :: E (Bool, Double, Int)
+ghci> :t construct (,,) (rep False) (rep 3.1 :: E Float) (rep 1 :: E Int)
+construct (,,) (rep False) (rep 3.1 :: E Float) (rep 1 :: E Int)
+  :: E (Bool, Float, Int)
 \end{lstlisting}
 
 
