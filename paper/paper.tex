@@ -396,6 +396,15 @@ data ProdMatch s t where
   NullaryMatch :: ERep r => E r -> ProdMatch a r
 \end{lstlisting}
 
+\section{Recovering standard semantics for pattern matches}
+
+\begin{lstlisting}
+sumMatchAbs :: ERep s => SumMatch (ERepTy s) t -> s -> t
+...
+
+prodMatchAbs :: ERep s => ProdMatch s t -> s -> t
+...
+\end{lstlisting}
 
 \section{Constructing values}
 
