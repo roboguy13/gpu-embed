@@ -141,11 +141,30 @@ transformDecTailRec
 
 instance GPURep a => GPURep (Complex a)
 
--- tranformDecTailRec
---   [d|
---   mandelbrot_helper :: (Int, Complex Double, Complex Double) -> Complex Double
---   mandelbrot_helper x =
---     case x of
---       (i, a, b) -> a + b
---   |]
+instance GPURep a => GPURep (Maybe a)
+
+transformDecTailRec
+  [d|
+  mandelbrot_nextZ :: (Complex Double, Complex Double) -> Complex Double
+  mandelbrot_nextZ t =
+    case t of
+      (c, z) -> (z*z) + c
+
+  mandelbrot_helper :: (Int, Complex Double, Complex Double) -> Maybe Int
+  mandelbrot_helper t =
+    case t of
+      (iters, c, z) ->
+        if iters == 50
+          then Nothing
+          else
+            case z of
+              (:+) real imag ->
+                if sqrt ((real*real) + (imag*imag)) > 2
+                  then Just iters
+                  else mandelbrot_helper (iters+1, c, mandelbrot_nextZ (c, z))
+
+  mandelbrot_point :: Complex Double -> Maybe Int
+  mandelbrot_point c = mandelbrot_helper (0, c, 0)
+
+  |]
 

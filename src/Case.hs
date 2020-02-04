@@ -139,8 +139,11 @@ data GPUExp t where
   FromEnum :: Enum a => GPUExp a -> GPUExp Int
   FromIntegral :: (Integral a, Num b) => GPUExp a -> GPUExp b
 
+  Sqrt :: Floating a => GPUExp a -> GPUExp a
+
   Equal :: Eq a => GPUExp a -> GPUExp a -> GPUExp Bool
   Lte :: Ord a => GPUExp a -> GPUExp a -> GPUExp Bool
+  Gt :: Ord a => GPUExp a -> GPUExp a -> GPUExp Bool
 
   Not :: GPUExp Bool -> GPUExp Bool
 
@@ -400,8 +403,10 @@ gpuAbs (Sub x y) = gpuAbs x - gpuAbs y
 gpuAbs (Mul x y) = gpuAbs x * gpuAbs y
 gpuAbs (FromEnum x) = fromEnum (gpuAbs x)
 gpuAbs (FromIntegral x) = fromIntegral (gpuAbs x)
+gpuAbs (Sqrt x) = sqrt (gpuAbs x)
 gpuAbs (Equal x y) = gpuAbs x == gpuAbs y
 gpuAbs (Lte x y) = gpuAbs x <= gpuAbs y
+gpuAbs (Gt x y) = gpuAbs x > gpuAbs y
 gpuAbs (Not x) = not (gpuAbs x)
 gpuAbs (LeftExp x) = Left (gpuAbs x)
 gpuAbs (RightExp y) = Right (gpuAbs y)
@@ -427,6 +432,7 @@ transformPrims skipFns = Data.transform go
       | x == 'not = Just $ ConE 'Not
       | x == 'fromEnum = Just $ ConE 'FromEnum
       | x == 'fromIntegral = Just $ ConE 'FromIntegral
+      | x == 'sqrt = Just $ ConE 'Sqrt
       | otherwise = Nothing
 
     go expr@(LitE _) = ConE 'Lit :@ expr
@@ -447,6 +453,7 @@ transformPrims skipFns = Data.transform go
       | op == '(-) = ConE 'Sub :@ x :@ y
       | op == '(==) = ConE 'Equal :@ x :@ y
       | op == '(<=) = ConE 'Lte :@ x :@ y
+      | op == '(>) = ConE 'Gt :@ x :@ y
       where
         x = go x0
         y = go y0
