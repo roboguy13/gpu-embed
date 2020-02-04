@@ -347,8 +347,11 @@ instance (GenericRep (f Void)) =>
     genericRep' = genericRep' . unM1
     genericUnrep' = M1 . genericUnrep'
 
-the :: GPUExp a -> GPUExp a
+the :: a -> a
 the = id
+
+the_repr :: GPUExp a -> GPUExp a
+the_repr = id
 
 type family LiftedFn t where
   LiftedFn (a -> b) = GPUExp a -> LiftedFn b
@@ -433,6 +436,7 @@ transformPrims skipFns = Data.transform go
       | x == 'fromEnum = Just $ ConE 'FromEnum
       | x == 'fromIntegral = Just $ ConE 'FromIntegral
       | x == 'sqrt = Just $ ConE 'Sqrt
+      | x == 'the = Just $ VarE 'the_repr
       | otherwise = Nothing
 
     go expr@(LitE _) = ConE 'Lit :@ expr
