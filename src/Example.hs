@@ -20,7 +20,9 @@ import           Data.Void
 
 import           Data.Bifunctor
 
-import           Debug.Trace
+import           Data.Complex
+
+-- import           Debug.Trace
 
 data Nat = Z | S Nat deriving (Generic, Show)
 
@@ -30,7 +32,7 @@ thExample1 :: Q Exp
 thExample1 = do
   exp <-
     [|
-      case Right False of
+      case the @(Either Int Bool) (Right False) of
         Left x -> x * 2
         Right y -> fromEnum y
     |]
@@ -39,7 +41,7 @@ thExample1 = do
 thExample2 :: Q Exp
 thExample2 = do
   exp <-
-    [| case (True, 7) of
+    [| case (True, the @Int 7) of
          (x, y) -> fromEnum x + y
     |]
   transformExpr exp
@@ -135,4 +137,15 @@ transformDecTailRec
           then thExample8 p
           else thExample9 (IntPair (x-1) (x*y))
   |]
+
+
+instance GPURep a => GPURep (Complex a)
+
+-- tranformDecTailRec
+--   [d|
+--   mandelbrot_helper :: (Int, Complex Double, Complex Double) -> Complex Double
+--   mandelbrot_helper x =
+--     case x of
+--       (i, a, b) -> a + b
+--   |]
 

@@ -9,7 +9,7 @@ import Example
 main :: IO ()
 main = do
   print $(thExample1)
-  print $(thExample2)
+  print ($(thExample2) :: Int)
   print $(thExample3)
   print ($(thExample4) :: Int)
   print $(thExample5)

@@ -60,6 +60,8 @@ import           Data.Bifunctor
 
 import           GHC.TypeLits hiding (Nat)
 
+import           Data.Tagged
+
 infixl 0 :@
 pattern f :@ x = AppE f x
 
@@ -78,18 +80,23 @@ type Case = (Exp, [Match])
 
 
 -- TODO: Should we have a phantom type argument with the original type to preserve (possibly) more type safety?
+
+
+-- TODO: Should this just be a function type? Maybe it could be a function
+-- from s -> t, where is a nested pair type, and we use projection
+-- combinators to extract the values inside the function.
 data ProdMatch s t where
   ProdMatch ::
     (GPURep a, GPURep b)
-       => (GPUExp a -> ProdMatch b r) -> ProdMatch (a, b) r
+       => (GPUExp (GetType a) -> ProdMatch b r) -> ProdMatch (Tagged t (a, b)) r
 
-  OneProdMatch :: (GPURep a) => (GPUExp a -> GPUExp r) -> ProdMatch a r
+  OneProdMatch :: (GPURep a) => (GPUExp (GetType a) -> GPUExp r) -> ProdMatch a r
   NullaryMatch :: GPURep r => GPUExp r -> ProdMatch a r
 
 data SumMatch s t where
   SumMatch ::
     (GPURep a, GPURep b, GPURepTy b ~ b)
-        => ProdMatch a r -> SumMatch b r -> SumMatch (Either a b) r
+        => ProdMatch a r -> SumMatch b r -> SumMatch (Tagged t (Either a b)) r
 
   EmptyMatch :: SumMatch Void r
 
@@ -105,8 +112,6 @@ data Iter a b
   = Step b
   | Done a
   deriving (Functor, Generic)
-
-data VarTy a
 
 data GPUExp t where
   CaseExp :: (GPURep t) => GPUExp t -> SumMatch (GPURepTy t) r -> GPUExp r
@@ -175,27 +180,53 @@ apply (Lam arg body) x = undefined --transform go body
     go (Var Proxy name)
       | arg == name = x
 
+type family TagWith t x where
+  TagWith t (Tagged t' x) = Tagged t x
+  TagWith t x             = Tagged t x
+
+type family GetType x where
+  GetType (Tagged t x) = t
+  GetType t            = t
+
+type family Untag x where
+  Untag (Tagged t x) = x
+  Untag x            = x
+
 class GPURep t where
-    -- Should we wrap these types in a 'Const t' in order to preserve more
+    -- Should we wrap these types in a 'Tagged t' in order to preserve more
     -- type safety?
   type GPURepTy t
-  type GPURepTy t = GPURepTy (Rep t Void)
+  type GPURepTy t = TagWith t (GPURepTy (Rep t Void))
 
   rep :: t -> GPUExp t
   rep = Repped . rep'
 
   rep' :: t -> GPURepTy t
 
-  default rep' :: (Generic t, GenericRep (Rep t Void), GPURepTy t ~ GenericRepTy (Rep t Void))
+  default rep' :: (Generic t, GenericRep (Rep t Void), GPURepTy t ~ Tagged t (GenericRepTy (Rep t Void)))
     => t -> GPURepTy t
-  rep' = genericRep' . (from :: t -> Rep t Void)
+  rep' = Tagged . genericRep' . (from :: t -> Rep t Void)
 
 
   unrep' :: GPURepTy t -> t
 
-  default unrep' :: (Generic t, GenericRep (Rep t Void), GPURepTy t ~ GenericRepTy (Rep t Void))
+  default unrep' :: (Generic t, GenericRep (Rep t Void), GPURepTy t ~ Tagged t (GenericRepTy (Rep t Void)))
     => GPURepTy t -> t
-  unrep' = (to :: Rep t Void -> t) . genericUnrep'
+  unrep' = (to :: Rep t Void -> t) . genericUnrep' . unTagged
+
+  repGetType :: t -> GPUExp (GetType t)
+
+  default repGetType :: GetType t ~ t => t -> GPUExp (GetType t)
+  repGetType = rep
+
+instance (GPURep t, GPURepTy t ~ Tagged t x) => GPURep (Tagged t x) where
+  type GPURepTy (Tagged t x) = Tagged t x
+
+  rep' = id
+  unrep' = id
+
+  -- repGetType :: Tagged t x -> GPUExp (GetType (Tagged t x))
+  repGetType = rep . unrep'
 
 instance GPURep Int where
   type GPURepTy Int = Int
@@ -221,17 +252,24 @@ instance GPURep Bool where
   unrep' = id
 
 instance (GPURep a, GPURep b) => GPURep (Either a b) where
-  type GPURepTy (Either a b) = Either a b
+  type GPURepTy (Either a b) = Tagged (Either a b) (Either (GPURepTy a) (GPURepTy b))
   rep (Left x) = LeftExp (rep x)
   rep (Right y) = RightExp (rep y)
-  rep' = id
-  unrep' = id
+
+  rep' (Left x) = Tagged . Left $ rep' x
+  rep' (Right y) = Tagged . Right $ rep' y
+
+  unrep' (Tagged (Left x)) = Left $ unrep' x
+  unrep' (Tagged (Right y)) = Right $ unrep' y
 
 instance (GPURep a, GPURep b) => GPURep (a, b) where
-  type GPURepTy (a, b) = (a, b)
+  type GPURepTy (a, b) = Tagged (a, b) (GPURepTy a, GPURepTy b)
   rep (x, y) = PairExp (rep x) (rep y)
-  rep' = id
-  unrep' = id
+  rep' (x, y) = Tagged (rep' x, rep' y)
+  unrep' (Tagged (x, y)) = (unrep' x, unrep' y)
+
+instance (GPURep a, GPURep b, GPURep c) => GPURep (a, b, c)
+instance (GPURep a, GPURep b, GPURep c, GPURep d) => GPURep (a, b, c, d)
 
 -- XXX: Should this instance exist?
 instance (GPURep a, GPURep b) => GPURep (Iter a b) where
@@ -246,21 +284,21 @@ instance GPURep (f p) => GPURep (M1 i c f p) where
   unrep' = M1 . unrep'
 
 instance (GPURep (p x), GPURep (q x)) => GPURep ((p :+: q) x) where
-  type GPURepTy ((p :+: q) x) = Either (GPURepTy (p x)) (GPURepTy (q x))
+  type GPURepTy ((p :+: q) x) = Tagged (Either (p x) (q x)) (Either (GPURepTy (p x)) (GPURepTy (q x)))
 
   rep = Repped . rep'
 
-  rep' (L1 x) = Left (rep' x)
-  rep' (R1 y) = Right (rep' y)
+  rep' (L1 x) = Tagged $ Left (rep' x)
+  rep' (R1 y) = Tagged $ Right (rep' y)
 
-  unrep' (Left x) = L1 (unrep' x)
-  unrep' (Right y) = R1 (unrep' y)
+  unrep' (Tagged (Left x)) = L1 (unrep' x)
+  unrep' (Tagged (Right y)) = R1 (unrep' y)
 
 instance (GPURep (p x), GPURep (q x)) => GPURep ((p :*: q) x) where
-  type GPURepTy ((p :*: q) x) = (GPURepTy (p x), GPURepTy (q x))
+  type GPURepTy ((p :*: q) x) = Tagged (p x, q x) (GPURepTy (p x), GPURepTy (q x))
 
-  rep' (x :*: y) = (rep' x, rep' y)
-  unrep' (x, y) = (unrep' x :*: unrep' y)
+  rep' (x :*: y) = Tagged (rep' x, rep' y)
+  unrep' (Tagged (x, y)) = (unrep' x :*: unrep' y)
 
 instance GPURep c => GPURep (K1 i c p) where
   type GPURepTy (K1 i c p) = GPURepTy c
@@ -306,6 +344,9 @@ instance (GenericRep (f Void)) =>
     genericRep' = genericRep' . unM1
     genericUnrep' = M1 . genericUnrep'
 
+the :: GPUExp a -> GPUExp a
+the = id
+
 type family LiftedFn t where
   LiftedFn (a -> b) = GPUExp a -> LiftedFn b
   LiftedFn b = GPUExp b
@@ -329,7 +370,7 @@ instance {-# INCOHERENT #-} (LiftedFn b ~ GPUExp b) => Construct b where
 sumMatchAbs :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
 sumMatchAbs (SumMatch p q) =
   \x0 ->
-    let x = rep' x0
+    let Tagged x = rep' x0
     in
     case x of
       Left  a -> prodMatchAbs p a
@@ -339,11 +380,11 @@ sumMatchAbs (OneSumMatch f) = prodMatchAbs f . unrep' . rep' -- TODO: Is this re
 
 prodMatchAbs :: GPURep s => ProdMatch s t -> s -> t
 prodMatchAbs (ProdMatch f) =
-  \pair ->
+  \(Tagged pair) ->
     case pair of
-      (x, y) -> prodMatchAbs (f (rep x)) y
+      (x, y) -> prodMatchAbs (f (repGetType x)) y
 
-prodMatchAbs (OneProdMatch f) = \x -> gpuAbs (f (rep x))
+prodMatchAbs (OneProdMatch f) = \x -> gpuAbs (f (repGetType x))
 prodMatchAbs (NullaryMatch x) = \_ -> gpuAbs x
 
 gpuAbs :: GPUExp t -> t
