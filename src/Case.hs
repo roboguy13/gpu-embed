@@ -62,6 +62,8 @@ import           GHC.TypeLits hiding (Nat)
 
 import           Data.Tagged
 
+import           Data.Complex
+
 infixl 0 :@
 pattern f :@ x = AppE f x
 
@@ -253,6 +255,12 @@ instance GPURep Bool where
   rep True  = TrueExp
   rep' = id
   unrep' = id
+
+
+instance GPURep a => GPURep (Complex a)
+
+instance GPURep a => GPURep (Maybe a)
+
 
 instance (GPURep a, GPURep b) => GPURep (Either a b) where
   type GPURepTy (Either a b) = Tagged (Either a b) (Either (GPURepTy a) (GPURepTy b))

@@ -139,9 +139,6 @@ transformDecTailRec
   |]
 
 
-instance GPURep a => GPURep (Complex a)
-
-instance GPURep a => GPURep (Maybe a)
 
 transformDecTailRec
   [d|
