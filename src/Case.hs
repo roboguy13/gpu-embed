@@ -156,7 +156,7 @@ data GPUExp t where
 
   TailRec :: (GPURep a, GPURep b) => (GPUExp b -> GPUExp (Iter a b)) -> GPUExp (b -> a)
 
-  Construct :: (a -> b) -> GPUExp (a -> b)
+  Construct :: a -> GPUExp a
   ConstructAp :: (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
 
@@ -351,8 +351,8 @@ type family LiftedFn t where
   LiftedFn (a -> b) = GPUExp a -> LiftedFn b
   LiftedFn b = GPUExp b
 
-construct :: forall a b. (Construct (a -> b))
-  => (a -> b) -> LiftedFn (a -> b)
+construct :: (Construct t)
+  => t -> LiftedFn t
 construct = construct' . Construct
 
 class Construct t where
