@@ -31,6 +31,8 @@ main = do
 
   putStrLn mandelbrotTestAscii
 
+  print (shouldFail (3 :+ 0))
+
 
   -- print thExample6
   -- print ($(thExample6) 3)

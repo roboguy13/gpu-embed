@@ -3,6 +3,8 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 {-# OPTIONS_GHC -ddump-splices #-}
 
@@ -22,7 +24,13 @@ import           Data.Bifunctor
 
 import           Data.Complex
 
+import           Data.Ratio
+
+import           GHC.Real
+
 -- import           Debug.Trace
+
+deriving instance Generic (Ratio a) -- XXX: This instance should probably be in 'base'
 
 data Nat = Z | S Nat deriving (Generic, Show)
 
@@ -94,6 +102,8 @@ thExample5 = do
 
   transformExpr exp
 
+instance GPURep a => GPURep (Ratio a)
+
 transformDecTailRec
   [d|
   thExample6 :: Int -> Bool
@@ -142,12 +152,17 @@ transformDecTailRec
 
 transformDecTailRec
   [d|
-  mandelbrot_nextZ :: (Complex Double, Complex Double) -> Complex Double
+  mandelbrot_nextZ :: (Complex (Ratio Integer), Complex (Ratio Integer)) -> Complex (Ratio Integer)
   mandelbrot_nextZ t =
     case t of
       (c, z) -> (z*z) + c
 
-  mandelbrot_helper :: (Int, Complex Double, Complex Double) -> Maybe Int
+  -- shouldFail :: Complex (Ratio Integer) -> (Ratio Integer)
+  -- shouldFail t =
+  --   case t of
+  --     (x, y) -> x + y
+
+  mandelbrot_helper :: (Int, Complex (Ratio Integer), Complex (Ratio Integer)) -> Maybe Int
   mandelbrot_helper t =
     case t of
       (iters, c, z) ->
@@ -156,11 +171,11 @@ transformDecTailRec
           else
             case z of
               (:+) real imag ->
-                if sqrt ((real*real) + (imag*imag)) > 2
+                if ((real*real) + (imag*imag)) > 4
                   then Just iters
                   else mandelbrot_helper (iters+1, c, mandelbrot_nextZ (c, z))
 
-  mandelbrot_point :: Complex Double -> Maybe Int
+  mandelbrot_point :: Complex (Ratio Integer) -> Maybe Int
   mandelbrot_point c = mandelbrot_helper (0, c, 0)
 
   |]

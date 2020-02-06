@@ -24,6 +24,9 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE TupleSections #-}
 
 module Case
   where
@@ -64,10 +67,15 @@ import           Data.Tagged
 
 import           Data.Complex
 
+import           Data.Constraint (Constraint)
+
 infixl 0 :@
 pattern f :@ x = AppE f x
 
 type Case = (Exp, [Match])
+
+data Tagged2 (f :: Maybe k) t x = Tagged2 x
+
 
 
 -- Idea: Represent a pattern match of a particular type as
@@ -80,9 +88,7 @@ type Case = (Exp, [Match])
 -- type?). Convert types to a "canonical form" to use this (like 'Either's
 -- and '(,)'s)
 
-
 -- TODO: Should we have a phantom type argument with the original type to preserve (possibly) more type safety?
-
 
 -- TODO: Should this just be a function type? Maybe it could be a function
 -- from s -> t, where is a nested pair type, and we use projection
@@ -104,6 +110,15 @@ data SumMatch s t where
 
   OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch a b
 
+type family TagMatches t x :: Constraint where
+  TagMatches t (Tagged t x) = ()
+
+data SafeSumMatch origType s t where
+  SafeSumMatch :: TagMatches origType s => SumMatch s t -> SafeSumMatch origType s t
+
+  SafeEmptyMatch :: SafeSumMatch origType Void r
+  SafeOneMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SafeSumMatch origType a b
+
 
 -- deriving instance (Data t, Data r, GPURepTy r ~ r) => Data (SumMatch t r)
 
@@ -116,7 +131,7 @@ data Iter a b
   deriving (Functor, Generic)
 
 data GPUExp t where
-  CaseExp :: (GPURep t) => GPUExp t -> SumMatch (GPURepTy t) r -> GPUExp r
+  CaseExp :: (GPURep t) => GPUExp t -> SafeSumMatch t (GPURepTy t) r -> GPUExp r
 
   FalseExp :: GPUExp Bool
   TrueExp :: GPUExp Bool
@@ -235,6 +250,11 @@ instance (GPURep t, GPURepTy t ~ Tagged t x) => GPURep (Tagged t x) where
 
 instance GPURep Int where
   type GPURepTy Int = Int
+  rep = Lit
+  rep' = id
+  unrep' = id
+instance GPURep Integer where
+  type GPURepTy Integer = Integer
   rep = Lit
   rep' = id
   unrep' = id
@@ -381,16 +401,19 @@ instance {-# INCOHERENT #-} (LiftedFn b ~ GPUExp b) => Construct b where
     construct' = id
 
 -- Should this just produce an error?
-sumMatchAbs :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
-sumMatchAbs (SumMatch p q) =
-  \x0 ->
-    let Tagged x = rep' x0
-    in
-    case x of
-      Left  a -> prodMatchAbs p a
-      Right b -> sumMatchAbs q b
-sumMatchAbs EmptyMatch = \_ -> error "Non-exhaustive match"
-sumMatchAbs (OneSumMatch f) = prodMatchAbs f . unrep' . rep' -- TODO: Is this reasonable?
+sumMatchAbs :: GPURep s => SafeSumMatch s (GPURepTy s) t -> s -> t
+sumMatchAbs (SafeSumMatch s) = go s
+  where
+    go :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
+    go (SumMatch p q) =
+      \x0 ->
+        let Tagged x = rep' x0
+        in
+        case x of
+          Left  a -> prodMatchAbs p a
+          Right b -> go q b
+    go EmptyMatch = \_ -> error "Non-exhaustive match"
+    go (OneSumMatch f) = prodMatchAbs f . unrep' . rep' -- TODO: Is this reasonable?
 
 prodMatchAbs :: GPURep s => ProdMatch s t -> s -> t
 prodMatchAbs (ProdMatch f) =
@@ -515,6 +538,16 @@ transformProdMatch (Match match (NormalB body) _) =
 
     getVar (VarP var) = var
 
+
+tyVarBndrName :: TyVarBndr -> Name
+tyVarBndrName (PlainTV name) = name
+tyVarBndrName (KindedTV name _) = name
+
+
+-- TODO: Check constructor types in case matches to make sure they fit the
+-- type
+
+
 -- Does not necessarily preserve type argument order (sorts matches by
 -- constructor name)
 -- NOTE: Requires at least one match to find the type
@@ -524,26 +557,34 @@ transformCase0 :: Exp -> Q Exp
 transformCase0 (CaseE scrutinee matches0@(firstMatch:_)) = do
     reifiedFirstMatchMaybe <- sequence $ fmap reify firstMatchConMaybe
 
-    conIxMaybe <- case reifiedFirstMatchMaybe of
-      Just (DataConI _ _ parentName) -> do
-        parent <- reify parentName
-        case parent of
-          TyConI (DataD _ _ _ _ constrs _) ->
-            return $ Just $ \conName -> conName `elemIndex` map getConName constrs
+      -- TODO: See if this needs to be generalized
+    infoMaybe <- case reifiedFirstMatchMaybe of
+      Just (DataConI _ _ name) -> fmap (fmap ([], )) $ dataCon name
+      Just (TyConI (DataD _ name tyCons _ _ _)) -> fmap (fmap (tyCons, )) $ dataCon name
       Nothing -> return Nothing
+      -- a -> error $ show reifiedFirstMatchMaybe
 
     let sortedMatches =
-          case conIxMaybe of
+          case infoMaybe of
             Nothing -> matches0
-            Just conIx -> sortBy (comparing (conIx . getMatchPatName)) matches0
+            Just (_, (_, conIx)) -> sortBy (comparing (conIx . getMatchPatName)) matches0
+
+    let Just (_, (name, _)) = infoMaybe
+        Just (tyCons, _) = infoMaybe
 
     return (ConE 'CaseExp :@ scrutinee
-              :@ sumMatches sortedMatches)
+              :@ (AppTypeE (ConE 'SafeSumMatch) (ForallT tyCons [] (foldl AppT (ConT name) (map (VarT . tyVarBndrName) tyCons)))  :@ sumMatches sortedMatches))
   where
+    dataCon name = do
+      parent <- reify name
+      case parent of
+        TyConI (DataD _ name _ _ constrs _) ->
+          return $ Just $ (name, \conName -> conName `elemIndex` map getConName constrs)
+
     firstMatchConMaybe =
       case firstMatch of
         Match (ConP name _) _ _ -> Just name
-        Match (TupP _) _ _ -> Nothing
+        Match (TupP xs) _ _ -> Just (tupleTypeName (length xs))
         _ -> Nothing
 
     sumMatches [] = ConE 'EmptyMatch
