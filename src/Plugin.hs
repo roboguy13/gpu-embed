@@ -94,7 +94,7 @@ primMapTH =
 getGPUExprIdsFrom :: [(TH.Name, Id)] -> TH.Name -> Id
 getGPUExprIdsFrom idMap name =
   case lookup name idMap of
-    -- Nothing -> error $ "Cannot find Id for: " ++ show name
+    Nothing -> error $ "Cannot find Id for: " ++ show name
     Just i  -> i
 
 gpuExprConstrNamesTH :: [TH.Name]
