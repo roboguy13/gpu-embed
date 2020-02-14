@@ -11,7 +11,6 @@
 module Expr where
 
 import           Data.Void
-import           Data.Tagged
 import           Data.Proxy
 import           Data.Constraint (Constraint)
 
@@ -40,42 +39,20 @@ import           Data.Complex
 data ProdMatch s t where
   ProdMatch ::
     (GPURep a, GPURep b)
-       => (GPUExp (GetType a) -> ProdMatch b r) -> ProdMatch (Tagged t (a, b)) r
+       => (GPUExp a -> ProdMatch b r) -> ProdMatch  (a, b) r
 
-  OneProdMatch :: (GPURep a) => (GPUExp (GetType a) -> GPUExp r) -> ProdMatch a r
+  OneProdMatch :: (GPURep a) => (GPUExp a -> GPUExp r) -> ProdMatch a r
   NullaryMatch :: GPURep r => GPUExp r -> ProdMatch a r
 
 data SumMatch s t where
   SumMatch ::
     (GPURep a, GPURep b, GPURepTy b ~ b)
-        => ProdMatch a r -> SumMatch b r -> SumMatch (Tagged t (Either a b)) r
+        => ProdMatch a r -> SumMatch b r -> SumMatch (Either a b) r
 
   EmptyMatch :: SumMatch Void r
 
   OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch a b
 
-
-type family TagMatches t x :: Constraint where
-  TagMatches t (Tagged t x) = ()
-
-data SafeSumMatch origType s t where
-  SafeSumMatch :: TagMatches origType s => SumMatch s t -> SafeSumMatch origType s t
-
-  SafeEmptyMatch :: SafeSumMatch origType Void r
-  SafeOneMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SafeSumMatch origType a b
-
-
-type family TagWith t x where
-  TagWith t (Tagged t' x) = Tagged t x
-  TagWith t x             = Tagged t x
-
-type family GetType x where
-  GetType (Tagged t x) = t
-  GetType t            = t
-
-type family Untag x where
-  Untag (Tagged t x) = x
-  Untag x            = x
 
 -- Done (case ... of A -> x; B -> y)  ==>  (case ... of A -> Done x; B -> Done y)
 data Iter a b
@@ -84,7 +61,7 @@ data Iter a b
   deriving (Functor, Generic)
 
 data GPUExp t where
-  CaseExp :: (GPURep t) => GPUExp t -> SafeSumMatch t (GPURepTy t) r -> GPUExp r
+  CaseExp :: (GPURep t) => GPUExp t -> SumMatch (GPURepTy t) r -> GPUExp r
 
   FalseExp :: GPUExp Bool
   TrueExp :: GPUExp Bool
@@ -136,37 +113,26 @@ class GPURep t where
     -- Should we wrap these types in a 'Tagged t' in order to preserve more
     -- type safety?
   type GPURepTy t
-  type GPURepTy t = TagWith t (GPURepTy (Rep t Void))
+  type GPURepTy t = GPURepTy (Rep t Void)
+
+  -- | This should be unapplied type (without type arguments)
 
   rep :: t -> GPUExp t
   rep = Repped . rep'
 
   rep' :: t -> GPURepTy t
 
-  default rep' :: (Generic t, GenericRep (Rep t Void), GPURepTy t ~ Tagged t (GenericRepTy (Rep t Void)))
+  default rep' :: (Generic t, GenericRep (Rep t Void), GPURepTy t ~ (GenericRepTy (Rep t Void)))
     => t -> GPURepTy t
-  rep' = Tagged . genericRep' . (from :: t -> Rep t Void)
+  rep' = genericRep' . (from :: t -> Rep t Void)
 
 
   unrep' :: GPURepTy t -> t
 
-  default unrep' :: (Generic t, GenericRep (Rep t Void), GPURepTy t ~ Tagged t (GenericRepTy (Rep t Void)))
+  default unrep' :: (Generic t, GenericRep (Rep t Void), GPURepTy t ~ (GenericRepTy (Rep t Void)))
     => GPURepTy t -> t
-  unrep' = (to :: Rep t Void -> t) . genericUnrep' . unTagged
+  unrep' = (to :: Rep t Void -> t) . genericUnrep'
 
-  repGetType :: t -> GPUExp (GetType t)
-
-  default repGetType :: GetType t ~ t => t -> GPUExp (GetType t)
-  repGetType = rep
-
-instance (GPURep t, GPURepTy t ~ Tagged t x) => GPURep (Tagged t x) where
-  type GPURepTy (Tagged t x) = Tagged t x
-
-  rep' = id
-  unrep' = id
-
-  -- repGetType :: Tagged t x -> GPUExp (GetType (Tagged t x))
-  repGetType = rep . unrep'
 
 instance GPURep Int where
   type GPURepTy Int = Int
@@ -197,30 +163,32 @@ instance GPURep Bool where
   unrep' = id
 
 
-instance GPURep a => GPURep (Complex a)
+instance GPURep a => GPURep (Complex a) where
 
-instance GPURep a => GPURep (Maybe a)
+instance GPURep a => GPURep (Maybe a) where
 
 
 instance (GPURep a, GPURep b) => GPURep (Either a b) where
-  type GPURepTy (Either a b) = Tagged (Either a b) (Either (GPURepTy a) (GPURepTy b))
+  type GPURepTy (Either a b) = Either (GPURepTy a) (GPURepTy b)
+
   rep (Left x) = LeftExp (rep x)
   rep (Right y) = RightExp (rep y)
 
-  rep' (Left x) = Tagged . Left $ rep' x
-  rep' (Right y) = Tagged . Right $ rep' y
+  rep' (Left x) = Left $ rep' x
+  rep' (Right y) = Right $ rep' y
 
-  unrep' (Tagged (Left x)) = Left $ unrep' x
-  unrep' (Tagged (Right y)) = Right $ unrep' y
+  unrep' (Left x) = Left $ unrep' x
+  unrep' (Right y) = Right $ unrep' y
 
 instance (GPURep a, GPURep b) => GPURep (a, b) where
-  type GPURepTy (a, b) = Tagged (a, b) (GPURepTy a, GPURepTy b)
-  rep (x, y) = PairExp (rep x) (rep y)
-  rep' (x, y) = Tagged (rep' x, rep' y)
-  unrep' (Tagged (x, y)) = (unrep' x, unrep' y)
+  type GPURepTy (a, b) =  (GPURepTy a, GPURepTy b)
 
-instance (GPURep a, GPURep b, GPURep c) => GPURep (a, b, c)
-instance (GPURep a, GPURep b, GPURep c, GPURep d) => GPURep (a, b, c, d)
+  rep (x, y) = PairExp (rep x) (rep y)
+  rep' (x, y) = (rep' x, rep' y)
+  unrep' (x, y) = (unrep' x, unrep' y)
+
+instance (GPURep a, GPURep b, GPURep c) => GPURep (a, b, c) where
+instance (GPURep a, GPURep b, GPURep c, GPURep d) => GPURep (a, b, c, d) where
 
 -- XXX: Should this instance exist?
 instance (GPURep a, GPURep b) => GPURep (Iter a b) where
@@ -235,21 +203,21 @@ instance GPURep (f p) => GPURep (M1 i c f p) where
   unrep' = M1 . unrep'
 
 instance (GPURep (p x), GPURep (q x)) => GPURep ((p :+: q) x) where
-  type GPURepTy ((p :+: q) x) = Tagged (Either (p x) (q x)) (Either (GPURepTy (p x)) (GPURepTy (q x)))
+  type GPURepTy ((p :+: q) x) =  Either (GPURepTy (p x)) (GPURepTy (q x))
 
   rep = Repped . rep'
 
-  rep' (L1 x) = Tagged $ Left (rep' x)
-  rep' (R1 y) = Tagged $ Right (rep' y)
+  rep' (L1 x) = Left (rep' x)
+  rep' (R1 y) = Right (rep' y)
 
-  unrep' (Tagged (Left x)) = L1 (unrep' x)
-  unrep' (Tagged (Right y)) = R1 (unrep' y)
+  unrep' (Left x) = L1 (unrep' x)
+  unrep' (Right y) = R1 (unrep' y)
 
 instance (GPURep (p x), GPURep (q x)) => GPURep ((p :*: q) x) where
-  type GPURepTy ((p :*: q) x) = Tagged (p x, q x) (GPURepTy (p x), GPURepTy (q x))
+  type GPURepTy ((p :*: q) x) =  (GPURepTy (p x), GPURepTy (q x))
 
-  rep' (x :*: y) = Tagged (rep' x, rep' y)
-  unrep' (Tagged (x, y)) = (unrep' x :*: unrep' y)
+  rep' (x :*: y) = (rep' x, rep' y)
+  unrep' (x, y) = (unrep' x :*: unrep' y)
 
 instance GPURep c => GPURep (K1 i c p) where
   type GPURepTy (K1 i c p) = GPURepTy c
@@ -321,27 +289,24 @@ instance {-# INCOHERENT #-} (LiftedFn b ~ GPUExp b) => Construct b where
     construct' = id
 
 -- Should this just produce an error?
-sumMatchAbs :: GPURep s => SafeSumMatch s (GPURepTy s) t -> s -> t
-sumMatchAbs (SafeSumMatch s) = go s
-  where
-    go :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
-    go (SumMatch p q) =
-      \x0 ->
-        let Tagged x = rep' x0
-        in
-        case x of
-          Left  a -> prodMatchAbs p a
-          Right b -> go q b
-    go EmptyMatch = \_ -> error "Non-exhaustive match"
-    go (OneSumMatch f) = prodMatchAbs f . unrep' . rep' -- TODO: Is this reasonable?
+sumMatchAbs :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
+sumMatchAbs (SumMatch p q) =
+  \x0 ->
+    let x = rep' x0
+    in
+    case x of
+      Left  a -> prodMatchAbs p a
+      Right b -> sumMatchAbs q b
+sumMatchAbs EmptyMatch = \_ -> error "Non-exhaustive match"
+sumMatchAbs (OneSumMatch f) = prodMatchAbs f . unrep' . rep' -- TODO: Is this reasonable?
 
 prodMatchAbs :: GPURep s => ProdMatch s t -> s -> t
 prodMatchAbs (ProdMatch f) =
-  \(Tagged pair) ->
+  \pair ->
     case pair of
-      (x, y) -> prodMatchAbs (f (repGetType x)) y
+      (x, y) -> prodMatchAbs (f (rep x)) y
 
-prodMatchAbs (OneProdMatch f) = \x -> gpuAbs (f (repGetType x))
+prodMatchAbs (OneProdMatch f) = \x -> gpuAbs (f (rep x))
 prodMatchAbs (NullaryMatch x) = \_ -> gpuAbs x
 
 gpuAbs :: GPUExp t -> t
