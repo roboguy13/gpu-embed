@@ -1,8 +1,10 @@
 {-# LANGUAGE TemplateHaskellQuotes #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TupleSections #-}
 
 module Plugin (plugin) where
 
-import           Expr hiding (Var, Lit)
+import           Expr hiding (Var, Lit, (:@))
 import qualified Expr
 
 import           Data.Data
@@ -13,8 +15,13 @@ import           GhcPlugins
 
 import           Control.Monad
 
+import           Control.Arrow ((&&&), (***))
+
 -- Just for TH Names:
 import qualified Language.Haskell.TH.Syntax as TH
+
+infixl 0 :@
+pattern f :@ x = App f x
 
 plugin :: Plugin
 plugin =
@@ -37,13 +44,20 @@ pass guts = do
                   to <- lookupId toName
                   return (from, to))
 
-  bindsOnlyPass (mapM (transformBind primMap)) guts
+  gpuExprConstrNames <- mapM (\n -> fmap (,n) (thNameToGhcName_ n)) gpuExprConstrNamesTH
 
-transformBind :: [(Id, Id)] -> CoreBind -> CoreM CoreBind
-transformBind primMap (NonRec name e) =
-  fmap (NonRec name) (transformExpr primMap e)
+  gpuExprIdMap <- forM gpuExprConstrNames
+                       (\(name, nameTH) -> do
+                          theId <- lookupId name
+                          return (nameTH, theId))
 
-transformExpr :: [(Id, Id)] -> Expr Var -> CoreM (Expr Var)
+  bindsOnlyPass (mapM (transformBind primMap (Var . getGPUExprIdsFrom gpuExprIdMap))) guts
+
+transformBind :: [(Id, Id)] -> (TH.Name -> Expr Var) -> CoreBind -> CoreM CoreBind
+transformBind primMap dslVar (NonRec name e) =
+  fmap (NonRec name) (transformExpr primMap dslVar e)
+
+transformExpr :: [(Id, Id)] -> (TH.Name -> Expr Var) -> Expr Var -> CoreM (Expr Var)
 transformExpr = undefined
 
 -- XXX: The delineation marker probably has to be floated in (or maybe the
@@ -53,13 +67,13 @@ transformExpr = undefined
 -- | Transform primitives and constructor/function calls. Skips the
 -- function call transformation on the given 'recName' argument (if
 -- a 'Just').
-transformPrims :: Maybe Var -> [(Id, Id)] -> Expr Var -> Expr Var
-transformPrims recName primMap = Data.transform go
+transformPrims :: Maybe Var -> [(Id, Id)] -> (TH.Name -> Expr Var) -> Expr Var -> Expr Var
+transformPrims recName primMap dslVar = Data.transform go
   where
     builtin :: Id -> Maybe (Expr Var)
     builtin v = Var <$> lookup v primMap
 
-    go expr@(Lit x) = undefined
+    go expr@(Lit x) = dslVar 'Lit :@ expr
 
 thNameToGhcName_ :: TH.Name -> CoreM Name
 thNameToGhcName_ thName = do
@@ -75,5 +89,55 @@ primMapTH =
   ,('fromIntegral, 'FromIntegral)
   ,('sqrt, 'Sqrt)
   ,('the, 'the_repr)
+  ]
+
+getGPUExprIdsFrom :: [(TH.Name, Id)] -> TH.Name -> Id
+getGPUExprIdsFrom idMap name =
+  case lookup name idMap of
+    -- Nothing -> error $ "Cannot find Id for: " ++ show name
+    Just i  -> i
+
+gpuExprConstrNamesTH :: [TH.Name]
+gpuExprConstrNamesTH =
+  [
+  -- ProdMatch --
+   'ProdMatch
+  ,'OneProdMatch
+  ,'NullaryMatch
+
+  -- SumMatch --
+  ,'SumMatch
+  ,'EmptyMatch
+  ,'OneSumMatch
+
+  -- GPUExp --
+  ,'CaseExp
+  ,'FalseExp
+  ,'TrueExp
+
+  ,'Repped
+
+  -- ,'Lam
+  -- ,'Var
+  -- ,'Apply
+
+  ,'Expr.Lit
+  ,'Add
+  ,'Sub
+  ,'Mul
+
+  ,'Equal
+  ,'Lte
+  ,'Gt
+
+  ,'LeftExp
+  ,'RightExp
+
+  ,'PairExp
+
+  ,'StepExp
+  ,'DoneExp
+
+  ,'IfThenElse
   ]
 
