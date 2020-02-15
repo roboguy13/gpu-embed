@@ -4,6 +4,7 @@
 
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module Deep.GHCUtils where
 
@@ -16,6 +17,10 @@ import           TcRnMonad
 import           TcSMonad
 import           TcEvidence
 import           TcType
+
+import           TyCoRep
+
+import           Coercion
 
 import           Finder
 import           LoadIface
@@ -50,9 +55,13 @@ import           Control.Arrow (first, second)
 import           Data.Char
 import           Data.List
 
+import           Data.Generics.Uniplate.Operations
+import qualified Data.Generics.Uniplate.DataOnly as Data
+
 -- | Build a dictionary for the given
 buildDictionary :: ModGuts -> Id -> CoreM (Id, [CoreBind])
 buildDictionary guts evar = do
+    dflags <- getDynFlags
     (i, bs) <- runTcM guts $ do
 #if __GLASGOW_HASKELL__ > 710
         loc <- getCtLocM (GivenOrigin UnkSkol) Nothing
@@ -61,10 +70,11 @@ buildDictionary guts evar = do
 #endif
         let predTy = varType evar
 #if __GLASGOW_HASKELL__ > 710
-            nonC = mkNonCanonical $ CtWanted { ctev_pred = predTy, ctev_dest = EvVarDest evar, ctev_loc = loc }
+            nonC = mkNonCanonical $ CtWanted { ctev_pred = predTy, ctev_dest = EvVarDest evar, ctev_loc = loc, ctev_nosh = WDeriv }
             wCs = mkSimpleWC [cc_ev nonC]
         -- TODO: Make sure solveWanteds is the right function to call.
         (_wCs', bnds) <- second evBindMapBinds <$> runTcS (solveWanteds wCs)
+        -- liftIO $ putStrLn (showPpr dflags bnds)
 #else
             nonC = mkNonCanonical $ CtWanted { ctev_pred = predTy, ctev_evar = evar, ctev_loc = loc }
             wCs = mkSimpleWC [nonC]
@@ -74,14 +84,68 @@ buildDictionary guts evar = do
                                   -- revist and fix!
         return (evar, bnds)
     bnds <- runDsM guts $ dsEvBinds bs
-    return (i,bnds)
+    bnds2 <- mapM (tryToFillCoHoles guts) bnds
+    return (i,bnds2)
+
+-- TODO: This is a stop-gap measure. Try to figure out why some of the
+-- coercion holes are not getting filled by the GHC API (particularly for
+-- the equality constraint in the incoherent instance of ConstructC).
+tryToFillCoHoles :: ModGuts -> CoreBind -> CoreM CoreBind
+tryToFillCoHoles guts bind =
+    case bind of
+      NonRec n e -> NonRec n <$> Data.transformM go e
+      Rec recBinds -> Rec <$> mapM (secondM (Data.transformM go)) recBinds
+
+  where
+    go :: CoreExpr -> CoreM CoreExpr
+    go expr@(Coercion (HoleCo coHole@(CoercionHole {ch_co_var}))) = do
+      dflags <- getDynFlags
+      liftIO $ putStrLn ("got to a co hole named " ++ showPpr dflags ch_co_var)
+      liftIO $ putStrLn ("    with type " ++ showPpr dflags (varType ch_co_var))
+      case varType ch_co_var of
+        CoercionTy co -> do
+          let mkCo r t = mkReflCo r t
+          case co of
+            GRefl role ty _ -> do
+              let co' = mkCo role (varType ch_co_var)
+              -- runTcM guts $ do
+              --   fillCoercionHole coHole co'
+              return (Coercion co')
+            Refl ty -> do
+              let co' = mkCo Nominal (varType ch_co_var)
+              -- runTcM guts $ do
+              --   fillCoercionHole coHole co'
+              return (Coercion co')
+            _ -> do
+              liftIO $ putStrLn "    cannot fill (inner)"
+              return expr
+        CastTy{} -> do
+          liftIO $ putStrLn "    kind coercion"
+          return expr
+        AppTy{} -> do
+          liftIO $ putStrLn "    AppTy"
+          return expr
+        TyConApp tyCon lst@(_:_:ty:_) -> do
+          return (Coercion (mkReflCo Nominal ty))
+          -- liftIO $ putStrLn ("    TyConApp (" ++ showPpr dflags tyCon ++ ") (" ++ showPpr dflags xs ++ ")")
+          -- return expr
+        _ -> do
+          liftIO $ putStrLn "    cannot fill (outer)"
+          return expr
+
+      -- return (Coercion (mkNomReflCo (varType ch_co_var)))
+
+      -- runTcM guts $ do
+      --   fillCoercionHole coHole (mkNomReflCo (varType ch_co_var))
+      --   return expr
+    go expr = return expr
 
 buildDictionaryT :: ModGuts -> Type -> CoreM CoreExpr
 buildDictionaryT guts = \ ty -> do
     dflags <- getDynFlags
     binder <- newIdH ("$d" ++ zEncodeString (filter (not . isSpace) (showPpr dflags ty))) ty
     (i,bnds) <- buildDictionary guts binder
-    when (notNull bnds) (error "no dictionary bindings generated.")
+    when (null bnds) (error ("no dictionary bindings generated for " ++ showPpr dflags ty))
     -- guardMsg (notNull bnds) "no dictionary bindings generated."
     return $ case bnds of
                 [NonRec v e] | i == v -> e -- the common case that we would have gotten a single non-recursive let
