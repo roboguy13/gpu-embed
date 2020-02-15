@@ -98,6 +98,7 @@ pass guts = do
                           theId <- lookupId name
                           return (nameTH, theId))
 
+  -- bindsOnlyPass return guts
   bindsOnlyPass (mapM (transformBind guts (mg_inst_env guts) primMap (getGPUExprIdsFrom gpuExprIdMap))) guts
 
 transformBind :: ModGuts -> InstEnv -> [(Id, Id)] -> (TH.Name -> Var) -> CoreBind -> CoreM CoreBind
@@ -113,7 +114,7 @@ transformBind guts instEnv primMap lookupVar (Rec bnds) = Rec <$> mapM go bnds
 transformExpr :: ModGuts -> Maybe Var -> [(Id, Id)] -> (TH.Name -> Var) -> Expr Var -> CoreM (Expr Var)
 transformExpr guts recName primMap lookupVar = Data.transformM go
   where
-    go (Var f :@ x)
+    go (Var f :@ _ty :@ _dict :@ x)
       | f == lookupVar 'externalize = transformSumMatches guts recName primMap lookupVar x
     go expr = return expr
 
@@ -198,6 +199,7 @@ transformProdMatch guts lookupVar ty0 (altCon@(DataAlt dataAlt), vars0, body) = 
         :@ go pairTyCon repTyCon restTys xs
 
 transformSumMatch :: ModGuts -> (TH.Name -> Var) -> Expr a -> a -> Type -> [Alt a] -> CoreM (Expr a)
+
 transformSumMatch guts lookupVar scrutinee wild ty0 alts@(alt1@(DataAlt dataAlt1, _, _):_) = do
   repTyCon <- findTyCon' guts (varName (lookupVar ''GPURep))
 
@@ -347,6 +349,9 @@ constrNamesTH =
   ,'DoneExp
 
   ,'IfThenElse
+
+  ,''GPURep
+  ,''GPURepTy
 
 
 

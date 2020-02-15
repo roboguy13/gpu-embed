@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 
-{-# OPTIONS_GHC -dcore-lint -fplugin=Plugin.MatchPlugin #-}
+{-# OPTIONS_GHC -O0 -ddump-simpl -dcore-lint -fplugin=Plugin.MatchPlugin #-}
 
 module Test.PluginExample where
 
@@ -32,10 +32,13 @@ data Nat = Z | S Nat deriving (Generic, Show)
 
 data Example = N Nat | B Bool deriving (Generic, Show)
 
+eitherExample :: Either Int Bool
+eitherExample = Right False
+
 thExample1 :: Int
 thExample1 = do
   internalize (externalize
-    (case (Right False) :: Either Int Bool of
+    (case eitherExample of
       Left x -> x * 2
       Right y -> fromEnum y))
 
