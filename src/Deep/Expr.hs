@@ -7,8 +7,10 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE FlexibleContexts #-}
 
-module Expr where
+module Deep.Expr where
 
 import           Data.Void
 import           Data.Proxy
@@ -37,21 +39,21 @@ import           Data.Complex
 -- from s -> t, where is a nested pair type, and we use projection
 -- combinators to extract the values inside the function.
 data ProdMatch s t where
-  ProdMatch ::
+  ProdMatch :: forall a b r.
     (GPURep a, GPURep b)
        => (GPUExp a -> ProdMatch b r) -> ProdMatch  (a, b) r
 
-  OneProdMatch :: (GPURep a) => (GPUExp a -> GPUExp r) -> ProdMatch a r
-  NullaryMatch :: GPURep r => GPUExp r -> ProdMatch a r
+  OneProdMatch :: forall a r. (GPURep a) => (GPUExp a -> GPUExp r) -> ProdMatch a r
+  NullaryMatch :: forall a r. GPURep r => GPUExp r -> ProdMatch a r
 
 data SumMatch s t where
-  SumMatch ::
+  SumMatch :: forall a b r.
     (GPURep a, GPURep b, GPURepTy b ~ b)
         => ProdMatch a r -> SumMatch b r -> SumMatch (Either a b) r
 
-  EmptyMatch :: SumMatch Void r
+  EmptyMatch :: forall r. SumMatch Void r
 
-  OneSumMatch :: (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch a b
+  OneSumMatch :: forall a b. (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch a b
 
 
 -- Done (case ... of A -> x; B -> y)  ==>  (case ... of A -> Done x; B -> Done y)
@@ -61,7 +63,7 @@ data Iter a b
   deriving (Functor, Generic)
 
 data GPUExp t where
-  CaseExp :: (GPURep t) => GPUExp t -> SumMatch (GPURepTy t) r -> GPUExp r
+  CaseExp :: forall t r. (GPURep t) => GPUExp t -> SumMatch (GPURepTy t) r -> GPUExp r
 
   FalseExp :: GPUExp Bool
   TrueExp :: GPUExp Bool
@@ -273,18 +275,18 @@ type family LiftedFn t where
   LiftedFn (a -> b) = GPUExp a -> LiftedFn b
   LiftedFn b = GPUExp b
 
-construct :: (Construct t)
+construct :: (ConstructC t)
   => t -> LiftedFn t
 construct = construct' . Construct
 
-class Construct t where
+class ConstructC t where
     construct' :: GPUExp t -> LiftedFn t
 
-instance (GPURep a, Construct b) => Construct (a -> b) where
+instance (GPURep a, ConstructC b) => ConstructC (a -> b) where
     construct' :: GPUExp (a -> b) -> GPUExp a -> LiftedFn b
     construct' c = construct' . ConstructAp c
 
-instance {-# INCOHERENT #-} (LiftedFn b ~ GPUExp b) => Construct b where
+instance {-# INCOHERENT #-} (LiftedFn b ~ GPUExp b) => ConstructC b where
     construct' :: GPUExp b -> GPUExp b
     construct' = id
 

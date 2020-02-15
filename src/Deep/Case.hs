@@ -69,14 +69,13 @@ import           Data.Complex
 
 import           Data.Constraint (Constraint)
 
-import           Expr
+import           Deep.Expr
 
 infixl 0 :@
 pattern f :@ x = AppE f x
 
 type Case = (Exp, [Match])
 
-data Tagged2 (f :: Maybe k) t x = Tagged2 x
 
 
 
@@ -223,7 +222,7 @@ transformCase0 (CaseE scrutinee matches0@(firstMatch:_)) = do
         Just (tyCons, _) = infoMaybe
 
     return (ConE 'CaseExp :@ scrutinee
-              :@ (AppTypeE (ConE 'SafeSumMatch) (ForallT tyCons [] (foldl AppT (ConT name) (map (VarT . tyVarBndrName) tyCons)))  :@ sumMatches sortedMatches))
+              :@ (ConE 'SafeSumMatch :@ (AppTypeE (ConE 'Proxy) (ConT name))  :@ sumMatches sortedMatches))
   where
     dataCon name = do
       parent <- reify name

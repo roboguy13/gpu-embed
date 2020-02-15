@@ -5,14 +5,16 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
+-- {-# LANGUAGE PolyKinds #-}
+-- {-# LANGUAGE AllowAmbiguousTypes #-}
 
 {-# OPTIONS_GHC -ddump-splices #-}
+{-# OPTIONS_GHC -fprint-explicit-kinds #-}
 
 module Example where
 
 import           Data.List
 
-import           Case
 import           Expr
 
 import           Language.Haskell.TH
@@ -29,6 +31,8 @@ import           Data.Complex
 import           Data.Ratio
 
 import           GHC.Real
+
+import           Data.Proxy
 
 -- import           Debug.Trace
 
@@ -68,17 +72,20 @@ thExample3 = do
     |]
   transformExpr exp
 
-instance GPURep Example'
+instance GPURep Example' where
+  type TypeHead Example' = Example'
 
 
 
 data Example3 = X Int Float deriving (Show, Generic)
 
 instance GPURep Example3 where
+  type TypeHead Example3 = Example3
 
 data Example4 = E1 Int | E2 Float | E3 Bool deriving (Show, Generic)
 
-instance GPURep Example4
+instance GPURep Example4 where
+  type TypeHead Example4 = Example4
 
 thExample4 :: Q Exp
 thExample4 = do
@@ -92,7 +99,8 @@ thExample4 = do
 
 data Example5 = A1 Float Float | A2 Int deriving (Show, Generic)
 
-instance GPURep Example5
+instance GPURep Example5 where
+  type TypeHead Example5 = Example5
 
 thExample5 :: Q Exp
 thExample5 = do
@@ -119,7 +127,8 @@ transformDecTailRec
 
 data IntPair = IntPair Int Int deriving (Show, Generic)
 
-instance GPURep IntPair
+instance GPURep IntPair where
+  type TypeHead IntPair = IntPair
 
 thExample7 :: Q Exp
 thExample7 = do
@@ -134,21 +143,68 @@ thExample7 = do
   return r
 
 
-transformDecTailRec
-  [d|
-  thExample8 :: IntPair -> Int
-  thExample8 p =
-    case p of
-      IntPair x y -> y
+-- transformDecTailRec
+--   [d|
+thExample8 :: IntPair -> Int
+thExample8 p =
+  case p of
+    IntPair x y -> y
 
-  thExample9 :: IntPair -> Int
-  thExample9 p =
-    case p of
-      IntPair x y ->
-        if x == 0
-          then thExample8 p
-          else thExample9 (IntPair (x-1) (x*y))
-  |]
+-- -- thExample9_aj5t :: IntPair -> Int
+-- -- thExample9_aj5t p_aj5x
+-- --   = (gpuAbs
+-- --        (TailRec
+-- --           ((\ thExample9_aj5t
+-- --               -> \ p_aj5x
+-- --                    -> (CaseExp p_aj5x)
+-- --                         ((SafeSumMatch (Data.Proxy.Proxy :: Proxy (TypeHead (Tagged2 (TypeHead IntPair :: *) IntPair (Int, Int)) :: *)))
+-- --                            (OneSumMatch
+-- --                               (ProdMatch
+-- --                                  (\ x_aj5y
+-- --                                     -> OneProdMatch
+-- --                                          (\ y_aj5z
+-- --                                             -> ((IfThenElse ((Equal x_aj5y) (Lit 0)))
+-- --                                                   (DoneExp
+-- --                                                      ((construct thExample8) p_aj5x)))
+-- --                                                  (thExample9_aj5t
+-- --                                                     (((construct IntPair)
+-- --                                                         ((Sub x_aj5y) (Lit 1)))
+-- --                                                        ((Mul x_aj5y) y_aj5z)))))))))
+-- --              StepExp)))
+-- --       p_aj5x
+
+--   thExample9 :: IntPair -> Int
+--   thExample9 p =
+--     case p of
+--       IntPair x y ->
+--         if x == 0
+--           then thExample8 p
+--           else thExample9 (IntPair (x-1) (x*y))
+
+--   |]
+
+thExample9_aijJ :: IntPair -> Int
+thExample9_aijJ p_aijN
+  = (gpuAbs
+       (TailRec
+          ((\ thExample9_aijJ
+              -> \ p_aijN
+                   -> (CaseExp p_aijN)
+                        ((SafeSumMatch (Proxy @(KindOf IntPair)) (Proxy @IntPair))
+                           (OneSumMatch
+                              (ProdMatch
+                                 (\ x_aijO
+                                    -> OneProdMatch
+                                         (\ y_aijP -> undefined))))))
+                                            -- -> ((IfThenElse ((Equal x_aijO) (Lit 0)))
+                                            --       (DoneExp
+                                            --          ((construct thExample8) p_aijN)))
+                                            --      (thExample9_aijJ
+                                            --         (((construct IntPair)
+                                            --             ((Sub x_aijO) (Lit 1)))
+                                            --            ((Mul x_aijO) y_aijP)))))))))
+             StepExp)))
+      p_aijN
 
 
 
