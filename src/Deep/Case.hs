@@ -28,7 +28,7 @@
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE TupleSections #-}
 
-module Case
+module Deep.Case
   where
 
 import           GHC.Generics

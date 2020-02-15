@@ -172,7 +172,7 @@
   Domain specific languages (DSLs) provide a powerful tool for to abstract over
   a class of problems. In this paper, we introduce a technique for representing
   algebraic data types and pattern matching in a DSL embedded in Haskell. This
-  representation is automated through the use of GHC Generics and Template Haskell.
+  representation is mechanized through the use of GHC Generics and Template Haskell.
 \end{abstract}
 
 \begin{CCSXML}
@@ -429,13 +429,13 @@ construct = construct' . ConstructE
 -- Example: LiftedFn (a -> b -> c) is: E a -> E b -> E c
 type family LiftedFn t where
   LiftedFn (a -> b) = E a -> LiftedFn b
-  LiftedFn b = E b
+  LiftedFn b        = E b
 
 class Construct t where
   construct' :: E t -> LiftedFn t
 \end{lstlisting}
 
-The "helper constructors" \ttt{ConstructE} and \ttt{ConstructAp} are part of the \ttt{E} type:
+The "helper constructors" \ttt{ConstructE} are part of the \ttt{E} type:
 
 \begin{lstlisting}
 data E t where

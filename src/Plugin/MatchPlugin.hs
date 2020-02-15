@@ -103,6 +103,11 @@ pass guts = do
 transformBind :: ModGuts -> InstEnv -> [(Id, Id)] -> (TH.Name -> Var) -> CoreBind -> CoreM CoreBind
 transformBind guts instEnv primMap lookupVar (NonRec name e) =
   fmap (NonRec name) (transformExpr guts Nothing primMap lookupVar e)
+transformBind guts instEnv primMap lookupVar (Rec bnds) = Rec <$> mapM go bnds
+  where
+    go (name, e) =
+      (name,) <$> transformExpr guts (Just name) primMap lookupVar e
+
 -- TODO: Add support for recursive functions
 
 transformExpr :: ModGuts -> Maybe Var -> [(Id, Id)] -> (TH.Name -> Var) -> Expr Var -> CoreM (Expr Var)
@@ -347,6 +352,10 @@ constrNamesTH =
 
   -- Construct --
   ,'construct
+
+  -- Delineate functions --
+  ,'internalize
+  ,'externalize
   ]
 
 

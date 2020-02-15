@@ -4,7 +4,9 @@
 
 {-# OPTIONS_GHC -ddump-splices #-}
 
-import Example
+module Deep.ExampleMain where
+
+import Deep.Example
 
 import Data.Complex
 import Control.Monad

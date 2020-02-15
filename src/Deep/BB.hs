@@ -6,7 +6,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module BB where
+module Deep.BB where
 
 import           GHC.Generics
 import           Data.Data

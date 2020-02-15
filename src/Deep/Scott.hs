@@ -10,7 +10,7 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE AllowAmbiguousTypes #-} -- XXX: Is this ok?
 
-module Scott where
+module Deep.Scott where
 
 import           GHC.Generics
 import           Data.Void

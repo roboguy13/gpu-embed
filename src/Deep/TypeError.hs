@@ -6,6 +6,8 @@
 {-# LANGUAGE UndecidableInstances #-}
 -- {-# LANGUAGE AllowAmbiguousTypes #-}
 
+module Deep.TypeError where
+
 import GHC.Types (Constraint, Type)
 import Data.Type.Equality
 
@@ -107,11 +109,11 @@ thIP = Refl
 test2 :: (TypeHead (Tagged2 IntPair IntPair (Int, Int))) :~: IntPair
 test2 = Refl
 
--- test :: Bool
-test_ :: Bool
-test_ = 
-  -- case HRefl :: (TypeHead (Tagged2 (TypeHead IntPair) IntPair (Int, Int))) :~: IntPair of
-    eval (CaseE (LitE (IntPair 1 2)) (SafeSumMatch (Proxy @((TypeHead (Tagged2 (TypeHead IntPair) IntPair (Int, Int))))) (OneSumMatch (ProdMatch (\x -> (OneProdMatch (\y -> LitE True)))))))
+-- -- test :: Bool
+-- test_ :: Bool
+-- test_ = 
+--   -- case HRefl :: (TypeHead (Tagged2 (TypeHead IntPair) IntPair (Int, Int))) :~: IntPair of
+--     eval (CaseE (LitE (IntPair 1 2)) (SafeSumMatch (Proxy @((TypeHead (Tagged2 (TypeHead IntPair) IntPair (Int, Int))))) (OneSumMatch (ProdMatch (\x -> (OneProdMatch (\y -> LitE True)))))))
 
 -- evalTest :: Bool
 -- evalTest = evalSafeSumMatch test (IntPair 1 2)

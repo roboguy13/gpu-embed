@@ -11,11 +11,11 @@
 {-# OPTIONS_GHC -ddump-splices #-}
 {-# OPTIONS_GHC -fprint-explicit-kinds #-}
 
-module Example where
+module Deep.Example where
 
 import           Data.List
 
-import           Expr
+import           Deep.Expr
 
 import           Language.Haskell.TH
 

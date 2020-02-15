@@ -5,7 +5,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE RankNTypes #-}
 
-module GHCUtils where
+module Deep.GHCUtils where
 
 import           GhcPlugins
 
