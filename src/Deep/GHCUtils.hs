@@ -26,6 +26,8 @@ import           DsMonad
 import           HsBinds
 import           HsDecls
 
+import qualified OccName
+
 import           CostCentreState
 
 import           Bag
@@ -52,13 +54,13 @@ import           Data.List
 buildDictionary :: ModGuts -> Id -> CoreM (Id, [CoreBind])
 buildDictionary guts evar = do
     (i, bs) <- runTcM guts $ do
-#if __GLASGOW_HASKELL__ > 710 
+#if __GLASGOW_HASKELL__ > 710
         loc <- getCtLocM (GivenOrigin UnkSkol) Nothing
 #else
         loc <- getCtLoc $ GivenOrigin UnkSkol
 #endif
         let predTy = varType evar
-#if __GLASGOW_HASKELL__ > 710 
+#if __GLASGOW_HASKELL__ > 710
             nonC = mkNonCanonical $ CtWanted { ctev_pred = predTy, ctev_dest = EvVarDest evar, ctev_loc = loc }
             wCs = mkSimpleWC [cc_ev nonC]
         -- TODO: Make sure solveWanteds is the right function to call.
@@ -306,41 +308,130 @@ mk_dfun_n :: ModGuts -> OccSet
 -- TODO
 mk_dfun_n _ = emptyOccSet
 
+ -- | Possible results from name lookup.
+-- Invariant: One constructor for each NameSpace.
+data Named = NamedId Id
+           | NamedDataCon DataCon
+           | NamedTyCon TyCon
+           | NamedTyVar Var
+
+instance Show Named where
+    show (NamedId _) = "NamedId"
+    show (NamedDataCon _) = "NamedDataCon"
+    show (NamedTyCon _) = "NamedTyCon"
+    show (NamedTyVar _) = "NamedTyVar"
+
+instance NamedThing Named where
+  getOccName (NamedId x) = getOccName x
+  getOccName (NamedDataCon x) = getOccName x
+  getOccName (NamedTyCon x) = getOccName x
+  getOccName (NamedTyVar x) = getOccName x
+
+  getName (NamedId x) = getName x
+  getName (NamedDataCon x) = getName x
+  getName (NamedTyCon x) = getName x
+  getName (NamedTyVar x) = getName x
+
+tyConClassNS :: NameSpace
+tyConClassNS = tcClsName
+
+dataConNS :: NameSpace
+dataConNS = dataName
+
+tyVarNS :: NameSpace
+tyVarNS = tvName
+
+varNS :: NameSpace
+varNS = varNameNS
+
+-- | Rename this namespace, as 'varName' is already a function in Var.
+varNameNS :: NameSpace
+varNameNS = OccName.varName
+
+allNameSpaces :: [NameSpace]
+allNameSpaces = [varNS, dataConNS, tyConClassNS, tyVarNS]
+
+findId :: ModGuts -> Name -> VarSet -> CoreM Id
+findId guts nm c = do
+    nmd <- findInNameSpaces guts [varNS, dataConNS] nm c
+    case nmd of
+        NamedId i -> return i
+        NamedDataCon dc -> return $ dataConWrapId dc
+        other -> error $ "findId: impossible Named returned: " ++ show other
+
+findVar :: ModGuts -> Name -> VarSet -> CoreM Var
+findVar guts nm c = do
+    nmd <- findInNameSpaces guts [varNS, tyVarNS, dataConNS] nm c
+    case nmd of
+        NamedId i -> return i
+        NamedTyVar v -> return v
+        NamedDataCon dc -> return $ dataConWrapId dc
+        other -> error $ "findVar: impossible Named returned: " ++ show other
+
 findTyCon' :: ModGuts -> Name -> CoreM TyCon
 findTyCon' guts nm = findTyCon guts nm emptyVarSet
 
 findTyCon :: ModGuts -> Name -> VarSet -> CoreM TyCon
-findTyCon guts nm c =
-    findTyConInNameSpaces guts [tcClsName] nm c
+findTyCon guts nm c = do
+    nmd <- findInNameSpace guts tyConClassNS nm c
+    case nmd of
+        NamedTyCon tc -> return tc
+        other -> error $ "findTyCon: impossible Named returned: " ++ show other
+
+findType :: ModGuts -> Name -> VarSet -> CoreM Type
+findType guts nm c = do
+    nmd <- findInNameSpaces guts [tyVarNS, tyConClassNS] nm c
+    case nmd of
+        NamedTyVar v -> return $ mkTyVarTy v
+        NamedTyCon tc -> return $ mkTyConTy tc
+        other -> error $ "findType: impossible Named returned: " ++ show other
+
+findNamed :: ModGuts -> Name -> VarSet -> CoreM Named
+findNamed guts nm c =
+    findInNameSpaces guts allNameSpaces nm c
 
 --------------------------------------------------------------------------------------------------
 
-findTyConInNameSpaces :: ModGuts -> [NameSpace] -> Name -> VarSet -> CoreM TyCon
-findTyConInNameSpaces guts nss nm c = do --setFailMsg "Variable not in scope." -- because catchesM clobbers failure messages.
-  rs <- sequence [ findTyConInNameSpace guts ns nm c | ns <- nss ]
+findInNameSpaces :: ModGuts -> [NameSpace] -> Name -> VarSet -> CoreM Named
+findInNameSpaces guts nss nm c = do --setFailMsg "Variable not in scope." -- because catchesM clobbers failure messages.
+  rs <- sequence [ findInNameSpace guts ns nm c | ns <- nss ]
   case rs of
     [] -> error "Variable not in scope"
     (r:_) -> return r
 
-findTyConInNameSpace :: ModGuts -> NameSpace -> Name -> VarSet -> CoreM TyCon
-findTyConInNameSpace guts ns nm c =
+findInNameSpace :: ModGuts -> NameSpace -> Name -> VarSet -> CoreM Named
+findInNameSpace guts ns nm c =
     case nonDetEltsUniqSet $ filterVarSet ((== ns) . occNameSpace . getOccName) $ findBoundVars ((== nm) . varName) c of
         _ : _ : _ -> error "multiple matching variables in scope."
-        [v]       -> error "not a TyCon" --return (varToNamed v)
-        []        -> findTyConInNSModGuts guts ns nm
+        [v]       -> return (varToNamed v)
+        []        -> findInNSModGuts guts ns nm
+
+varToNamed :: Var -> Named
+varToNamed v | isVarOcc onm = NamedId v
+             | isTvOcc onm  = NamedTyVar v
+             | otherwise = error "varToNamed: impossible Var namespace"
+    where onm = getOccName v
 
 -- | List all variables bound in the context that match the given predicate.
 findBoundVars :: (Var -> Bool) -> VarSet -> VarSet
 findBoundVars p = filterVarSet p
 
 -- | Looks for TyCon in current GlobalRdrEnv. If not present, calls 'findInNSPackageDB'.
-findTyConInNSModGuts :: ModGuts -> NameSpace -> Name -> CoreM TyCon
-findTyConInNSModGuts guts ns nm = do
+findInNSModGuts :: ModGuts -> NameSpace -> Name -> CoreM Named
+findInNSModGuts guts ns nm = do
     let rdrEnv = mg_rdr_env guts
     case lookupGRE_RdrName (toRdrName ns nm) rdrEnv of
-        [gre] -> lookupTyCon $ gre_name gre
-        []    -> findTyConInNSPackageDB guts ns nm
+        [gre] -> nameToNamed $ gre_name gre
+        []    -> findInNSPackageDB guts ns nm
         _     -> error "findInNSModGuts: multiple names returned"
+
+-- | We have a name, find the corresponding Named.
+nameToNamed :: MonadThings m => Name -> m Named
+nameToNamed n | isVarName n     = liftM NamedId $ lookupId n
+              | isDataConName n = liftM NamedDataCon $ lookupDataCon n
+              | isTyConName n   = liftM NamedTyCon $ lookupTyCon n
+              | isTyVarName n   = error "nameToNamed: impossible, TyVars are not exported and cannot be looked up."
+              | otherwise       = error "nameToNamed: unknown name type"
 
 -- | Make a RdrName for the given NameSpace and HermitName
 toRdrName :: NameSpace -> Name -> RdrName
@@ -349,12 +440,12 @@ toRdrName ns nm = maybe (mkRdrUnqual onm) (flip mkRdrQual onm) (Just mnm)
           mnm = moduleName $ nameModule nm
 
 -- | Looks for Named in package database, or built-in packages.
-findTyConInNSPackageDB :: ModGuts -> NameSpace -> Name -> CoreM TyCon
-findTyConInNSPackageDB guts ns nm = do
+findInNSPackageDB :: ModGuts -> NameSpace -> Name -> CoreM Named
+findInNSPackageDB guts ns nm = do
     mnm <- lookupName guts ns nm
     case mnm of
-        Nothing -> findTyConBuiltIn ns nm
-        Just n  -> lookupTyCon n
+        Nothing -> findNamedBuiltIn ns nm
+        Just n  -> nameToNamed n
 
 -- | Helper to call lookupRdrNameInModule
 lookupName :: ModGuts -> NameSpace -> Name -> CoreM (Maybe Name)
@@ -364,20 +455,20 @@ lookupName guts ns nm = case isQual_maybe rdrName of
                         hscEnv <- getHscEnv
                         liftIO $ lookupRdrNameInModule hscEnv guts m rdrName
     where rdrName = toRdrName ns nm
-
+          --
 -- | Looks for Named amongst GHC's built-in DataCons/TyCons.
-findTyConBuiltIn :: Monad m => NameSpace -> Name -> m TyCon
-findTyConBuiltIn ns nm
-    | isValNameSpace ns = error "not a TyCon"
-        -- case [ dc | tc <- wiredInTyCons, dc <- tyConDataCons tc, nm == (getName dc) ] of
-        --     [] -> fail "name not in scope."
-        --     [dc] -> return $ NamedDataCon dc
-        --     dcs -> fail $ "multiple DataCons match: " ++ intercalate ", " (map unqualifiedName dcs)
+findNamedBuiltIn :: Monad m => NameSpace -> Name -> m Named
+findNamedBuiltIn ns n
+    | isValNameSpace ns =
+        case [ dc | tc <- wiredInTyCons, dc <- tyConDataCons tc, n == (getName dc) ] of
+            [] -> error "name not in scope."
+            [dc] -> return $ NamedDataCon dc
+            dcs -> error $ "multiple DataCons match: " ++ intercalate ", " (map unqualifiedName dcs)
     | isTcClsNameSpace ns =
-        case [ tc | tc <- wiredInTyCons, nm == (getName tc) ] of
+        case [ tc | tc <- wiredInTyCons, n == (getName tc) ] of
             [] -> error "type name not in scope."
-            [tc] -> return tc
-            tcs -> error $ "multiple TyCons match: " ++ intercalate ", " (map getOccString tcs)
+            [tc] -> return $ NamedTyCon tc
+            tcs -> error $ "multiple TyCons match: " ++ intercalate ", " (map unqualifiedName tcs)
     | otherwise = error "findNameBuiltIn: unusable NameSpace"
 
 -- | Finds the 'Name' corresponding to the given 'RdrName' in the context of the 'ModuleName'. Returns @Nothing@ if no
@@ -427,4 +518,8 @@ lookupRdrNameInModule hsc_env guts mod_name rdr_name = do
   where
     dflags = hsc_dflags hsc_env
     doc = ptext (sLit "contains a name used in an invocation of lookupRdrNameInModule")
+
+-- | Get the unqualified name from a 'NamedThing'.
+unqualifiedName :: NamedThing nm => nm -> String
+unqualifiedName = getOccString
 
