@@ -195,6 +195,13 @@ instance (GPURep a, GPURep b, GPURep c, GPURep d) => GPURep (a, b, c, d) where
 -- XXX: Should this instance exist?
 instance (GPURep a, GPURep b) => GPURep (Iter a b) where
 
+-- XXX: Should this instance exist?
+instance (GPURep a, GPURep b) => GPURep (a -> b) where
+  type GPURepTy (a -> b) = GPURepTy a -> GPURepTy b
+
+  rep = Construct
+  rep' f x = rep' (f (unrep' x))
+  unrep' = undefined
 
 -- Generics instances
 instance GPURep (f p) => GPURep (M1 i c f p) where

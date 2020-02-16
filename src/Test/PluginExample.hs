@@ -59,6 +59,12 @@ example2 =
       B' b -> B' (not b)))
 {-# NOINLINE example2 #-}
 
+example3 :: (Bool, Int) -> Int
+example3 p =
+  internalize (externalize
+    (case p of
+      (x, y) -> fromEnum x + y))
+
 -- main :: IO ()
 -- main = print example1
 

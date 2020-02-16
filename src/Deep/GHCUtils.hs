@@ -87,6 +87,18 @@ buildDictionary guts evar = do
     bnds2 <- mapM (tryToFillCoHoles guts) bnds
     return (i,bnds2)
 
+
+buildDictionaryT :: ModGuts -> Type -> CoreM CoreExpr
+buildDictionaryT guts = \ ty -> do
+    dflags <- getDynFlags
+    binder <- newIdH ("$d" ++ zEncodeString (filter (not . isSpace) (showPpr dflags ty))) ty
+    (i,bnds) <- buildDictionary guts binder
+    when (null bnds) (error ("no dictionary bindings generated for " ++ showPpr dflags ty))
+    -- guardMsg (notNull bnds) "no dictionary bindings generated."
+    return $ case bnds of
+                [NonRec v e] | i == v -> e -- the common case that we would have gotten a single non-recursive let
+                _ -> mkCoreLets bnds (varToCoreExpr i)
+
 -- TODO: This is a stop-gap measure. Try to figure out why some of the
 -- coercion holes are not getting filled by the GHC API (particularly for
 -- the equality constraint in the incoherent instance of ConstructC).
@@ -139,18 +151,6 @@ tryToFillCoHoles guts bind =
       --   fillCoercionHole coHole (mkNomReflCo (varType ch_co_var))
       --   return expr
     go expr = return expr
-
-buildDictionaryT :: ModGuts -> Type -> CoreM CoreExpr
-buildDictionaryT guts = \ ty -> do
-    dflags <- getDynFlags
-    binder <- newIdH ("$d" ++ zEncodeString (filter (not . isSpace) (showPpr dflags ty))) ty
-    (i,bnds) <- buildDictionary guts binder
-    when (null bnds) (error ("no dictionary bindings generated for " ++ showPpr dflags ty))
-    -- guardMsg (notNull bnds) "no dictionary bindings generated."
-    return $ case bnds of
-                [NonRec v e] | i == v -> e -- the common case that we would have gotten a single non-recursive let
-                _ -> mkCoreLets bnds (varToCoreExpr i)
-
 
 runTcM :: ModGuts -> TcM a -> CoreM a
 runTcM guts m = do
