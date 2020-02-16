@@ -109,7 +109,7 @@ data GPUExp t where
   TailRec :: (GPURep a, GPURep b) => (GPUExp b -> GPUExp (Iter a b)) -> GPUExp (b -> a)
 
   Construct :: a -> GPUExp a
-  ConstructAp :: (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
+  ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
 class GPURep t where
     -- Should we wrap these types in a 'Tagged t' in order to preserve more
@@ -275,7 +275,7 @@ type family LiftedFn t where
   LiftedFn (a -> b) = GPUExp a -> LiftedFn b
   LiftedFn b = GPUExp b
 
-construct :: (ConstructC t)
+construct :: forall t. (ConstructC t)
   => t -> LiftedFn t
 construct = construct' . Construct
 
