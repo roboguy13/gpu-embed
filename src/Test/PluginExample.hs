@@ -35,13 +35,13 @@ data Example = N Nat | B Bool deriving (Generic, Show)
 eitherExample :: Int -> Either Int Bool
 eitherExample x = Right False
 
-example1 :: Int
-example1 =
-  internalize (externalize
-    (case eitherExample 1 of
-      Left x -> x * 2
-      Right y -> fromEnum y))
-{-# NOINLINE example1 #-}
+-- example1 :: Int
+-- example1 =
+--   internalize (externalize
+--     (case eitherExample 1 of
+--       Left x -> x * 2
+--       Right y -> fromEnum y))
+-- {-# NOINLINE example1 #-}
 
 data Example' = N' Int | B' Bool deriving (Show, Generic)
 
@@ -51,19 +51,48 @@ example2_ :: Int -> Example'
 example2_ x = B' False
 {-# NOINLINE example2_ #-}
 
-example2 :: Example'
-example2 =
-  internalize (externalize
-    (case example2_ 0 of
-      N' n -> N' (n+2)
-      B' b -> B' (not b)))
-{-# NOINLINE example2 #-}
+-- example2 :: Example'
+-- example2 =
+--   internalize (externalize
+--     (case example2_ 0 of
+--       N' n -> N' (n+2)
+--       B' b -> B' (not b)))
+-- {-# NOINLINE example2 #-}
 
-example3 :: (Bool, Int) -> Int
-example3 p =
+-- example3 :: (Bool, Int) -> Int
+-- example3 p =
+--   internalize (externalize
+--     (case p of
+--       (x, y) -> fromEnum x + y))
+
+data Example4 = E1 Int | E2 Float | E3 Bool deriving (Show, Generic)
+
+instance GPURep Example4
+
+example4_ :: Int -> Example4
+example4_ x = E2 23.0
+
+example4 :: Int
+example4 =
   internalize (externalize
-    (case p of
-      (x, y) -> fromEnum x + y))
+    (case example4_ 0 of
+      E1 x -> 2
+      E2 y -> 4
+      E3 z -> 6))
+
+data Example5 = A1 Float Float | A2 Int deriving (Show, Generic)
+
+instance GPURep Example5
+
+example5_ :: Int -> Example5
+example5_ x = A1 2.3 7.5
+
+example5 :: Float
+example5 =
+  internalize (externalize
+    (case example5_ 0 of
+      A2 x -> fromIntegral x
+      A1 x y -> x + y))
 
 -- main :: IO ()
 -- main = print example1
