@@ -35,16 +35,32 @@ data Example = N Nat | B Bool deriving (Generic, Show)
 eitherExample :: Int -> Either Int Bool
 eitherExample x = Right False
 
-thExample1 :: Int
-thExample1 = do
+example1 :: Int
+example1 =
   internalize (externalize
     (case eitherExample 1 of
       Left x -> x * 2
       Right y -> fromEnum y))
-{-# NOINLINE thExample1 #-}
+{-# NOINLINE example1 #-}
 
-main :: IO ()
-main = print thExample1
+data Example' = N' Int | B' Bool deriving (Show, Generic)
+
+instance GPURep Example'
+
+example2_ :: Int -> Example'
+example2_ x = B' False
+{-# NOINLINE example2_ #-}
+
+example2 :: Example'
+example2 =
+  internalize (externalize
+    (case example2_ 0 of
+      N' n -> N' (n+2)
+      B' b -> B' (not b)))
+{-# NOINLINE example2 #-}
+
+-- main :: IO ()
+-- main = print example1
 
 -- thExample2 :: Q Exp
 -- thExample2 = do

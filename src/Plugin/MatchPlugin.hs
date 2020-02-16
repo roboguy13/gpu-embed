@@ -320,7 +320,12 @@ transformSumMatch guts transformPrims' lookupVar scrutinee wild resultTy alts@(a
 
   eitherTyCon <- findTyConTH guts ''Either
 
-  sumTypes <- listTypesWith guts (getName eitherTyCon) (exprType scrutinee)
+  let scrRepTy = mkTyConApp repTyCon [exprType scrutinee]
+      scrRepTyTy = mkTyConApp repTyTyCon [exprType scrutinee]
+
+  (scrTyCo, scrTyNorm) <- normaliseTypeCo guts scrRepTyTy
+
+  sumTypes <- listTypesWith guts (getName eitherTyCon) scrTyNorm
 
   liftIO $ putStrLn ("sumTypes = " ++ showPpr dynFlags sumTypes)
 
@@ -335,14 +340,11 @@ transformSumMatch guts transformPrims' lookupVar scrutinee wild resultTy alts@(a
 
   caseExpId <- findIdTH guts 'CaseExp
 
-  let scrRepTy = mkTyConApp repTyCon [exprType scrutinee]
-      scrRepTyTy = mkTyConApp repTyTyCon [exprType scrutinee]
 
   repTypeDict <- buildDictionaryT guts scrRepTy
 
   scrutinee' <- transformPrims' scrutinee
 
-  (scrTyCo, scrTyNorm) <- normaliseTypeCo guts scrRepTyTy
 
   return (Var caseExpId
            :@ Type (exprType scrutinee)
@@ -381,6 +383,7 @@ transformSumMatch guts transformPrims' lookupVar scrutinee wild resultTy alts@(a
 
       prod <- transformProdMatch guts transformPrims' lookupVar resultTy ty1 x
 
+      liftIO $ putStrLn $ "allTys = " ++ showPpr dflags allTys
       let restTy = eitherWrap eitherTyCon restTys
 
       co <- repTyCo guts restTy
@@ -400,7 +403,6 @@ transformSumMatch guts transformPrims' lookupVar scrutinee wild resultTy alts@(a
 
       -- liftIO $ putStrLn $ "#### (coA, coB) = "  ++ showPpr dflags (coA, coB)
 
-      liftIO $ putStrLn $ "restTy = " ++ showPpr dflags restTy
 
       -- let tyA = eitherWrap eitherTyCon allTys
 
