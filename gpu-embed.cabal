@@ -24,7 +24,7 @@ library
   default-language:    Haskell2010
 
 executable gpu-embed
-  main-is:             Main.hs
+  main-is:             Test/PluginExample.hs
   -- other-modules:
   other-extensions:    DeriveGeneric, TemplateHaskellQuotes, PatternSynonyms, TupleSections, CPP, ScopedTypeVariables, TypeOperators, RankNTypes, QuantifiedConstraints, UndecidableInstances, TypeFamilyDependencies, FunctionalDependencies, ExistentialQuantification, InstanceSigs, TypeApplications, AllowAmbiguousTypes, FlexibleInstances, TemplateHaskell, DeriveDataTypeable, LiberalTypeSynonyms, PartialTypeSignatures, DeriveFunctor, StandaloneDeriving, GADTs, DefaultSignatures, ConstraintKinds, DataKinds, KindSignatures, PolyKinds, TypeFamilies, FlexibleContexts, MultiParamTypeClasses
   build-depends:       base ^>=4.13.0.0, uniplate ^>=1.6.12, template-haskell ^>=2.15.0.0, containers ^>=0.6.2.1, mtl ^>=2.2.2, tagged ^>=0.8.6, constraint ^>=0.1.4.0, ghc-prim ^>=0.5.3, ghc

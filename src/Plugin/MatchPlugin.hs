@@ -282,7 +282,6 @@ transformProdMatch guts transformPrims' lookupVar resultTy ty0 (altCon@(DataAlt 
       abs'd <- abstractOver guts x body
 
       return (Var oneProdMatchId :@ Type ty1 :@ Type resultTy :@ ty1Dict :@ abs'd)
-      -- return (Var oneProdMatchId :@ Type ty1 :@ Type ty0 :@ ty0Dict :@ abs'd)
 
     go body pairTyCon repTyCon (ty1:restTys) (x:xs) = do
       prodMatchId <- findIdTH guts 'ProdMatch
@@ -299,7 +298,7 @@ transformProdMatch guts transformPrims' lookupVar resultTy ty0 (altCon@(DataAlt 
       return (Var prodMatchId
         :@ Type ty1
         :@ Type restTy
-        :@ Type resultTy --ty0
+        :@ Type resultTy
         :@ ty1Dict
         :@ restTyDict
         :@ abs'd)
@@ -311,6 +310,7 @@ transformSumMatch guts transformPrims' lookupVar scrutinee wild resultTy alts@(a
   dynFlags <- getDynFlags
 
   repTyCon <- findTyConTH guts ''GPURep
+  repTyTyCon <- findTyConTH guts ''GPURepTy
 
   liftIO $ putStrLn $ showSDoc dynFlags $ ppr resultTy
   liftIO $ putStrLn $ showSDoc dynFlags $ ppr wild
@@ -335,14 +335,21 @@ transformSumMatch guts transformPrims' lookupVar scrutinee wild resultTy alts@(a
 
   caseExpId <- findIdTH guts 'CaseExp
 
-  repTypeDict <- buildDictionaryT guts (mkTyConApp repTyCon [exprType scrutinee])
+  let scrRepTy = mkTyConApp repTyCon [exprType scrutinee]
+      scrRepTyTy = mkTyConApp repTyTyCon [exprType scrutinee]
+
+  repTypeDict <- buildDictionaryT guts scrRepTy
 
   scrutinee' <- transformPrims' scrutinee
 
+  (scrTyCo, scrTyNorm) <- normaliseTypeCo guts scrRepTyTy
+
   return (Var caseExpId
            :@ Type (exprType scrutinee)
+           :@ Type scrTyNorm
            :@ Type resultTy
            :@ repTypeDict
+           :@ mkEqBox scrTyCo
            :@ scrutinee'
            :@ sumMatch)
 

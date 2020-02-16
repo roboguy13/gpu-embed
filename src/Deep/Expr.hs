@@ -63,7 +63,7 @@ data Iter a b
   deriving (Functor, Generic)
 
 data GPUExp t where
-  CaseExp :: forall t r. (GPURep t) => GPUExp t -> SumMatch (GPURepTy t) r -> GPUExp r
+  CaseExp :: forall t x r. (GPURep t, GPURepTy t ~ x) => GPUExp t -> SumMatch x r -> GPUExp r
 
   FalseExp :: GPUExp Bool
   TrueExp :: GPUExp Bool

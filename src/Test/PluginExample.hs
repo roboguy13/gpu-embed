@@ -41,6 +41,10 @@ thExample1 = do
     (case eitherExample 1 of
       Left x -> x * 2
       Right y -> fromEnum y))
+{-# NOINLINE thExample1 #-}
+
+main :: IO ()
+main = print thExample1
 
 -- thExample2 :: Q Exp
 -- thExample2 = do
