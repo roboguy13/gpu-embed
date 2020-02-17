@@ -137,7 +137,7 @@ thExample7 = do
         IntPair x y ->
           if x == 0
             then y
-            else y
+            else x
     |]
   r <- transformExpr exp
   return r

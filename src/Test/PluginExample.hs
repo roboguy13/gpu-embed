@@ -94,17 +94,38 @@ instance GPURep Example5
 --       A2 x -> fromIntegral x
 --       A1 x y -> x + y))
 
-example6 :: Int -> Bool
-example6 x =
-  (internalize (externalize
-    (case x == 0 of
-      True -> True
-      False ->
-        case x == 1 of
-          True -> False
-          False -> example6 (x - 2))))
+-- example6 :: Int -> Bool
+-- example6 x =
+--   (internalize (externalize
+--     (case x == 0 of
+--       True -> True
+--       False ->
+--         case x == 1 of
+--           True -> False
+--           False -> example6 (x - 2))))
 
 
+data IntPair = IntPair Int Int deriving (Show, Generic)
+
+instance GPURep IntPair where
+
+example7_ :: Int -> IntPair
+example7_ x = IntPair 1 2
+
+example7 :: Int
+example7 =
+  internalize (externalize
+    (case example7_ 0 of
+      IntPair x y ->
+        if x == 0
+          then y
+          else x))
+
+example8 :: IntPair -> Int
+example8 p =
+  internalize (externalize
+    (case p of
+      IntPair x y -> y))
 
 
 
