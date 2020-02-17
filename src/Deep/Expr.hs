@@ -111,6 +111,14 @@ data GPUExp t where
   Construct :: a -> GPUExp a
   ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
+runIter :: forall a b. (a -> Iter b a) -> a -> b
+runIter f = go
+  where
+    go x =
+      case f x of
+        Done r -> r
+        Step x' -> go x'
+
 class GPURep t where
     -- Should we wrap these types in a 'Tagged t' in order to preserve more
     -- type safety?

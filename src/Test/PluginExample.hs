@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 
-{-# OPTIONS_GHC -ddump-simpl -O0 -dcore-lint -fplugin=Plugin.MatchPlugin #-}
+{-# OPTIONS_GHC -O0 -dcore-lint -fplugin=Plugin.MatchPlugin #-}
 
 module Test.PluginExample where
 
@@ -47,9 +47,9 @@ data Example' = N' Int | B' Bool deriving (Show, Generic)
 
 instance GPURep Example'
 
-example2_ :: Int -> Example'
-example2_ x = B' False
-{-# NOINLINE example2_ #-}
+-- example2_ :: Int -> Example'
+-- example2_ x = B' False
+-- {-# NOINLINE example2_ #-}
 
 -- example2 :: Example'
 -- example2 =
@@ -69,30 +69,44 @@ data Example4 = E1 Int | E2 Float | E3 Bool deriving (Show, Generic)
 
 instance GPURep Example4
 
-example4_ :: Int -> Example4
-example4_ x = E2 23.0
+-- example4_ :: Int -> Example4
+-- example4_ x = E2 23.0
 
-example4 :: Int
-example4 =
-  internalize (externalize
-    (case example4_ 0 of
-      E1 x -> 2
-      E2 y -> 4
-      E3 z -> 6))
+-- example4 :: Int
+-- example4 =
+--   internalize (externalize
+--     (case example4_ 0 of
+--       E1 x -> 2
+--       E2 y -> 4
+--       E3 z -> 6))
 
 data Example5 = A1 Float Float | A2 Int deriving (Show, Generic)
 
 instance GPURep Example5
 
-example5_ :: Int -> Example5
-example5_ x = A1 2.3 7.5
+-- example5_ :: Int -> Example5
+-- example5_ x = A1 2.3 7.5
 
-example5 :: Float
-example5 =
-  internalize (externalize
-    (case example5_ 0 of
-      A2 x -> fromIntegral x
-      A1 x y -> x + y))
+-- example5 :: Float
+-- example5 =
+--   internalize (externalize
+--     (case example5_ 0 of
+--       A2 x -> fromIntegral x
+--       A1 x y -> x + y))
+
+example6 :: Int -> Bool
+example6 x =
+  (internalize (externalize
+    (case x == 0 of
+      True -> True
+      False ->
+        case x == 1 of
+          True -> False
+          False -> example6 (x - 2))))
+
+
+
+
 
 -- main :: IO ()
 -- main = print example1
