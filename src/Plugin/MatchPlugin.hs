@@ -13,7 +13,7 @@ import           Deep.Expr hiding (Var, Lit, Lam, (:@))
 import qualified Deep.Expr as Expr
 import           Deep.Delineate
 
-import           Data.Data hiding (TyCon (..), tyConName)
+import           Data.Data hiding (TyCon (..), tyConName, mkFunTy)
 import           Data.Generics.Uniplate.Operations
 import qualified Data.Generics.Uniplate.DataOnly as Data
 
@@ -101,7 +101,7 @@ pass guts = do
 
                   from <- findId guts fromName emptyVarSet
                   to <- findId guts toName emptyVarSet
-                  return (from, to))
+                  return (from, Var to))
 
   constrNames <- mapM (\n -> fmap (,n) (thNameToGhcName_ n)) constrNamesTH
 
@@ -113,17 +113,38 @@ pass guts = do
   -- bindsOnlyPass return guts
   bindsOnlyPass (mapM (transformBind guts (mg_inst_env guts) primMap (getGPUExprNamedsFrom gpuExprNamedMap))) guts
 
-transformBind :: ModGuts -> InstEnv -> [(Id, Id)] -> (TH.Name -> Named) -> CoreBind -> CoreM CoreBind
+-- TODO: Figure out what, specifically, this is a workaround for and
+-- actually fix the underlying problem.
+hasExternalize :: ModGuts -> Expr Var -> CoreM Bool
+hasExternalize guts e = do
+  (_, a) <- runWriterT (Data.transformM go e)
+  case a of
+    Any b -> return b
+  where
+    go :: Expr Var -> WriterT Any CoreM (Expr Var)
+    go expr@(Var f) = do
+      externalizeId <- lift $ findIdTH guts 'externalize
+
+      if f == externalizeId
+        then tell (Any True) >> return expr
+        else return expr
+    go expr = return expr
+
+transformBind :: ModGuts -> InstEnv -> [(Id, CoreExpr)] -> (TH.Name -> Named) -> CoreBind -> CoreM CoreBind
 transformBind guts instEnv primMap lookupVar (NonRec name e) =
   fmap (NonRec name) (transformExpr guts Nothing primMap lookupVar e)
 transformBind guts instEnv primMap lookupVar (Rec bnds) = Rec <$> mapM go bnds
   where
     go :: (Var, Expr Var) -> CoreM (Var, Expr Var)
     go (name, e) = do
-      dflags <- getDynFlags
-      e' <- transformTailRec guts name e
-      -- liftIO $ putStrLn $ "rec name = " ++ showPpr dflags name
-      (name,) <$> transformExpr guts (Just name) primMap lookupVar e'
+      hasEx <- hasExternalize guts e
+      if hasEx
+        then do
+          dflags <- getDynFlags
+          e' <- transformTailRec guts name e
+          -- liftIO $ putStrLn $ "rec name = " ++ showPpr dflags name
+          (name,) <$> transformExpr guts (Just name) primMap lookupVar e'
+        else return (name, e)
 
 -- TODO: Add support for recursive functions
 
@@ -136,7 +157,7 @@ returnChanged x = do
   return x
 
 -- | 'Nothing' indicates that no changes were made
-transformExprMaybe :: ModGuts -> Maybe Var -> [(Id, Id)] -> (TH.Name -> Named) -> Expr Var -> CoreM (Maybe (Expr Var))
+transformExprMaybe :: ModGuts -> Maybe Var -> [(Id, CoreExpr)] -> (TH.Name -> Named) -> Expr Var -> CoreM (Maybe (Expr Var))
 transformExprMaybe guts  recName primMap lookupVar e = do
   (r, progress) <- runWriterT (Data.transformM go e)
   case progress of
@@ -166,7 +187,7 @@ untilNothingM f = go
         Just r  -> go r
         Nothing -> return x
 
-transformExpr :: ModGuts -> Maybe Var -> [(Id, Id)] -> (TH.Name -> Named) -> Expr Var -> CoreM (Expr Var)
+transformExpr :: ModGuts -> Maybe Var -> [(Id, CoreExpr)] -> (TH.Name -> Named) -> Expr Var -> CoreM (Expr Var)
 transformExpr guts recNameM primMap lookupVar e =
   untilNothingM (transformExprMaybe guts recNameM primMap lookupVar) =<<
     (case recNameM of
@@ -181,7 +202,7 @@ transformExpr guts recNameM primMap lookupVar e =
       if f == externalizeId
         then do
           -- liftIO $ putStrLn $ "arg = " ++ showPpr dflags x
-          transformTailRec guts recName x
+          return expr --transformTailRec guts recName x
         else return expr
     go recName expr = return expr
 
@@ -198,7 +219,7 @@ constructExpr guts fId = do
 -- | Transform primitives and constructor/function calls. Skips the
 -- function call transformation on the given 'recName' argument (if
 -- a 'Just').
-transformPrims :: ModGuts -> Maybe Var -> [(Id, Id)] -> (TH.Name -> Named) -> Expr Var -> CoreM (Expr Var)
+transformPrims :: ModGuts -> Maybe Var -> [(Id, CoreExpr)] -> (TH.Name -> Named) -> Expr Var -> CoreM (Expr Var)
 transformPrims guts recName primMap lookupVar = tr --Data.descendM tr <=< tr
   where
     tr = transformPrims0 guts recName primMap lookupVar []
@@ -232,11 +253,12 @@ whenNotExprTyped guts e m = do
     else m
 
 -- 'exprVars' are already of GPUExp type and do not need to be modified
-transformPrims0 :: ModGuts -> Maybe Var -> [(Id, Id)] -> (TH.Name -> Named) -> [Expr Var] -> Expr Var -> CoreM (Expr Var)
+transformPrims0 :: ModGuts -> Maybe Var -> [(Id, CoreExpr)] -> (TH.Name -> Named) -> [Expr Var] -> Expr Var -> CoreM (Expr Var)
 transformPrims0 guts recName primMap lookupVar exprVars = go
   where
     builtin :: Id -> Maybe (Expr Var)
-    builtin v = Var <$> lookup v primMap
+    builtin v = lookup v primMap
+    -- builtin v = Var <$> lookup v primMap
 
     -- Mark for further transformation
     mark x = do
@@ -254,6 +276,13 @@ transformPrims0 guts recName primMap lookupVar exprVars = go
 
           return (Var externalizeName :@ Type xTy :@ dict :@ x)
 
+
+    replaceVarType0 v ty expr@(Var v')
+      | varName v == varName v' = Var $ setVarType v' ty
+      | otherwise = expr
+    replaceVarType0 v ty expr = expr
+
+    replaceVarType v ty = Data.transform (replaceVarType0 v ty)
 
     go (Case scrutinee wild ty alts) = do
       dflags <- getDynFlags
@@ -278,6 +307,15 @@ transformPrims0 guts recName primMap lookupVar exprVars = go
         return (Var iteId :@ Type ty :@ scrutineeMarked :@ trueBodyMarked :@ falseBodyMarked)
       else
         transformSumMatch guts mark lookupVar scrutinee wild ty alts
+
+    go expr@(Lam v body) = do
+      expTyCon <- findTyConTH guts ''GPUExp
+
+      let ty = mkTyConApp expTyCon [varType v]
+
+      bodyMarked <- mark (replaceVarType v ty body)
+
+      return (Lam (setVarType v ty) bodyMarked)
 
     -- Numeric literals
     go expr@(Lit x :@ ty :@ dict) = do
@@ -527,6 +565,20 @@ transformSumMatch guts transformPrims' lookupVar scrutinee wild resultTy alts@(a
 
     eitherWrap eitherTyCon = foldr1 (\x acc -> mkTyConApp eitherTyCon [x, acc])
 
+noDoneOrStep :: ModGuts -> CoreExpr -> CoreM Bool
+noDoneOrStep guts e = do
+  (_, an) <- runWriterT (Data.transformM go e)
+  case an of
+    Any b -> return $ not b
+  where
+    go :: CoreExpr -> WriterT Any CoreM CoreExpr
+    go expr@(Var f) = do
+      doneId <- lift $ findIdTH guts 'Done
+      stepId <- lift $ findIdTH guts 'Step
+
+      tell (Any (f == doneId || f == stepId))
+      return expr
+    go expr = return expr
 
 -- TODO: Handle polymorphic functions
 transformTailRec :: ModGuts -> Var -> CoreExpr -> CoreM CoreExpr
@@ -541,24 +593,31 @@ transformTailRec guts recVar e0 = do
     recName = varName recVar
 
     go0 :: CoreExpr -> CoreM CoreExpr
-    go0 (Lam v body) = go1 (varType v) body
+    go0 (Lam v body) = go1 (varType v) v body
     go0 e = return e
     -- go0 e = go1 e
 
-    go1 :: Type -> CoreExpr -> CoreM CoreExpr
-    go1 ty expr@(Var f :@ fTyArg :@ fDict :@ x) = do
+    go1 :: Type -> Var -> CoreExpr -> CoreM CoreExpr
+    go1 ty lamV expr@(Var f :@ Type fTyArg :@ fDict :@ x) = do
       dflags <- getDynFlags
       internalizeId <- findIdTH guts 'internalize
 
       if f == internalizeId
         then do
-          x' <- go2 ty x
-          return (Var f :@ fTyArg :@ fDict :@ x')
-        else return expr
-    go1 ty e = return e
+          x' <- go2 ty lamV x
 
-    go2 :: Type -> CoreExpr -> CoreM CoreExpr
-    go2 ty expr@(Var f :@ fTyArg :@ fDict :@ x) = do
+          let newTy = mkFunTy ty fTyArg
+
+          repTyCon <- findTyConTH guts ''GPURep
+
+          newDict <- buildDictionaryT guts (mkTyConApp repTyCon [newTy])
+
+          return (Var f :@ Type newTy :@ newDict :@ x')
+        else return expr
+    go1 ty _ e = return e
+
+    go2 :: Type -> Var -> CoreExpr -> CoreM CoreExpr
+    go2 ty lamV expr@(Var f :@ fTyArg :@ fDict :@ x) = do
       liftIO $ putStrLn "externalize rec ////////////"
       dflags <- getDynFlags
       externalizeId <- findIdTH guts 'externalize
@@ -570,12 +629,16 @@ transformTailRec guts recVar e0 = do
             First Nothing -> return expr
             First (Just resultTy) -> do
               runIterId <- findIdTH guts 'runIter
+              repTyCon <- findTyConTH guts ''GPURep
+
+              resultTyDict <- buildDictionaryT guts (mkTyConApp repTyCon [resultTy])
+              tyDict <- buildDictionaryT guts (mkTyConApp repTyCon [ty])
 
               return (Var f :@ fTyArg :@ fDict :@
-                        (Var runIterId :@ Type ty :@ Type resultTy :@ x'))
+                        (Var runIterId :@ Type resultTy :@ Type ty :@ resultTyDict :@ tyDict :@ Lam lamV x'))
 
         else return expr
-    go2 ty e = return e
+    go2 ty lamV e = return e
 
     go :: Type -> CoreExpr -> WriterT (First Type) CoreM CoreExpr
     go argTy (Case scrutinee wild ty alts) = do
@@ -602,7 +665,10 @@ transformTailRec guts recVar e0 = do
       | otherwise = do
           doneId <- findIdTH guts 'Done
 
-          return (altCon, patVars, Var doneId :@ Type tyA :@ Type tyB :@ body)
+          isValid <- noDoneOrStep guts body
+          if isValid
+            then return (altCon, patVars, Var doneId :@ Type tyA :@ Type tyB :@ body)
+            else return alt
 
     replaceRecName tyA tyB (Var v)
        | varName v == recName = do

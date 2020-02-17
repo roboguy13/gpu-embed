@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 
-{-# OPTIONS_GHC -O0 -dcore-lint -fplugin=Plugin.MatchPlugin #-}
+{-# OPTIONS_GHC -ddump-simpl -O0 -dcore-lint -fplugin=Plugin.MatchPlugin #-}
 
 module Test.PluginExample where
 

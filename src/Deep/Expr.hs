@@ -101,17 +101,17 @@ data GPUExp t where
 
   PairExp :: GPUExp a -> GPUExp b -> GPUExp (a, b)
 
-  StepExp :: GPUExp b -> GPUExp (Iter a b)
-  DoneExp :: GPUExp a -> GPUExp (Iter a b)
+  StepExp :: forall a b. GPUExp b -> GPUExp (Iter a b)
+  DoneExp :: forall a b. GPUExp a -> GPUExp (Iter a b)
 
   IfThenElse :: GPUExp Bool -> GPUExp a -> GPUExp a -> GPUExp a
 
-  TailRec :: (GPURep a, GPURep b) => (GPUExp b -> GPUExp (Iter a b)) -> GPUExp (b -> a)
+  TailRec :: forall a b. (GPURep a, GPURep b) => (GPUExp b -> GPUExp (Iter a b)) -> GPUExp (b -> a)
 
   Construct :: a -> GPUExp a
   ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
-runIter :: forall a b. (a -> Iter b a) -> a -> b
+runIter :: forall a b. (GPURep a, GPURep b) => (a -> Iter b a) -> a -> b
 runIter f = go
   where
     go x =
