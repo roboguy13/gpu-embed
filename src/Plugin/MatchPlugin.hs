@@ -252,6 +252,10 @@ whenNotExprTyped guts e m = do
     then return e
     else m
 
+isVar :: Expr a -> Bool
+isVar (Var _) = True
+isVar _ = False
+
 -- 'exprVars' are already of GPUExp type and do not need to be modified
 transformPrims0 :: ModGuts -> Maybe Var -> [(Id, CoreExpr)] -> (TH.Name -> Named) -> [Expr Var] -> Expr Var -> CoreM (Expr Var)
 transformPrims0 guts recName primMap lookupVar exprVars = go
@@ -391,6 +395,21 @@ transformPrims0 guts recName primMap lookupVar exprVars = go
 
         return  (Var constructAp :@ Type aTy :@ Type bTy :@ repDict :@ f' :@ markedX)
 
+    go expr@(lhs :@ arg)
+      | not (isVar lhs) = whenNotExprTyped guts expr $ do
+          constructAp <- findIdTH guts 'ConstructAp
+
+          let (aTy, bTy) = splitFunTy (exprType lhs)
+
+          repTyCon <- findTyConTH guts ''GPURep
+
+          repDict <- buildDictionaryT guts (mkTyConApp repTyCon [aTy])
+
+          markedLhs <- mark lhs
+          markedArg <- mark arg
+
+          return (Var constructAp :@ Type aTy :@ Type bTy :@ repDict :@ markedLhs :@ markedArg)
+
     go expr@(Var fn :@ _) = do
       return expr
 
@@ -457,7 +476,26 @@ transformProdMatch guts transformPrims' lookupVar resultTy ty0 (altCon@(DataAlt 
         :@ restTyDict
         :@ abs'd)
 
+    go body pairTyCon repTyCon tys xs = do
+      dflags <- getDynFlags
+
+      error $ "(" ++ showPpr dflags tys ++ ", " ++ showPpr dflags xs ++ ")\n" -- ++ showPpr dflags body
+
     pairWrap pairTyCon = foldr1 (\x acc -> mkTyConApp pairTyCon [x, acc])
+
+-- | GPUExp t  ==>  t
+-- otherwise, it stays the same
+unwrapExpType :: ModGuts -> Type -> CoreM Type
+unwrapExpType guts ty = do
+  expTyCon <- findTyConTH guts ''GPUExp
+
+  case splitTyConApp_maybe ty  of
+    Nothing -> return ty
+    Just (tyCon, args) -> do
+      if tyCon == expTyCon
+        then return $ head args
+        else return ty
+
 
 transformSumMatch :: ModGuts -> (Expr Var -> CoreM (Expr Var)) -> (TH.Name -> Named) -> Expr Var -> Var -> Type -> [Alt Var] -> CoreM (Expr Var)
 
@@ -473,16 +511,20 @@ transformSumMatch guts transformPrims' lookupVar scrutinee wild resultTy alts@(a
 
   eitherTyCon <- findTyConTH guts ''Either
 
-  let scrRepTy = mkTyConApp repTyCon [exprType scrutinee]
-      scrRepTyTy = mkTyConApp repTyTyCon [exprType scrutinee]
+  scrTy <- unwrapExpType guts (exprType scrutinee)
+
+  let scrRepTy = mkTyConApp repTyCon [scrTy]
+      scrRepTyTy = mkTyConApp repTyTyCon [scrTy]
 
   (scrTyCo, scrTyNorm) <- normaliseTypeCo guts scrRepTyTy
 
   sumTypes <- listTypesWith guts (getName eitherTyCon) scrTyNorm
 
   liftIO $ putStrLn ("sumTypes = " ++ showPpr dynFlags sumTypes)
+  liftIO $ putStrLn $ "{{" ++ showPpr dynFlags alts ++ "}}"
+  liftIO $ putStrLn $ "scrutinee: " ++ showPpr dynFlags scrutinee
 
-  nRepType <- normaliseType' guts (exprType scrutinee)
+  nRepType <- normaliseType' guts scrTy
   liftIO $ putStrLn $ showSDoc dynFlags $ ppr nRepType
 
   liftIO $ putStrLn $ showSDoc dynFlags $ ppr sumTypes
@@ -500,7 +542,7 @@ transformSumMatch guts transformPrims' lookupVar scrutinee wild resultTy alts@(a
 
 
   return (Var caseExpId
-           :@ Type (exprType scrutinee)
+           :@ Type scrTy
            :@ Type scrTyNorm
            :@ Type resultTy
            :@ repTypeDict

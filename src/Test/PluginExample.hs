@@ -94,6 +94,8 @@ instance GPURep Example5
 --       A2 x -> fromIntegral x
 --       A1 x y -> x + y))
 
+-- | isEven
+
 -- example6 :: Int -> Bool
 -- example6 x =
 --   (internalize (externalize
@@ -112,14 +114,14 @@ instance GPURep IntPair where
 example7_ :: Int -> IntPair
 example7_ x = IntPair 1 2
 
-example7 :: Int
-example7 =
-  internalize (externalize
-    (case example7_ 0 of
-      IntPair x y ->
-        if x == 0
-          then y
-          else x))
+-- example7 :: Int
+-- example7 =
+--   internalize (externalize
+--     (case example7_ 0 of
+--       IntPair x y ->
+--         if x == 0
+--           then y
+--           else x))
 
 example8 :: IntPair -> Int
 example8 p =
@@ -127,7 +129,14 @@ example8 p =
     (case p of
       IntPair x y -> y))
 
-
+example9 :: IntPair -> Int
+example9 p =
+  internalize (externalize
+    (case p of
+      IntPair x y ->
+        if x == 0
+          then example8 p
+          else example9 (IntPair (x-1) (x*y))))
 
 -- main :: IO ()
 -- main = print example1
