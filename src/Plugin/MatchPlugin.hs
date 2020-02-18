@@ -237,10 +237,10 @@ isDictVar v =
   in
   take 2 str == "$f" || take 2 str == "$d"
 
--- | Only checks the name of a Var
 isDict :: CoreExpr -> Bool
 isDict (Var v) = isDictVar v
-isDict _       = False
+isDict e       = tcIsConstraintKind (tcTypeKind (exprType e))
+-- isDict _       = False
 
 -- | Does the expression already have a type of the form GPUExp (...)?
 hasExprType :: ModGuts -> CoreExpr -> CoreM Bool
@@ -403,12 +403,13 @@ transformPrims0 guts recName primMap lookupVar exprVars = go
 
     go expr@(Var f :@ x)
       | not (isTypeArg x) && 
-        not (isDerivedOccName (occName f)) && last (occNameString (occName f)) /= '#' = 
+        not (isDerivedOccName (occName f)) && last (occNameString (occName f)) /= '#',
+        Just (aTy, bTy) <- splitFunTy_maybe (varType f) = 
           whenNotExprTyped guts expr $ do
 
         repTyCon <- findTyConTH guts ''GPURep
 
-        let (aTy, bTy) = splitFunTy (varType f)
+        -- let (aTy, bTy) = splitFunTy (varType f)
 
 
         dflags <- getDynFlags
@@ -425,12 +426,17 @@ transformPrims0 guts recName primMap lookupVar exprVars = go
         return  (Var constructAp :@ Type aTy :@ Type bTy :@ repDict :@ f' :@ markedX)
 
     go expr@(lhs :@ arg)
-      | not (isVar lhs) = whenNotExprTyped guts expr $ do
+      | not (isVar lhs) && not (isDict lhs),
+        Just (aTy, bTy) <- splitFunTy_maybe (exprType lhs) = whenNotExprTyped guts expr $ do
           constructAp <- findIdTH guts 'ConstructAp
 
-          let (aTy, bTy) = splitFunTy (exprType lhs)
+          -- let (aTy, bTy) = splitFunTy (exprType lhs)
 
           repTyCon <- findTyConTH guts ''GPURep
+
+          dflags <- getDynFlags
+          liftIO $ putStrLn $ "=========== lhs = " ++ showPpr dflags lhs
+          liftIO $ putStrLn $ "!!!!!!!!!!! aTy = " ++ showPpr dflags aTy
 
           repDict <- buildDictionaryT guts (mkTyConApp repTyCon [aTy])
 
@@ -686,7 +692,7 @@ noDoneOrStep guts e = do
 transformTailRec :: ModGuts -> Var -> CoreExpr -> CoreM CoreExpr
 transformTailRec guts recVar e0 = do
     dflags <- getDynFlags
-    -- liftIO $ putStrLn $ "transformTailRec: " ++ showPpr dflags recVar
+    liftIO $ putStrLn $ "transformTailRec: " ++ showPpr dflags recVar
     -- liftIO $ putStrLn $ "{{" ++ showPpr dflags e0 ++ "}}"
     go0 e0
     -- e' <- go e
@@ -712,6 +718,8 @@ transformTailRec guts recVar e0 = do
 
           repTyCon <- findTyConTH guts ''GPURep
 
+          -- liftIO $ putStrLn $ "!!!!!!!!!!! newTy = + " ++ showPpr dflags newTy
+
           newDict <- buildDictionaryT guts (mkTyConApp repTyCon [newTy])
 
           return (Var f :@ Type newTy :@ newDict :@ x')
@@ -732,6 +740,9 @@ transformTailRec guts recVar e0 = do
             First (Just resultTy) -> do
               runIterId <- findIdTH guts 'runIter
               repTyCon <- findTyConTH guts ''GPURep
+
+              -- liftIO $ putStrLn $ "!!!!!!!!!!! resultTy = " ++ showPpr dflags resultTy
+              -- liftIO $ putStrLn $ "!!!!!!!!!!! ty = " ++ showPpr dflags ty
 
               resultTyDict <- buildDictionaryT guts (mkTyConApp repTyCon [resultTy])
               tyDict <- buildDictionaryT guts (mkTyConApp repTyCon [ty])

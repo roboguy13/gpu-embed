@@ -153,19 +153,19 @@ mandelbrot_nextZ t =
     (case t of
       (c, z) -> (z*z) + c))
 
--- mandelbrot_helper :: (Int, Complex Float, Complex Float) -> Maybe Int
--- mandelbrot_helper t =
---   internalize (externalize
---     (case t of
---       (iters, c, z) ->
---         if iters == 50
---           then Nothing
---           else
---             case z of
---               real :+ imag ->
---                 if (real*real) > 4
---                   then Just iters
---                   else Nothing))
+mandelbrot_helper :: (Int, Complex Float, Complex Float) -> Maybe Int
+mandelbrot_helper t =
+  internalize (externalize
+    (case t of
+      (iters, c, z) ->
+        if iters == 50
+          then Nothing
+          else
+            case z of
+              real :+ imag ->
+                if (real*real) + (imag*imag) > 4
+                  then Just iters
+                  else mandelbrot_helper (iters+1, c, mandelbrot_nextZ (c, z))))
 
 main :: IO ()
 main = return ()
