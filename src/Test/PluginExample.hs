@@ -173,7 +173,59 @@ mandelbrot_point c =
     (mandelbrot_helper (0, c, 0)))
 
 main :: IO ()
-main = return ()
+main =
+  putStrLn mandelbrotTestAscii
+
+
+
+
+
+
+mandelbrotTestAscii :: String
+mandelbrotTestAscii =
+  unlines
+    (map go [0..mandelbrot_height-1])
+  where
+    go y = map (go2 y) [0..mandelbrot_width-1]
+
+    go2 y x =
+      case mandelbrot_point (mandelbrot_toCoord x y) of
+        Just _ -> ' '
+        Nothing -> '*'
+    
+
+mandelbrot_toCoord :: Int -> Int -> Complex Double
+mandelbrot_toCoord x0 y0 =
+    (mandelbrot_xMin + x * mandelbrot_xIncr) :+ (mandelbrot_yMin + y * mandelbrot_yIncr)
+  where
+    x, y :: Double
+    x = fromIntegral x0
+    y = fromIntegral y0
+
+mandelbrot_xIncr :: Double
+mandelbrot_xIncr = (mandelbrot_xMax - mandelbrot_xMin) / (fromIntegral mandelbrot_width - 1)
+
+mandelbrot_yIncr :: Double
+mandelbrot_yIncr = (mandelbrot_yMax - mandelbrot_yMin) / (fromIntegral mandelbrot_height - 1)
+
+mandelbrot_xMin :: Double
+mandelbrot_xMin = -2.5
+
+mandelbrot_xMax :: Double
+mandelbrot_xMax = 1
+
+mandelbrot_yMin :: Double
+mandelbrot_yMin = -1.5
+
+mandelbrot_yMax :: Double
+mandelbrot_yMax = 1
+
+mandelbrot_width :: Int
+mandelbrot_width = 200
+
+mandelbrot_height :: Int
+mandelbrot_height = 40
+
 
 -- main :: IO ()
 -- main = print (example6 3, example6 4, example9 (IntPair 5 1))

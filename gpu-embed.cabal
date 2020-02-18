@@ -26,7 +26,7 @@ library
 
 executable gpu-embed
   main-is:             Test/PluginExample.hs
-  ghc-options:         -main-is Test.PluginExample -O0 +Test.PluginExample
+  ghc-options:         -main-is Test.PluginExample -O0
   profiling: False
   -- other-modules:
   other-extensions:    DeriveGeneric, TemplateHaskellQuotes, PatternSynonyms, TupleSections, CPP, ScopedTypeVariables, TypeOperators, RankNTypes, QuantifiedConstraints, UndecidableInstances, TypeFamilyDependencies, FunctionalDependencies, ExistentialQuantification, InstanceSigs, TypeApplications, AllowAmbiguousTypes, FlexibleInstances, TemplateHaskell, DeriveDataTypeable, LiberalTypeSynonyms, PartialTypeSignatures, DeriveFunctor, StandaloneDeriving, GADTs, DefaultSignatures, ConstraintKinds, DataKinds, KindSignatures, PolyKinds, TypeFamilies, FlexibleContexts, MultiParamTypeClasses
