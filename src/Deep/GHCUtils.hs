@@ -372,7 +372,7 @@ mk_dfun_n :: ModGuts -> OccSet
 -- TODO
 mk_dfun_n _ = emptyOccSet
 
- -- | Possible results from name lookup.
+-- | Possible results from name lookup.
 -- Invariant: One constructor for each NameSpace.
 data Named = NamedId Id
            | NamedDataCon DataCon

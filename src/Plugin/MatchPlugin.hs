@@ -37,6 +37,8 @@ import           Control.Monad.Writer hiding (pass, Alt)
 
 import           Control.Arrow ((&&&), (***), first, second)
 
+import           GHC.Generics
+
 -- import           GHCUtils
 
 -- Just for TH Names:
@@ -252,6 +254,10 @@ whenNotExprTyped guts e m = do
     then return e
     else m
 
+isVar :: Expr a -> Bool
+isVar (Var _) = True
+isVar _ = False
+
 -- 'exprVars' are already of GPUExp type and do not need to be modified
 transformPrims0 :: ModGuts -> Maybe Var -> [(Id, CoreExpr)] -> (TH.Name -> Named) -> [Expr Var] -> Expr Var -> CoreM (Expr Var)
 transformPrims0 guts recName primMap lookupVar exprVars = go
@@ -391,8 +397,31 @@ transformPrims0 guts recName primMap lookupVar exprVars = go
 
         return  (Var constructAp :@ Type aTy :@ Type bTy :@ repDict :@ f' :@ markedX)
 
-    go expr@(Var fn :@ _) = do
-      return expr
+    go expr@(lhs :@ arg)
+      | not (isVar lhs) = whenNotExprTyped guts expr $ do
+          constructAp <- findIdTH guts 'ConstructAp
+
+          let (aTy, bTy) = splitFunTy (exprType lhs)
+
+          repTyCon <- findTyConTH guts ''GPURep
+
+          repDict <- buildDictionaryT guts (mkTyConApp repTyCon [aTy])
+
+          markedLhs <- mark lhs
+          markedArg <- mark arg
+
+          return (Var constructAp :@ Type aTy :@ Type bTy :@ repDict :@ markedLhs :@ markedArg)
+
+    go expr
+      | Just (fId, tyArgs) <- splitTypeApps_maybe expr = whenNotExprTyped guts expr $ do
+          constructId <- findIdTH guts 'Construct
+
+          let expr' = mkTyApps (Var fId) tyArgs
+
+          return (Var constructId :@ Type (exprType expr') :@ expr')
+
+    -- go expr@(Var fn :@ _) = whenNotExprTyped guts expr $ do
+    --   constructExpr guts fn
 
     -- go expr@(Case e wild ty alts@((altCon1, _, _):_))
     --   | DataAlt d <- altCon1 = do
@@ -424,16 +453,18 @@ transformProdMatch guts transformPrims' lookupVar resultTy ty0 (altCon@(DataAlt 
 
       return (Var nullaryMatchId :@ Type ty1 :@ Type resultTy :@ resultTyDict :@ body)
 
-    go body pairTyCon repTyCon (ty1:_) [x] = do
+    go body pairTyCon repTyCon allTys@(ty1:_) [x] = do
       dflags <- getDynFlags
+
+      let ty = pairWrap pairTyCon allTys
 
       oneProdMatchId <- findIdTH guts 'OneProdMatch
 
-      ty1Dict <- buildDictionaryT guts (mkTyConApp repTyCon [ty1])
+      tyDict <- buildDictionaryT guts (mkTyConApp repTyCon [ty])
 
       abs'd <- abstractOver guts x body
 
-      return (Var oneProdMatchId :@ Type ty1 :@ Type resultTy :@ ty1Dict :@ abs'd)
+      return (Var oneProdMatchId :@ Type ty :@ Type resultTy :@ tyDict :@ abs'd)
 
     go body pairTyCon repTyCon (ty1:restTys) (x:xs) = do
       dflags <- getDynFlags
@@ -457,7 +488,34 @@ transformProdMatch guts transformPrims' lookupVar resultTy ty0 (altCon@(DataAlt 
         :@ restTyDict
         :@ abs'd)
 
+    go body pairTyCon repTyCon tys xs = do
+      dflags <- getDynFlags
+
+      error $ "(" ++ showPpr dflags tys ++ ", " ++ showPpr dflags xs ++ ")\n" -- ++ showPpr dflags body
+
     pairWrap pairTyCon = foldr1 (\x acc -> mkTyConApp pairTyCon [x, acc])
+
+-- | GPUExp t  ==>  t
+-- and GPURepTy t  ==>  t
+-- otherwise, it stays the same
+unwrapExpType :: ModGuts -> Type -> CoreM Type
+unwrapExpType guts ty = do
+  expTyCon <- findTyConTH guts ''GPUExp
+  repTyTyCon <- findTyConTH guts ''GPURepTy
+
+  let ty' = case splitTyConApp_maybe ty  of
+              Nothing -> ty
+              Just (tyCon, args) ->
+                if tyCon == expTyCon
+                  then head args
+                  else ty
+
+  case splitTyConApp_maybe ty' of
+    Just (tyCon, args)
+      | tyCon == repTyTyCon -> return (head args)
+    _ -> return ty'
+
+
 
 transformSumMatch :: ModGuts -> (Expr Var -> CoreM (Expr Var)) -> (TH.Name -> Named) -> Expr Var -> Var -> Type -> [Alt Var] -> CoreM (Expr Var)
 
@@ -466,23 +524,36 @@ transformSumMatch guts transformPrims' lookupVar scrutinee wild resultTy alts@(a
   dynFlags <- getDynFlags
 
   repTyCon <- findTyConTH guts ''GPURep
-  repTyTyCon <- findTyConTH guts ''GPURepTy
+  -- repTyTyCon <- findTyConTH guts ''GPURepTy
 
   liftIO $ putStrLn $ showSDoc dynFlags $ ppr resultTy
   liftIO $ putStrLn $ showSDoc dynFlags $ ppr wild
 
   eitherTyCon <- findTyConTH guts ''Either
 
-  let scrRepTy = mkTyConApp repTyCon [exprType scrutinee]
-      scrRepTyTy = mkTyConApp repTyTyCon [exprType scrutinee]
+  scrTy <- unwrapExpType guts (exprType scrutinee)
+  liftIO $ putStrLn $ "$$$$$$$$$$$$ scrTy = " ++ showPpr dynFlags scrTy
+
+  let scrRepTy = mkTyConApp repTyCon [scrTy]
+      -- scrRepTyTy = mkTyConApp repTyTyCon [scrTy]
+
+  scrRepTyTy <- repTyWrap guts scrTy
+
+  -- (topNormCo, topNormTy) <- topNormaliseType' guts scrRepTyTy -- XXX: Should we do things one level at a time like this?
+  -- liftIO $ putStrLn $ "%%%%%%%%%%%%% topNormTy = " ++ showPpr dynFlags topNormTy
+  -- liftIO $ putStrLn $ "        ===> scrRepTyTy = " ++ showPpr dynFlags scrRepTyTy
 
   (scrTyCo, scrTyNorm) <- normaliseTypeCo guts scrRepTyTy
+  -- let (scrTyCo, scrTyNorm) = (topNormCo, topNormTy)
 
   sumTypes <- listTypesWith guts (getName eitherTyCon) scrTyNorm
 
   liftIO $ putStrLn ("sumTypes = " ++ showPpr dynFlags sumTypes)
+  liftIO $ putStrLn $ "{{" ++ showPpr dynFlags alts ++ "}}"
+  liftIO $ putStrLn $ "scrutinee: " ++ showPpr dynFlags scrutinee
 
-  nRepType <- normaliseType' guts (exprType scrutinee)
+  nRepType <- normaliseType' guts scrTy
+  -- (_, nRepType) <- topNormaliseType' guts scrTy
   liftIO $ putStrLn $ showSDoc dynFlags $ ppr nRepType
 
   liftIO $ putStrLn $ showSDoc dynFlags $ ppr sumTypes
@@ -500,7 +571,7 @@ transformSumMatch guts transformPrims' lookupVar scrutinee wild resultTy alts@(a
 
 
   return (Var caseExpId
-           :@ Type (exprType scrutinee)
+           :@ Type scrTy
            :@ Type scrTyNorm
            :@ Type resultTy
            :@ repTypeDict
@@ -552,9 +623,12 @@ transformSumMatch guts transformPrims' lookupVar scrutinee wild resultTy alts@(a
       dictA <- buildDictionaryT guts (mkTyConApp repTyCon [ty1])
       dictB <- buildDictionaryT guts (mkTyConApp repTyCon [restTy])
 
+      ty1' <- repTyUnwrap guts ty1
+      restTy' <- repTyUnwrap guts restTy
+
       return (Var sumMatchId
-                :@ Type ty1
-                :@ Type restTy
+                :@ Type ty1'
+                :@ Type restTy'
                 :@ Type resultTy
                 :@ dictA
                 :@ dictB
@@ -710,8 +784,28 @@ abstractOver guts v e = do
 -- | listTypesWith (lookupVar ''(,)) (a, (b, c))  ==>  [a, b, c]
 -- listTypesWith (lookupVar ''Either) (Either a (Either b c))  ==>  [a, b, c]
 listTypesWith :: ModGuts -> Name -> Type -> CoreM [Type]
-listTypesWith guts n = go <=< normaliseType' guts
+listTypesWith guts n = go <=< (Data.transformM normaliseGenerics) -- <=< (fmap snd . topNormaliseType' guts)
   where
+    -- TODO: Fully normalise subterms of the type which are of the form
+    -- GPURep (M1 ...)
+    normaliseGenerics :: Type -> CoreM Type
+    normaliseGenerics ty = do
+
+      repTyCon <- findTyConTH guts ''GPURepTy
+      m1TyCon <- findTyConTH guts ''M1
+
+      case splitTyConApp_maybe ty of
+        Just (repTyConPossible, (arg:_))
+          | repTyConPossible == repTyCon
+            -> case splitTyConApp_maybe arg of
+                   Just (m1TyConPossible, _)
+                     | m1TyConPossible == m1TyCon
+                        || m1TyConPossible == repTyCon -- Collapse GPURepTy's
+                          -> normaliseType' guts ty
+                   _ -> return ty
+        _ -> return ty
+
+
     go ty =
       case splitTyConApp_maybe ty of
         Nothing -> return [ty]
@@ -853,6 +947,74 @@ normaliseTypeCo guts ty =
     famInstEnvs <- getFamInstEnvs
     return (normaliseType famInstEnvs Nominal ty)
 
+topNormaliseType' :: ModGuts -> Type -> CoreM (Coercion, Type)
+topNormaliseType' guts ty = (secondM (collapseRepTys guts) =<<) $ do
+  dflags <- getDynFlags
+
+  runTcM guts . fmap fst . runTcS $ do
+    famInstEnvs <- getFamInstEnvs
+    
+    case topNormaliseType_maybe famInstEnvs ty of
+      Nothing -> return (normaliseType famInstEnvs Nominal ty) --error $ "topNormaliseType': " ++ showPpr dflags ty
+      Just (co, ty')  ->
+        -- case splitTyConApp_maybe ty ->
+        --   Just (tyCon, _)
+        --     | tyCon == 
+        case setNominalRole_maybe (coercionRole co) co of
+          Just co' -> return (co', ty')
+          Nothing -> return (co, ty')
+
+-- | GPURepTy (GPURepTy a)  ==>  GPURepTy a
+collapseRepTys :: ModGuts -> Type -> CoreM Type
+collapseRepTys guts = Data.transformM go
+  where
+    go ty = do
+      repTyTyCon <- findTyConTH guts ''GPURepTy
+
+      case splitTyConApp_maybe ty of
+        Just (tyCon, [arg])
+          | tyCon == repTyTyCon ->
+              case splitTyConApp_maybe arg of
+                Just (tyCon', [arg'])
+                  | tyCon' == repTyTyCon -> return arg
+                _ -> return ty
+        _ -> return ty
+
+
+
+-- | Wrap in GPURepTy if it isn't already wrapped in a GPURepTy
+repTyWrap :: ModGuts -> Type -> CoreM Type
+repTyWrap guts ty = do
+  repTyTyCon <- findTyConTH guts ''GPURepTy
+
+  case splitTyConApp_maybe ty of
+    Just (tyCon, _)
+      | tyCon == repTyTyCon -> return ty
+    _                       -> return (mkTyConApp repTyTyCon [ty])
+
+-- | GPURepTy a  ==>  a
+repTyUnwrap  :: ModGuts -> Type -> CoreM Type
+repTyUnwrap guts ty = do
+  repTyTyCon <- findTyConTH guts ''GPURepTy
+
+  case splitTyConApp_maybe ty of
+    Just (tyCon, [arg])
+      | tyCon == repTyTyCon -> return arg
+    _ -> return ty
+
+-- | Splits: fVar @ty1 @ty2 ... @tyN    (where fVar is a Var)
+splitTypeApps_maybe :: Expr a -> Maybe (Var, [Type])
+splitTypeApps_maybe (lhs0 :@ Type tyN) =
+  fmap (second (reverse . (tyN:))) (go lhs0)
+  where
+    go (Var f)            = Just (f, [])
+    go (Var f :@ Type ty) = Just (f, [ty])
+    go (Var f :@ _)       = Nothing
+    go (lhs   :@ Type ty) = fmap (second (ty:)) (go lhs)
+    go _                  = Nothing
+splitTypeApps_maybe _ = Nothing
+
+   
 
 findIdTH :: ModGuts -> TH.Name -> CoreM Id
 findIdTH guts thName = do
@@ -881,6 +1043,7 @@ findTypeTH guts thName = do
     case nameMaybe of
       Nothing -> error $ "findTypeTH: Cannot find " ++ show thName
       Just name -> findType guts name emptyVarSet
+
 
 -- Modified from 'Inst':
 

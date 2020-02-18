@@ -179,23 +179,35 @@ instance GPURep a => GPURep (Maybe a) where
 
 
 instance (GPURep a, GPURep b) => GPURep (Either a b) where
-  type GPURepTy (Either a b) = Either (GPURepTy a) (GPURepTy b)
+  -- type GPURepTy (Either a b) = Either (GPURepTy a) (GPURepTy b)
+  type GPURepTy (Either a b) = Either a b
 
-  rep (Left x) = LeftExp (rep x)
-  rep (Right y) = RightExp (rep y)
+  rep (Left x) = LeftExp (Construct x)
+  rep (Right y) = RightExp (Construct y)
 
-  rep' (Left x) = Left $ rep' x
-  rep' (Right y) = Right $ rep' y
+  rep' = id
+  unrep' = id
 
-  unrep' (Left x) = Left $ unrep' x
-  unrep' (Right y) = Right $ unrep' y
+  -- rep (Left x) = LeftExp (rep x)
+  -- rep (Right y) = RightExp (rep y)
+
+  -- rep' (Left x) = Left $ rep' x
+  -- rep' (Right y) = Right $ rep' y
+
+  -- unrep' (Left x) = Left $ unrep' x
+  -- unrep' (Right y) = Right $ unrep' y
 
 instance (GPURep a, GPURep b) => GPURep (a, b) where
-  type GPURepTy (a, b) =  (GPURepTy a, GPURepTy b)
+  -- type GPURepTy (a, b) =  (GPURepTy a, GPURepTy b)
+  type GPURepTy (a, b) =  (a, b)
 
-  rep (x, y) = PairExp (rep x) (rep y)
-  rep' (x, y) = (rep' x, rep' y)
-  unrep' (x, y) = (unrep' x, unrep' y)
+  rep (x, y) = PairExp (Construct x) (Construct y) --uncurry PairExp
+  rep' = id
+  unrep' = id
+
+  -- rep (x, y) = PairExp (rep x) (rep y)
+  -- rep' (x, y) = (rep' x, rep' y)
+  -- unrep' (x, y) = (unrep' x, unrep' y)
 
 instance (GPURep a, GPURep b, GPURep c) => GPURep (a, b, c) where
 instance (GPURep a, GPURep b, GPURep c, GPURep d) => GPURep (a, b, c, d) where
@@ -236,13 +248,16 @@ instance (GPURep (p x), GPURep (q x)) => GPURep ((p :*: q) x) where
   rep' (x :*: y) = (rep' x, rep' y)
   unrep' (x, y) = (unrep' x :*: unrep' y)
 
+-- instance GPURep c => GPURep (K1 R c p)
+
 instance GPURep c => GPURep (K1 i c p) where
-  type GPURepTy (K1 i c p) = GPURepTy c
+  type GPURepTy (K1 i c p) = c --GPURepTy c
 
   rep = Repped . rep'
 
-  rep' (K1 x) = rep' x
-  unrep' = K1 . unrep'
+  rep' (K1 x) = x --rep' x
+  unrep' = K1
+  -- unrep' = K1 . unrep'
 
 instance GPURep (U1 p) where
   type GPURepTy (U1 p) = ()
