@@ -426,7 +426,7 @@ transformPrims0 guts recName primMap lookupVar exprVars = go
         return  (Var constructAp :@ Type aTy :@ Type bTy :@ repDict :@ f' :@ markedX)
 
     go expr@(lhs :@ arg)
-      | not (isVar lhs) && not (isDict lhs),
+      | not (isVar lhs) && not (isDict lhs) && not (isDict arg),
         Just (aTy, bTy) <- splitFunTy_maybe (exprType lhs) = whenNotExprTyped guts expr $ do
           constructAp <- findIdTH guts 'ConstructAp
 
@@ -868,6 +868,7 @@ primMapTH =
   [('not, 'Not)
   ,('fromEnum, 'FromEnum)
   ,('fromIntegral, 'FromIntegral)
+  ,('fromInteger, 'deepFromInteger)
   ,('sqrt, 'Sqrt)
   -- ,('the, 'the_repr)
 

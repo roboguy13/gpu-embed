@@ -111,6 +111,10 @@ data GPUExp t where
   Construct :: a -> GPUExp a
   ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
+-- For convenience in Core transformation
+deepFromInteger :: Num b => Integer -> GPUExp b
+deepFromInteger = FromIntegral . Lit
+
 runIter :: forall a b. (GPURep a, GPURep b) => (a -> Iter b a) -> a -> b
 runIter f = go
   where
