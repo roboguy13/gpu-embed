@@ -112,6 +112,11 @@ pass guts = do
                           named <- findNamed guts name emptyVarSet
                           return (nameTH, named))
 
+  dflags <- getDynFlags
+
+  liftIO $ putStrLn $ "instenv = {{" ++ showPpr dflags (mg_inst_env guts) ++ "}}"
+  liftIO $ putStrLn ""
+
   -- bindsOnlyPass return guts
   bindsOnlyPass (mapM (transformBind guts (mg_inst_env guts) primMap (getGPUExprNamedsFrom gpuExprNamedMap))) guts
 
@@ -226,13 +231,16 @@ transformPrims guts recName primMap lookupVar = tr --Data.descendM tr <=< tr
   where
     tr = transformPrims0 guts recName primMap lookupVar []
 
--- Only checks the name of a Var
-isDict :: CoreExpr -> Bool
-isDict (Var v) =
+isDictVar :: Var -> Bool
+isDictVar v =
   let str = occNameString (occName v)
   in
   take 2 str == "$f" || take 2 str == "$d"
-isDict _ = False
+
+-- | Only checks the name of a Var
+isDict :: CoreExpr -> Bool
+isDict (Var v) = isDictVar v
+isDict _       = False
 
 -- | Does the expression already have a type of the form GPUExp (...)?
 hasExprType :: ModGuts -> CoreExpr -> CoreM Bool
@@ -373,7 +381,26 @@ transformPrims0 guts recName primMap lookupVar exprVars = go
 
         litId <- findIdTH guts 'Expr.Lit
         return (Var litId :@ Type intTy :@ numDict :@ expr)
+
+      | "D#" <- occNameString (occName f) = do
+        numTyCon <- findTyConTH guts ''Num
+        doubleTy <- findTypeTH guts ''Double
+        numDict <- buildDictionaryT guts (mkTyConApp numTyCon [doubleTy])
+
+        litId <- findIdTH guts 'Expr.Lit
+        return (Var litId :@ Type doubleTy :@ numDict :@ expr)
     
+      | "F#" <- occNameString (occName f) = do
+        numTyCon <- findTyConTH guts ''Num
+        floatTyCon <- findTyConTH guts ''Float
+        dflags <- getDynFlags
+        let floatTy = mkTyConApp floatTyCon []
+        liftIO $ putStrLn $ "floatTyCon: " ++ (nameStableString (tyConName floatTyCon))
+        numDict <- buildDictionaryT guts (mkTyConApp numTyCon [floatTy])
+
+        litId <- findIdTH guts 'Expr.Lit
+        return (Var litId :@ Type floatTy :@ numDict :@ expr)
+
     go expr@(Var f :@ x)
       | not (isTypeArg x) && 
         not (isDerivedOccName (occName f)) && last (occNameString (occName f)) /= '#' = 
@@ -413,12 +440,13 @@ transformPrims0 guts recName primMap lookupVar exprVars = go
           return (Var constructAp :@ Type aTy :@ Type bTy :@ repDict :@ markedLhs :@ markedArg)
 
     go expr
-      | Just (fId, tyArgs) <- splitTypeApps_maybe expr = whenNotExprTyped guts expr $ do
+      | Just (fId, tyArgs, dicts) <- splitTypeApps_maybe expr = whenNotExprTyped guts expr $ do
           constructId <- findIdTH guts 'Construct
 
           let expr' = mkTyApps (Var fId) tyArgs
+              expr'' = mkApps expr' (map Var dicts)
 
-          return (Var constructId :@ Type (exprType expr') :@ expr')
+          return (Var constructId :@ Type (exprType expr'') :@ expr'')
 
     -- go expr@(Var fn :@ _) = whenNotExprTyped guts expr $ do
     --   constructExpr guts fn
@@ -1002,16 +1030,42 @@ repTyUnwrap guts ty = do
       | tyCon == repTyTyCon -> return arg
     _ -> return ty
 
--- | Splits: fVar @ty1 @ty2 ... @tyN    (where fVar is a Var)
-splitTypeApps_maybe :: Expr a -> Maybe (Var, [Type])
-splitTypeApps_maybe (lhs0 :@ Type tyN) =
-  fmap (second (reverse . (tyN:))) (go lhs0)
+-- | Splits: fVar @ty1 @ty2 ... @tyN $fdict1 ... $fdictM    (where fVar is a Var)
+splitTypeApps_maybe :: Expr a -> Maybe (Var, [Type], [Var])
+splitTypeApps_maybe (lhs0 :@ x) =
+  case x of
+    Type tyN -> do --fmap (second (reverse . (tyN:))) (go lhs0)
+          (f, tys, dicts) <- go lhs0
+          return (f, reverse (tyN:tys), reverse dicts)
+    Var d
+      | True <- isDictVar d -> do
+          (f, tys, dicts) <- goDicts lhs0
+          return (f, reverse tys, reverse (d:dicts))
+    _ -> Nothing
   where
-    go (Var f)            = Just (f, [])
-    go (Var f :@ Type ty) = Just (f, [ty])
+    go (Var f)            = Just (f, [], [])
+    go (Var f :@ Type ty) = Just (f, [ty], [])
+
     go (Var f :@ _)       = Nothing
-    go (lhs   :@ Type ty) = fmap (second (ty:)) (go lhs)
+
+    go (lhs   :@ Type ty) = do
+          (f, tys, dicts) <- go lhs
+          return (f, ty:tys, dicts)
+
+
     go _                  = Nothing
+
+
+    goDicts (Var f)          = Just (f, [], [])
+    goDicts (Var f :@ Var d)
+      | True <- isDictVar d  = Just (f, [], [d])
+    goDicts (lhs   :@ Var d)
+      | True <- isDictVar d  = do
+          (f, tys, dicts) <- goDicts lhs
+          return (f, tys, d:dicts)
+
+    goDicts expr@(_lhs :@ Type _ty) = go expr
+
 splitTypeApps_maybe _ = Nothing
 
    

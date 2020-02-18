@@ -20,6 +20,12 @@ import           TcType
 
 import           TyCoRep
 
+import           TcErrors
+
+import           InstEnv
+
+import           Class
+
 import           Coercion
 
 import           Finder
@@ -62,6 +68,9 @@ import qualified Data.Generics.Uniplate.DataOnly as Data
 buildDictionary :: ModGuts -> Id -> CoreM (Id, [CoreBind])
 buildDictionary guts evar = do
     dflags <- getDynFlags
+    hsc_env <- getHscEnv
+    eps <- liftIO $ hscEPS hsc_env
+
     (i, bs) <- runTcM guts $ do
 #if __GLASGOW_HASKELL__ > 710
         loc <- getCtLocM (GivenOrigin UnkSkol) Nothing
@@ -70,22 +79,25 @@ buildDictionary guts evar = do
 #endif
         let predTy = varType evar
 #if __GLASGOW_HASKELL__ > 710
-            nonC = mkNonCanonical $ CtWanted { ctev_pred = predTy, ctev_dest = EvVarDest evar, ctev_loc = loc, ctev_nosh = WDeriv }
-            wCs = mkSimpleWC [cc_ev nonC]
+            wanted =  CtWanted { ctev_pred = predTy, ctev_dest = EvVarDest evar, ctev_loc = loc, ctev_nosh = WDeriv }
+            -- nonC = mkNonCanonical wanted
+            -- wCs = mkSimpleWC [cc_ev nonC]
+            wCs = mkSimpleWC [wanted]
         -- TODO: Make sure solveWanteds is the right function to call.
-        (_wCs', bnds) <- second evBindMapBinds <$> runTcS (solveWanteds wCs)
+        (wCs', bnds) <- second evBindMapBinds <$> runTcS (solveWanteds wCs)
+        -- (wCs'', bnds') <- second evBindMapBinds <$> runTcS (solveWanteds wCs')
         -- liftIO $ putStrLn (showPpr dflags bnds)
 #else
             nonC = mkNonCanonical $ CtWanted { ctev_pred = predTy, ctev_evar = evar, ctev_loc = loc }
             wCs = mkSimpleWC [nonC]
         (_wCs', bnds) <- solveWantedsTcM wCs
 #endif
-        -- reportAllUnsolved _wCs' -- this is causing a panic with dictionary instantiation
+        reportAllUnsolved wCs' -- this is causing a panic with dictionary instantiation
                                   -- revist and fix!
         return (evar, bnds)
     bnds <- runDsM guts $ dsEvBinds bs
-    bnds2 <- mapM (tryToFillCoHoles guts) bnds
-    return (i,bnds2)
+    -- bnds2 <- mapM (tryToFillCoHoles guts) bnds
+    return (i,bnds)
 
 
 buildDictionaryT :: ModGuts -> Type -> CoreM CoreExpr
@@ -175,6 +187,18 @@ newIdH nm ty = mkLocalId <$> newName' nm <*> return ty
 newName' :: MonadUnique m => String -> m Name
 newName' nm = mkSystemVarName <$> getUniqueM <*> return (mkFastString nm)
 
+-- initTcFromModGuts
+--   :: HscEnv
+--   -> ModGuts
+--   -> HscSource
+--   -> Bool
+--   -> TcM r
+--   -> IO (Messages, Maybe r)
+-- initTcFromModGuts hsc_env guts hsc_src keep_rn_syntax do_this
+--   = let realSrcLoc = realSrcLocSpan $ mkRealSrcLoc (fsLit "Top level") 1 1
+--     in
+--     initTc hsc_env hsc_src keep_rn_syntax (mg_module guts) realSrcLoc do_this
+
 -- | Re-Setup the typechecking environment from a ModGuts
 initTcFromModGuts
     :: HscEnv
@@ -229,6 +253,9 @@ initTcFromModGuts hsc_env guts hsc_src keep_rn_syntax do_this
  -}
 
         costCentreState_var <- newIORef newCostCentreState ;
+        eps <- hscEPS hsc_env ;
+
+
 
         let {
              dflags = hsc_dflags hsc_env ;
@@ -269,6 +296,10 @@ initTcFromModGuts hsc_env guts hsc_src keep_rn_syntax do_this
                 tcg_type_env       = type_env,
                 tcg_type_env_var   = type_env_var,
                 tcg_inst_env       = mg_inst_env guts,
+                -- tcg_inst_env       = extendInstEnvList (mg_inst_env guts)
+                --                       (filter (\eps_inst ->
+                --                                   not (memberInstEnv (mg_inst_env guts) eps_inst))
+                --                         (instEnvElts (eps_inst_env eps))),
                 tcg_fam_inst_env   = mg_fam_inst_env guts,
                 tcg_ann_env        = emptyAnnEnv,
 #if __GLASGOW_HASKELL__ <= 710 
@@ -288,7 +319,7 @@ initTcFromModGuts hsc_env guts hsc_src keep_rn_syntax do_this
                 tcg_fam_insts      = [],
                 tcg_rules          = [],
                 tcg_th_used        = th_var,
-                tcg_imports        = emptyImportAvails,
+                tcg_imports        = emptyImportAvails {imp_orphs = dep_orphs (mg_deps guts)},
                 tcg_dus            = emptyDUs,
                 tcg_ev_binds       = emptyBag,
                 tcg_fords          = [],
@@ -354,6 +385,7 @@ initTcFromModGuts hsc_env guts hsc_src keep_rn_syntax do_this
 
         return (msgs, final_res)
     }
+
 
 mk_type_env :: ModGuts -> TypeEnv
 -- copied from GHC.compileCore
@@ -586,4 +618,17 @@ lookupRdrNameInModule hsc_env guts mod_name rdr_name = do
 -- | Get the unqualified name from a 'NamedThing'.
 unqualifiedName :: NamedThing nm => nm -> String
 unqualifiedName = getOccString
+
+
+-- From GHC.Runtime.Eval:
+
+-- Stricter version of isTyVarClassPred that requires all TyConApps to have at least
+-- one argument or for the head to be a TyVar. The reason is that we want to ensure
+-- that all residual constraints mention a type-hole somewhere in the constraint,
+-- meaning that with the correct choice of a concrete type it could be possible for
+-- the constraint to be discharged.
+isSatisfiablePred :: PredType -> Bool
+isSatisfiablePred ty = case getClassPredTys_maybe ty of
+    Just (_, tys@(_:_)) -> all isTyVarTy tys
+    _                   -> isTyVarTy ty
 

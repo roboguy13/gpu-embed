@@ -4,6 +4,8 @@
 
 module Test.PluginExample where
 
+import           GHC.Float
+
 import           Data.List
 
 import           Deep.Expr
@@ -138,17 +140,32 @@ example9 p =
           then example8 p
           else example9 (IntPair (x-1) (x*y))))
 
-mandelbrot_nextZ :: (Complex Double, Complex Double) -> Complex Double
+floatTest :: Float
+floatTest =
+  internalize (externalize
+    (case True of
+      False -> 3 * 2
+      True -> 3 * 3))
+
+mandelbrot_nextZ :: (Complex Float, Complex Float) -> Complex Float
 mandelbrot_nextZ t =
   internalize (externalize
     (case t of
       (c, z) -> (z*z) + c))
 
-mandelbrot_helper :: (Int, Complex Double, Complex Double) -> Maybe Int
-mandelbrot_helper t =
-  internalize (externalize
-    (case t of
-      (iters, c, z) -> Just 1))
+-- mandelbrot_helper :: (Int, Complex Float, Complex Float) -> Maybe Int
+-- mandelbrot_helper t =
+--   internalize (externalize
+--     (case t of
+--       (iters, c, z) ->
+--         if iters == 50
+--           then Nothing
+--           else
+--             case z of
+--               real :+ imag ->
+--                 if (real*real) > 4
+--                   then Just iters
+--                   else Nothing))
 
 main :: IO ()
 main = return ()
