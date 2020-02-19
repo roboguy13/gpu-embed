@@ -1,2 +1,5 @@
 profiling: False
-optimization: False
+documentation: False
+
+package *
+  documentation: False

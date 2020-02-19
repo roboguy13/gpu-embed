@@ -9,6 +9,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DataKinds #-}
 
 module Deep.Expr where
 
@@ -22,6 +24,10 @@ import           GHC.Generics
 import           Language.Haskell.TH (Name)
 
 import           Data.Complex
+
+import           Control.Monad.State
+
+import           Data.Type.Equality
 
 -- Idea: Represent a pattern match of a particular type as
 --    KnownSymbol name => Proxy name -> MatchType name
@@ -38,23 +44,28 @@ import           Data.Complex
 -- TODO: Should this just be a function type? Maybe it could be a function
 -- from s -> t, where is a nested pair type, and we use projection
 -- combinators to extract the values inside the function.
-data ProdMatch s t where
-  ProdMatch :: forall a b r.
-    (GPURep a, GPURep b)
-       => (GPUExp a -> ProdMatch b r) -> ProdMatch  (a, b) r
 
-  OneProdMatch :: forall a r. (GPURep a) => (GPUExp a -> GPUExp r) -> ProdMatch a r
-  NullaryMatch :: forall a r. GPURep r => GPUExp r -> ProdMatch a r
+-- data ProdMatch s t where
+--   ProdMatch :: forall a b r.
+--     (GPURep a, GPURep b)
+--        => (GPUExp a -> ProdMatch b r) -> ProdMatch  (a, b) r
 
-data SumMatch s t where
-  SumMatch :: forall a b r.
-    (GPURep a, GPURep b, GPURepTy b ~ b)
-        => ProdMatch a r -> SumMatch b r -> SumMatch (Either a b) r
+--   OneProdMatch :: forall a r. (GPURep a) => (GPUExp a -> GPUExp r) -> ProdMatch a r
+--   NullaryMatch :: forall a r. GPURep r => GPUExp r -> ProdMatch a r
 
-  EmptyMatch :: forall r. SumMatch Void r
+-- data SumMatch s t where
+--   SumMatch :: forall a b r.
+--     (GPURep a, GPURep b, GPURepTy b ~ b)
+--         => ProdMatch a r -> SumMatch b r -> SumMatch (Either a b) r
 
-  OneSumMatch :: forall a b. (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch a b
+--   EmptyMatch :: forall r. SumMatch Void r
 
+--   OneSumMatch :: forall a b. (GPURep a, GPURep b, GPURepTy a ~ a) => ProdMatch a b -> SumMatch a b
+
+-- | The function this contains just is used to provide a semantics for
+-- interpreting a GPUExp
+newtype SumMatch  a b = MkSumMatch  { runSumMatch  :: a -> b }
+newtype ProdMatch a b = MkProdMatch { runProdMatch :: a -> b }
 
 -- Done (case ... of A -> x; B -> y)  ==>  (case ... of A -> Done x; B -> Done y)
 data Iter a b
@@ -63,17 +74,38 @@ data Iter a b
   deriving (Functor, Generic)
 
 data GPUExp t where
-  CaseExp :: forall t x r. (GPURep t, GPURepTy t ~ x) => GPUExp t -> SumMatch x r -> GPUExp r
+  CaseExp :: forall t x r. (GPURep t, GPURepTy x ~ x, GPURepTy t ~ x) => GPUExp t -> GPUExp (SumMatch x r) -> GPUExp r
+
+  SumMatchExp :: forall a b r.
+    (GPURep a, GPURep b, GPURepTy b ~ b)
+      => GPUExp (ProdMatch a r) -> GPUExp (SumMatch b r) -> GPUExp (SumMatch (Either a b) r)
+
+  ProdMatchExp :: forall a b r.
+    (GPURep a, GPURep b)
+      => (GPUExp a -> GPUExp (ProdMatch b r)) -> GPUExp (ProdMatch (a, b) r)
+
+  NullaryMatch :: forall a r.
+    GPURep a
+      => GPUExp r -> GPUExp (ProdMatch a r)
+
+  OneSumMatch :: forall a b.
+    (GPURep a, GPURep b, GPURepTy a ~ a)
+      => GPUExp (ProdMatch a b) -> GPUExp (SumMatch a b)
+
+  OneProdMatch :: forall a b.
+    (GPURep a)
+      => (GPUExp a -> GPUExp b) -> GPUExp (ProdMatch a b)
+
+  EmptyMatch :: forall b. GPUExp (SumMatch Void b)
 
   FalseExp :: GPUExp Bool
   TrueExp :: GPUExp Bool
 
   Repped :: GPURep a => GPURepTy a -> GPUExp a
 
-  Lam :: GPURep a => Name -> GPUExp b -> GPUExp (a -> b)
-  Var :: Proxy a -> Name -> GPUExp a -- Constructed internally
-
-  -- Lam :: GPURep a =>  -> GPUExp (a -> b)
+  -- Lam :: GPURep a => Int -> GPUExp b -> GPUExp (a -> b)
+  Lam :: forall a b. Int -> GPUExp a -> GPUExp b -> GPUExp a
+  Var :: forall a. Int -> GPUExp a -- Constructed internally
 
   Apply :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
@@ -100,6 +132,8 @@ data GPUExp t where
   RightExp :: GPUExp b -> GPUExp (Either a b)
 
   PairExp :: GPUExp a -> GPUExp b -> GPUExp (a, b)
+  FstExp :: GPUExp (a, b) -> GPUExp a
+  SndExp :: GPUExp (a, b) -> GPUExp b
 
   StepExp :: forall a b. GPUExp b -> GPUExp (Iter a b)
   DoneExp :: forall a b. GPUExp a -> GPUExp (Iter a b)
@@ -110,6 +144,19 @@ data GPUExp t where
 
   Construct :: a -> GPUExp a
   ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
+
+-- -- Used for intermediate transformations
+-- unLam :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
+-- unLam (Lam name body) = go
+--   where
+--     -- | go x   ==>  body[name|->x]
+--     go x = undefined
+-- unLam _ = error "unLam: Expected a 'Lam'"
+
+-- subst :: Name -> a -> GPUExp b -> GPUExp b
+-- subst name x = go
+--   where
+--     go = error "subst"
 
 -- For convenience in Core transformation
 deepFromInteger :: Num b => Integer -> GPUExp b
@@ -325,8 +372,8 @@ instance {-# INCOHERENT #-} (LiftedFn b ~ GPUExp b) => ConstructC b where
     construct' = id
 
 -- Should this just produce an error?
-sumMatchAbs :: GPURep s => SumMatch (GPURepTy s) t -> s -> t
-sumMatchAbs (SumMatch p q) =
+sumMatchAbs :: forall s t. (GPURepTy (GPURepTy s) ~ GPURepTy s, GPURep s) => GPUExp (SumMatch (GPURepTy s) t) -> s -> t
+sumMatchAbs (SumMatchExp p q) =
   \x0 ->
     let x = rep' x0
     in
@@ -334,10 +381,11 @@ sumMatchAbs (SumMatch p q) =
       Left  a -> prodMatchAbs p a
       Right b -> sumMatchAbs q b
 sumMatchAbs EmptyMatch = \_ -> error "Non-exhaustive match"
-sumMatchAbs (OneSumMatch f) = prodMatchAbs f . unrep' . rep' -- TODO: Is this reasonable?
+sumMatchAbs (OneSumMatch f) =
+    prodMatchAbs f . rep'
 
-prodMatchAbs :: GPURep s => ProdMatch s t -> s -> t
-prodMatchAbs (ProdMatch f) =
+prodMatchAbs :: GPURep s => GPUExp (ProdMatch s t) -> s -> t
+prodMatchAbs (ProdMatchExp f) =
   \pair ->
     case pair of
       (x, y) -> prodMatchAbs (f (rep x)) y
@@ -378,6 +426,13 @@ gpuAbs (IfThenElse cond t f)
 gpuAbs (Construct x) = x
 gpuAbs (ConstructAp f x) = gpuAbs f (gpuAbs x)
 
+gpuAbs e@(SumMatchExp {}) = MkSumMatch (sumMatchAbs e)
+gpuAbs e@(OneSumMatch {}) = MkSumMatch (sumMatchAbs e)
+gpuAbs EmptyMatch = MkSumMatch absurd
+
+gpuAbs e@(ProdMatchExp {}) = MkProdMatch (prodMatchAbs e)
+gpuAbs e@(OneProdMatch {}) = MkProdMatch (prodMatchAbs e)
+gpuAbs e@(NullaryMatch {}) = MkProdMatch (prodMatchAbs e)
 
 class Canonical t where
   type GenericOp t :: (* -> *) -> (* -> *) -> * -> *

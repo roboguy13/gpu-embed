@@ -4,6 +4,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MagicHash #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Plugin.MatchPlugin (plugin) where
 
@@ -34,10 +35,12 @@ import           Pair
 
 import           Control.Monad
 import           Control.Monad.Writer hiding (pass, Alt)
+import           Control.Monad.State
 
 import           Control.Arrow ((&&&), (***), first, second)
 
 import           GHC.Generics
+import           GHC.Types (Int(..))
 
 -- import           GHCUtils
 
@@ -49,7 +52,6 @@ import qualified Language.Haskell.TH.Syntax as TH
 import           TcRnTypes
 import           TcSimplify
 import           TcMType
-import           TcRnMonad
 import           TcSMonad
 import           TcEvidence
 import           TcType
@@ -58,7 +60,6 @@ import           Finder
 import           LoadIface
 
 import           DsBinds
-import           DsMonad
 
 import           HsBinds
 import           HsDecls
@@ -80,6 +81,16 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import           Data.Char
 import           Data.List
+
+newtype UniqueSupply m a = UniqueSupply (StateT Int m a)
+  deriving (Functor, Applicative, Monad, MonadTrans, MonadIO)
+
+
+newUnique :: Monad m => UniqueSupply m Int
+newUnique = UniqueSupply (modify (+1) *> get)
+
+runUniqueSupply :: Monad m => UniqueSupply m a -> m a
+runUniqueSupply (UniqueSupply us) = evalStateT us 0
 
 infixl 0 :@
 pattern f :@ x = App f x
@@ -223,8 +234,11 @@ hasExprType guts e = do
   return $ hasExprTy' expTyCon e
 
 hasExprTy' :: TyCon -> CoreExpr -> Bool
-hasExprTy' expTyCon e =
-  case splitTyConApp_maybe (exprType e) of
+hasExprTy' expTyCon e = isExprTy expTyCon (exprType e)
+
+isExprTy :: TyCon -> Type -> Bool
+isExprTy expTyCon ty =
+  case splitTyConApp_maybe ty of
     Nothing -> False
     Just (t, _) -> t == expTyCon
 
@@ -239,28 +253,32 @@ isVar :: Expr a -> Bool
 isVar (Var _) = True
 isVar _ = False
 
+-- Mark for further transformation
+mark0 :: ModGuts -> Expr Var -> CoreM (Expr Var)
+mark0 guts x = do
+  eType <- hasExprType guts x
+  if eType
+    then return x
+    else do
+      let xTy = exprType x
+
+      externalizeName <- findIdTH guts 'externalize
+
+      repTyCon <- findTyConTH guts ''GPURep
+
+      dict <- buildDictionaryT guts (mkTyConApp repTyCon [xTy])
+
+      return (Var externalizeName :@ Type xTy :@ dict :@ x)
+
 -- 'exprVars' are already of GPUExp type and do not need to be modified
 transformPrims0 :: ModGuts -> Maybe Var -> [(Id, CoreExpr)] -> [Expr Var] -> Expr Var -> CoreM (Expr Var)
-transformPrims0 guts recName primMap exprVars = go
+transformPrims0 guts recName primMap exprVars = {- transformLams guts mark <=< -} go
   where
+    mark = mark0 guts
+
     builtin :: Id -> Maybe (Expr Var)
     builtin v = lookup v primMap
 
-    -- Mark for further transformation
-    mark x = do
-      eType <- hasExprType guts x
-      if eType
-        then return x
-        else do
-          let xTy = exprType x
-
-          externalizeName <- findIdTH guts 'externalize
-
-          repTyCon <- findTyConTH guts ''GPURep
-
-          dict <- buildDictionaryT guts (mkTyConApp repTyCon [xTy])
-
-          return (Var externalizeName :@ Type xTy :@ dict :@ x)
 
 
     replaceVarType0 v ty expr@(Var v')
@@ -419,18 +437,21 @@ transformPrims0 guts recName primMap exprVars = go
     go expr = return expr
 
 transformProdMatch :: ModGuts -> (Expr Var -> CoreM (Expr Var)) -> Type -> Type -> Alt Var -> CoreM (Expr Var)
-transformProdMatch guts transformPrims' resultTy ty0 (altCon@(DataAlt dataAlt), vars0, body0) = do
+transformProdMatch guts mark resultTy ty0_ (altCon@(DataAlt dataAlt), vars0, body0) = do
+  dflags <- getDynFlags
   repTyCon <- findTyConTH guts ''GPURep
+
+  ty0 <- (unwrapExpType guts <=< unwrapExpType guts) ty0_
+  liftIO $ putStrLn $ "ty0 = " ++ showPpr dflags ty0
 
   repType <- computeRepType guts ty0
 
   pairTyCon <- findTyConTH guts ''(,)
   prodTypes <- listTypesWith guts (getName pairTyCon) repType
 
-  dflags <- getDynFlags
 
 
-  body <- transformPrims' body0
+  body <- mark body0
 
 
   go body pairTyCon repTyCon prodTypes vars0
@@ -458,7 +479,7 @@ transformProdMatch guts transformPrims' resultTy ty0 (altCon@(DataAlt dataAlt), 
     go body pairTyCon repTyCon (ty1:restTys) (x:xs) = do
       dflags <- getDynFlags
 
-      prodMatchId <- findIdTH guts 'ProdMatch
+      prodMatchId <- findIdTH guts 'ProdMatchExp
 
       let restTy = pairWrap pairTyCon restTys
 
@@ -480,7 +501,7 @@ transformProdMatch guts transformPrims' resultTy ty0 (altCon@(DataAlt dataAlt), 
     go body pairTyCon repTyCon tys xs = do
       dflags <- getDynFlags
 
-      error $ "(" ++ showPpr dflags tys ++ ", " ++ showPpr dflags xs ++ ")\n" -- ++ showPpr dflags body
+      error $ "transformProdMatch.go: (" ++ showPpr dflags tys ++ ", " ++ showPpr dflags xs ++ ")\n" -- ++ showPpr dflags body
 
     pairWrap pairTyCon = foldr1 (\x acc -> mkTyConApp pairTyCon [x, acc])
 
@@ -508,7 +529,7 @@ unwrapExpType guts ty = do
 
 transformSumMatch :: ModGuts -> (Expr Var -> CoreM (Expr Var)) -> Expr Var -> Var -> Type -> [Alt Var] -> CoreM (Expr Var)
 
-transformSumMatch guts transformPrims' scrutinee wild resultTy alts@(alt1@(DataAlt dataAlt1, _, _):_) = do
+transformSumMatch guts mark scrutinee wild resultTy alts@(alt1@(DataAlt dataAlt1, _, _):_) = do
 
   dynFlags <- getDynFlags
 
@@ -536,7 +557,13 @@ transformSumMatch guts transformPrims' scrutinee wild resultTy alts@(alt1@(DataA
 
   repTypeDict <- buildDictionaryT guts scrRepTy
 
-  scrutinee' <- transformPrims' scrutinee
+  scrutinee' <- mark scrutinee
+
+  repTyTyCon <- findTyConTH guts ''GPURepTy
+
+  let scrTyNormRepTy = mkTyConApp repTyTyCon [scrTyNorm]
+
+  (scrTyNormRepTyCo, _) <- normaliseTypeCo guts scrTyNormRepTy
 
 
   return (Var caseExpId
@@ -544,6 +571,7 @@ transformSumMatch guts transformPrims' scrutinee wild resultTy alts@(alt1@(DataA
            :@ Type scrTyNorm
            :@ Type resultTy
            :@ repTypeDict
+           :@ mkEqBox scrTyNormRepTyCo
            :@ mkEqBox scrTyCo
            :@ scrutinee'
            :@ sumMatch)
@@ -554,7 +582,7 @@ transformSumMatch guts transformPrims' scrutinee wild resultTy alts@(alt1@(DataA
       return (Var emptyMatchId :@ Type resultTy)
 
     go eitherTyCon repTyCon (ty1:_) [x] = do
-      prod <- transformProdMatch guts transformPrims' resultTy ty1 x
+      prod <- transformProdMatch guts mark resultTy ty1 x
       co <- repTyCo guts ty1
 
       oneSumMatchId <- findIdTH guts 'OneSumMatch
@@ -574,7 +602,7 @@ transformSumMatch guts transformPrims' scrutinee wild resultTy alts@(alt1@(DataA
     go eitherTyCon repTyCon allTys@(ty1:restTys) (x:xs) = do
       dflags <- getDynFlags
 
-      prod <- transformProdMatch guts transformPrims' resultTy ty1 x
+      prod <- transformProdMatch guts mark resultTy ty1 x
 
       let restTy = eitherWrap eitherTyCon restTys
 
@@ -582,7 +610,7 @@ transformSumMatch guts transformPrims' scrutinee wild resultTy alts@(alt1@(DataA
 
       restSum <- go eitherTyCon repTyCon restTys xs
 
-      sumMatchId <- findIdTH guts 'SumMatch
+      sumMatchId <- findIdTH guts 'SumMatchExp
 
 
       let Pair coB coA = coercionKind co
@@ -724,6 +752,60 @@ hasRec recName = getAny . execWriter . Data.transformM go
     go expr = pure expr
 
 
+transformLams :: ModGuts -> (Expr Var -> CoreM (Expr Var)) -> Expr Var -> CoreM (Expr Var)
+transformLams guts mark e0 = runUniqueSupply (Data.transformM go e0)
+  where
+    go :: Expr Var -> UniqueSupply CoreM (Expr Var)
+    go expr@(Lam arg body) = do
+      dflags <- lift getDynFlags
+
+      exprTyCon <- lift $ findTyConTH guts ''GPUExp
+
+      exprTypedBody <- lift $ hasExprType guts body
+
+      let exprTypedArg = isExprTy exprTyCon (varType arg)
+
+      if {- exprTypedBody && -} exprTypedArg
+        then do
+          uniq <- newUnique
+
+          lamName <- lift $ findIdTH guts 'Expr.Lam
+
+          body' <- lift $ subst arg uniq body
+
+          argTy' <- lift $ unwrapExpType guts (varType arg)
+          bodyTy' <- lift $ unwrapExpType guts (exprType body')
+
+          -- liftIO $ putStrLn $ "(argTy', bodyTy') = " ++ showPpr dflags (argTy', bodyTy')
+
+          iHash <- lift $ findIdTH guts 'GHC.Types.I#
+
+          let nameInt =  (Lit (LitNumber LitNumInt (fromIntegral uniq) intTy))
+
+          return (Var lamName :@ Type bodyTy' :@ Type argTy' :@ nameInt :@ body')
+        else return expr
+
+    go expr = return expr
+
+    subst name uniq = Data.transformM (subst0 name uniq)
+
+    subst0 name uniq (Var name')
+      | name' == name = do
+
+        varName <- findIdTH guts 'Expr.Var
+        intTy <- findTypeTH guts ''Int
+
+        varTy' <- unwrapExpType guts (varType name)
+
+        iHash <- findIdTH guts 'GHC.Types.I#
+
+        let nameInt =  (Lit (LitNumber LitNumInt (fromIntegral uniq) intTy))
+
+        return (Var varName :@ Type varTy' :@ nameInt)
+    subst0 _ _ expr = return expr
+
+
+
 -- e  ==>  (\x -> e)     {where x is a free variable in e}
 -- Also transforms the type of x :: T to x :: GPUExp T
 -- TODO: Make sure there aren't any issues with this type transformation
@@ -831,14 +913,6 @@ computeRepTypeCo guts ty = do
 
   normaliseTypeCo guts (mkTyConApp repTy [ty])
 
-normaliseType' :: ModGuts -> Type -> CoreM Type
-normaliseType' guts = fmap snd . normaliseTypeCo guts
-
-normaliseTypeCo :: ModGuts -> Type -> CoreM (Coercion, Type)
-normaliseTypeCo guts ty =
-  runTcM guts . fmap fst . runTcS $ do
-    famInstEnvs <- getFamInstEnvs
-    return (normaliseType famInstEnvs Nominal ty)
 
 topNormaliseType' :: ModGuts -> Type -> CoreM (Coercion, Type)
 topNormaliseType' guts ty = (secondM (collapseRepTys guts) =<<) $ do

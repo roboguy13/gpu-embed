@@ -23,6 +23,7 @@ import           TyCoRep
 import           TcErrors
 
 import           InstEnv
+import           FamInstEnv
 
 import           Class
 
@@ -101,8 +102,18 @@ buildDictionary guts evar = do
 
 
 buildDictionaryT :: ModGuts -> Type -> CoreM CoreExpr
-buildDictionaryT guts = \ ty -> do
+buildDictionaryT guts = \ ty0 -> do
+
     dflags <- getDynFlags
+
+    ty <- case splitTyConApp_maybe ty0 of
+            Just (tyCon, tyArgs) -> do
+                tyArgs' <- mapM (normaliseType' guts) tyArgs
+                let r = mkTyConApp tyCon tyArgs'
+                liftIO $ putStrLn $ "r = " ++ showPpr dflags tyArgs'
+                return r
+            Nothing -> return ty0
+
     binder <- newIdH ("$d" ++ zEncodeString (filter (not . isSpace) (showPpr dflags ty))) ty
     (i,bnds) <- buildDictionary guts binder
     when (null bnds) (error ("no dictionary bindings generated for " ++ showPpr dflags ty))
@@ -110,6 +121,15 @@ buildDictionaryT guts = \ ty -> do
     return $ case bnds of
                 [NonRec v e] | i == v -> e -- the common case that we would have gotten a single non-recursive let
                 _ -> mkCoreLets bnds (varToCoreExpr i)
+
+normaliseType' :: ModGuts -> Type -> CoreM Type
+normaliseType' guts = fmap snd . normaliseTypeCo guts
+
+normaliseTypeCo :: ModGuts -> Type -> CoreM (Coercion, Type)
+normaliseTypeCo guts ty =
+  runTcM guts . fmap fst . runTcS $ do
+    famInstEnvs <- getFamInstEnvs
+    return (normaliseType famInstEnvs Nominal ty)
 
 -- TODO: This is a stop-gap measure. Try to figure out why some of the
 -- coercion holes are not getting filled by the GHC API (particularly for
