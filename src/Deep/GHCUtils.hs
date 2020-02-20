@@ -630,7 +630,9 @@ lookupRdrNameInModule hsc_env guts mod_name rdr_name = do
 
                 Nothing -> error $ "Could not determine the exports of the module " ++ moduleNameString mod_name --throwCmdLineErrorS dflags $ hsep [ptext (sLit "Could not determine the exports of the module"), ppr mod_name]
         err -> --throwCmdLineErrorS dflags $ cannotFindModule dflags mod_name err
-          error $ "Cannot find module: " ++ moduleNameString mod_name -- ++ "\n" ++ show err
+          error $ "Cannot find module: " ++ moduleNameString mod_name
+                  ++ showSDoc dflags (cannotFindModule dflags mod_name err)
+                  -- ++ "\n" ++ show err
   where
     dflags = hsc_dflags hsc_env
     doc = ptext (sLit "contains a name used in an invocation of lookupRdrNameInModule")

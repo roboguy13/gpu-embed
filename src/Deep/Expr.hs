@@ -21,13 +21,14 @@ import           Data.Constraint (Constraint)
 import           Data.Bifunctor
 
 import           GHC.Generics
-import           Language.Haskell.TH (Name)
+-- import           Language.Haskell.TH (Name)
 
 import           Data.Complex
 
 import           Control.Monad.State
 
 import           Data.Type.Equality
+import           Data.Typeable
 
 -- Idea: Represent a pattern match of a particular type as
 --    KnownSymbol name => Proxy name -> MatchType name
@@ -73,6 +74,14 @@ data Iter a b
   | Done a
   deriving (Functor, Generic)
 
+newtype Name a = Name Int deriving (Eq)
+
+-- XXX: A hack to get around the fact that 'Typeable' is defined in
+-- a hidden package and this makes it challenging to directly build a dictionary
+-- for in the Core plugin
+class Typeable a => Typeable' a
+instance Typeable a => Typeable' a
+
 data GPUExp t where
   CaseExp :: forall t x r. (GPURep t, GPURepTy x ~ x, GPURepTy t ~ x) => GPUExp t -> GPUExp (SumMatch x r) -> GPUExp r
 
@@ -82,7 +91,7 @@ data GPUExp t where
 
   ProdMatchExp :: forall a b r.
     (GPURep a, GPURep b)
-      => (GPUExp a -> GPUExp (ProdMatch b r)) -> GPUExp (ProdMatch (a, b) r)
+      => GPUExp (a -> ProdMatch b r) -> GPUExp (ProdMatch (a, b) r)
 
   NullaryMatch :: forall a r.
     GPURep a
@@ -94,7 +103,7 @@ data GPUExp t where
 
   OneProdMatch :: forall a b.
     (GPURep a)
-      => (GPUExp a -> GPUExp b) -> GPUExp (ProdMatch a b)
+      => GPUExp (a -> b) -> GPUExp (ProdMatch a b)
 
   EmptyMatch :: forall b. GPUExp (SumMatch Void b)
 
@@ -104,8 +113,8 @@ data GPUExp t where
   Repped :: GPURep a => GPURepTy a -> GPUExp a
 
   -- Lam :: GPURep a => Int -> GPUExp b -> GPUExp (a -> b)
-  Lam :: forall a b. Int -> GPUExp a -> GPUExp b -> GPUExp a
-  Var :: forall a. Int -> GPUExp a -- Constructed internally
+  Lam :: forall a b. (GPURep a, Typeable' a) => Name a -> GPUExp b -> GPUExp (a -> b)
+  Var :: forall a. Typeable' a => Name a -> GPUExp a -- Constructed internally
 
   Apply :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
@@ -140,7 +149,7 @@ data GPUExp t where
 
   IfThenElse :: GPUExp Bool -> GPUExp a -> GPUExp a -> GPUExp a
 
-  TailRec :: forall a b. (GPURep a, GPURep b) => (GPUExp b -> GPUExp (Iter a b)) -> GPUExp (b -> a)
+  TailRec :: forall a b. (GPURep a, GPURep b) => GPUExp (b -> Iter a b) -> GPUExp (b -> a)
 
   Construct :: a -> GPUExp a
   ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
@@ -161,6 +170,9 @@ data GPUExp t where
 -- For convenience in Core transformation
 deepFromInteger :: Num b => Integer -> GPUExp b
 deepFromInteger = FromIntegral . Lit
+
+-- lam :: forall a b. (GPURep a, Typeable' a) => Name a -> (GPUExp a -> GPUExp b) -> GPUExp (a -> b)
+-- lam name f = Lam name (f (Var name))
 
 runIter :: forall a b. (GPURep a, GPURep b) => (a -> Iter b a) -> a -> b
 runIter f = go
@@ -388,12 +400,12 @@ prodMatchAbs :: GPURep s => GPUExp (ProdMatch s t) -> s -> t
 prodMatchAbs (ProdMatchExp f) =
   \pair ->
     case pair of
-      (x, y) -> prodMatchAbs (f (rep x)) y
+      (x, y) -> runProdMatch (gpuAbs f x) y --prodMatchAbs (f (rep x)) y
 
-prodMatchAbs (OneProdMatch f) = \x -> gpuAbs (f (rep x))
+prodMatchAbs (OneProdMatch f) = \x -> gpuAbs f x --gpuAbs (f (rep x))
 prodMatchAbs (NullaryMatch x) = \_ -> gpuAbs x
 
-gpuAbs :: GPUExp t -> t
+gpuAbs :: forall t. GPUExp t -> t
 gpuAbs (CaseExp x f) = sumMatchAbs f (gpuAbs x)
 gpuAbs FalseExp = False
 gpuAbs TrueExp  = True
@@ -417,7 +429,7 @@ gpuAbs (PairExp x y) = (gpuAbs x, gpuAbs y)
 gpuAbs (StepExp x) = Step $ gpuAbs x
 gpuAbs (DoneExp y) = Done $ gpuAbs y
 gpuAbs (TailRec f) = \x ->
-  case gpuAbs (f (rep x)) of
+  case gpuAbs f x of
     Step x' -> gpuAbs (TailRec f) x'
     Done r  -> r
 gpuAbs (IfThenElse cond t f)
@@ -433,6 +445,55 @@ gpuAbs EmptyMatch = MkSumMatch absurd
 gpuAbs e@(ProdMatchExp {}) = MkProdMatch (prodMatchAbs e)
 gpuAbs e@(OneProdMatch {}) = MkProdMatch (prodMatchAbs e)
 gpuAbs e@(NullaryMatch {}) = MkProdMatch (prodMatchAbs e)
+
+gpuAbs (Lam (name :: Name a) (body :: GPUExp b)) = \(arg :: a) ->
+
+    let go :: forall x. GPUExp x -> GPUExp x
+        go expr@(Var name2 :: GPUExp t') =
+          case eqT :: Maybe (t' :~: a) of
+            Just Refl -> rep arg
+            Nothing   -> expr
+
+        go (CaseExp x f) = CaseExp (go x) (go f)
+
+        go (Add x y) = Add (go x) (go y)
+        go (Sub x y) = Sub (go x) (go y)
+        go (Mul x y) = Mul (go x) (go y)
+        go (FromEnum x) = FromEnum (go x)
+        go (FromIntegral x) = FromIntegral (go x)
+        go (Sqrt x) = Sqrt (go x)
+        go (Equal x y) = Equal (go x) (go y)
+        go (Lte x y) = Lte (go x) (go y)
+        go (Gt x y) = Gt (go x) (go y)
+        go (Not x) = Not (go x)
+        go (LeftExp x) = LeftExp (go x)
+        go (RightExp y) = RightExp (go y)
+        go (PairExp x y) = PairExp (go x) (go y)
+
+        go (StepExp x) = StepExp (go x)
+        go (DoneExp y) = DoneExp (go y)
+        go (TailRec f) = TailRec  (go f)
+
+        go (IfThenElse cond t f) = IfThenElse (go cond) (go t) (go f)
+
+        go (Construct x) = Construct x
+        go (ConstructAp f x) = ConstructAp f x
+
+        go (SumMatchExp f g) = SumMatchExp (go f) (go g)
+        go (OneSumMatch f) = OneSumMatch (go f)
+        go EmptyMatch = EmptyMatch
+        go (ProdMatchExp f) = ProdMatchExp (go f)
+        go (OneProdMatch x) = OneProdMatch (go x)
+        go (NullaryMatch x) = NullaryMatch (go x)
+
+        go (Lam name2 body2) = Lam name2 (go body2) -- Names should be unique, so this should be ok
+
+        go FalseExp = FalseExp
+        go TrueExp = TrueExp
+        go (Repped x) = Repped x
+    in
+
+    gpuAbs $ go body
 
 class Canonical t where
   type GenericOp t :: (* -> *) -> (* -> *) -> * -> *
