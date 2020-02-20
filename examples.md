@@ -27,7 +27,7 @@ The examples:
 2.
 
     data Example' = N' Int | B' Bool deriving (Show, Generic)
-    instance GPURep Example
+    instance GPURep Example'
 
     example2_ :: Int -> Example'
     example2_ x = B' False
