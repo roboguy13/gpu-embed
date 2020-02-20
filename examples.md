@@ -3,6 +3,18 @@ lambdas). Note that the "underscore functions" (like `example2_`) exist to
 prevent GHC from inlining and partially evaluating before the plugin is
 executed.
 
+Note that
+
+    internalize :: GPURep a => GPUExp a -> a
+    internalize = gpuAbs
+    {-# NOINLINE internalize #-}
+
+    externalize :: GPURep a => a -> GPUExp a
+    externalize = Construct
+    {-# NOINLINE externalize #-}
+
+The examples:
+
 1.
 
     example1 :: Int
