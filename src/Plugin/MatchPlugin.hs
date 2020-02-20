@@ -272,8 +272,8 @@ mark0 guts x = do
       let xTy = exprType x
 
       case x of
-        Var v :@ Type {} :@ _dict :@ _n
-          | v == varId -> return x
+        -- Var v :@ Type {} :@ _dict :@ _n
+        --   | v == varId -> return x
         _ -> do
 
           externalizeName <- lift $ findIdTH guts 'externalize
@@ -453,6 +453,13 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
               markedArg <- mark arg
 
               return (Var constructAp :@ Type aTy :@ Type bTy :@ repDict :@ markedLhs :@ markedArg)
+
+        -- go expr@(Var f :@ tyA@(Type{}) :@ tyB@(Type{}) :@ dict1 :@ dict2 :@ nval
+        --            :@ ((Lam v e) :@ x)) = do
+        --     markedE <- 
+
+  -- return (Var lamId :@ Type origTy :@ Type eTy' :@ repDict :@ typeableDict :@ nameVal
+  --           :@ ((Lam v' (Data.transform (go varId newTy) e)) :@ (Var varId :@ Type origTy :@ typeableDict :@ nameVal)))
 
         go expr
           | Just (fId, tyArgs, dicts) <- splitTypeApps_maybe expr = whenNotExprTyped guts expr $ do
@@ -867,6 +874,7 @@ abstractOver guts v e = do
       newTy = mkTyConApp expTyCon [origTy]
       nameInt = Lit (LitNumber LitNumInt (fromIntegral uniq) intTy)
       nameVal = Var nameId :@ Type origTy :@ nameInt
+      v' = setVarType v newTy
 
   eTy' <- lift $ unwrapExpType guts (exprType e)
 
@@ -875,12 +883,18 @@ abstractOver guts v e = do
 
   repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [varType v])
 
-  return (Var lamId :@ Type origTy :@ Type eTy' :@ repDict :@ typeableDict :@ nameVal :@ (Data.transform (go varId typeableDict nameVal origTy) e))
+  markedE' <- mark0 guts (Data.transform (go varId newTy) e)
+
+  return (Var lamId :@ Type origTy :@ Type eTy' :@ repDict :@ typeableDict :@ nameVal
+            :@ ((Lam v' markedE') :@ (Var varId :@ Type origTy :@ typeableDict :@ nameVal)))
   where
-    -- Set var type in rest of expression
-    go varId dict name origTy (Var v')
-      | varName v' == varName v = Var varId :@ Type origTy :@ dict :@ name--Var $ setVarType v' newTy
-    go varId dict name origTy expr = expr
+    go varId newTy (Var v')
+      | varName v' == varName v = Var $ setVarType v' newTy
+    go varId newTy e = e
+    -- -- Set var type in rest of expression
+    -- go varId dict name origTy (Var v')
+    --   | varName v' == varName v = Var varId :@ Type origTy :@ dict :@ name--Var $ setVarType v' newTy
+    -- go varId dict name origTy expr = expr
 
 -- | listTypesWith (lookupVar ''(,)) (a, (b, c))  ==>  [a, b, c]
 -- listTypesWith (lookupVar ''Either) (Either a (Either b c))  ==>  [a, b, c]
