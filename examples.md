@@ -1,7 +1,19 @@
-Current examples (all work with transformation before the attempt to add
+Current examples (all work with Core plugin transformation before the attempt to add
 lambdas). Note that the "underscore functions" (like `example2_`) exist to
 prevent GHC from inlining and partially evaluating before the plugin is
 executed.
+
+Note that
+
+    internalize :: GPURep a => GPUExp a -> a
+    internalize = gpuAbs
+    {-# NOINLINE internalize #-}
+
+    externalize :: GPURep a => a -> GPUExp a
+    externalize = Construct
+    {-# NOINLINE externalize #-}
+
+The examples:
 
 1.
 
@@ -15,6 +27,7 @@ executed.
 2.
 
     data Example' = N' Int | B' Bool deriving (Show, Generic)
+    instance GPURep Example'
 
     example2_ :: Int -> Example'
     example2_ x = B' False
@@ -37,6 +50,7 @@ executed.
 4.
 
     data Example4 = E1 Int | E2 Float | E3 Bool deriving (Show, Generic)
+    instance GPURep Example4
 
     example4_ :: Int -> Example4
     example4_ x = E2 23.0
@@ -53,6 +67,7 @@ executed.
 
 
     data Example5 = A1 Float Float | A2 Int deriving (Show, Generic)
+    instance GPURep Example5
 
     example5_ :: Int -> Example5
     example5_ x = A1 2.3 7.5
@@ -81,6 +96,7 @@ isEven:
 7. 
 
     data IntPair = IntPair Int Int deriving (Show, Generic)
+    instance GPURep IntPair
 
     example7_ :: Int -> IntPair
     example7_ x = IntPair 1 2
