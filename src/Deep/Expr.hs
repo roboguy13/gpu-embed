@@ -12,6 +12,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DataKinds #-}
 
+{-# OPTIONS_GHC -Wall #-}
+
 module Deep.Expr where
 
 import           Data.Void
@@ -74,7 +76,35 @@ data Iter a b
   | Done a
   deriving (Functor, Generic)
 
-newtype Name a = Name Int deriving (Eq)
+newtype Name a = Name Int deriving (Eq, Show)
+
+data EnvMapping =
+  forall a. Typeable a => (Name a) :=> GPUExp a
+
+newtype Env = Env [EnvMapping]
+
+emptyEnv :: Env
+emptyEnv = Env []
+
+extendEnv :: Env -> EnvMapping -> Env
+extendEnv (Env maps) m = Env (m:maps)
+
+envLookup :: forall a. Typeable a => Env -> Name a -> Maybe (GPUExp a)
+envLookup (Env maps) n@(Name _) = go maps
+  where
+    go [] = Nothing
+    go ((n'@(Name _) :=> e):rest) =
+      case namesEq n n' of
+        Just Refl -> Just e
+        Nothing   -> go rest
+
+namesEq :: forall a b. (Typeable a, Typeable b) => Name a -> Name b -> Maybe (a :~: b)
+namesEq (Name n) (Name n') =
+  case eqT :: Maybe (a :~: b) of
+    Just Refl
+      | n == n' -> Just Refl
+      | otherwise -> Nothing
+    Nothing   -> Nothing
 
 -- XXX: A hack to get around the fact that 'Typeable' is defined in
 -- a hidden package and this makes it challenging to directly build a dictionary
@@ -116,7 +146,7 @@ data GPUExp t where
   Lam :: forall a b. (GPURep a, Typeable' a) => Name a -> GPUExp b -> GPUExp (a -> b)
   Var :: forall a. Typeable' a => Name a -> GPUExp a -- Constructed internally
 
-  Apply :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
+  -- Apply :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
   Lit :: Num a => a -> GPUExp a
 
@@ -384,75 +414,89 @@ instance {-# INCOHERENT #-} (LiftedFn b ~ GPUExp b) => ConstructC b where
     construct' = id
 
 -- Should this just produce an error?
-sumMatchAbs :: forall s t. (GPURepTy (GPURepTy s) ~ GPURepTy s, GPURep s) => GPUExp (SumMatch (GPURepTy s) t) -> s -> t
-sumMatchAbs (SumMatchExp p q) =
+sumMatchAbs :: forall s t. (GPURepTy (GPURepTy s) ~ GPURepTy s, GPURep s) => Env -> GPUExp (SumMatch (GPURepTy s) t) -> s -> t
+sumMatchAbs env (SumMatchExp p q) =
   \x0 ->
     let x = rep' x0
     in
     case x of
-      Left  a -> prodMatchAbs p a
-      Right b -> sumMatchAbs q b
-sumMatchAbs EmptyMatch = \_ -> error "Non-exhaustive match"
-sumMatchAbs (OneSumMatch f) =
-    prodMatchAbs f . rep'
+      Left  a -> prodMatchAbs env p a
+      Right b -> sumMatchAbs env q b
+sumMatchAbs env EmptyMatch = \_ -> error "Non-exhaustive match"
+sumMatchAbs env (OneSumMatch f) =
+    prodMatchAbs env f . rep'
 
-prodMatchAbs :: GPURep s => GPUExp (ProdMatch s t) -> s -> t
-prodMatchAbs (ProdMatchExp f) =
+prodMatchAbs :: GPURep s => Env -> GPUExp (ProdMatch s t) -> s -> t
+prodMatchAbs env (ProdMatchExp f) =
   \pair ->
     case pair of
-      (x, y) -> runProdMatch (gpuAbs f x) y --prodMatchAbs (f (rep x)) y
+      (x, y) -> runProdMatch (gpuAbsEnv env f x) y --prodMatchAbs (f (rep x)) y
 
-prodMatchAbs (OneProdMatch f) = \x -> gpuAbs f x --gpuAbs (f (rep x))
-prodMatchAbs (NullaryMatch x) = \_ -> gpuAbs x
+prodMatchAbs env (OneProdMatch f) = \x -> gpuAbsEnv env f x --gpuAbs (f (rep x))
+prodMatchAbs env (NullaryMatch x) = \_ -> gpuAbsEnv env x
 
 gpuAbs :: forall t. GPUExp t -> t
-gpuAbs (CaseExp x f) = sumMatchAbs f (gpuAbs x)
-gpuAbs FalseExp = False
-gpuAbs TrueExp  = True
-gpuAbs (Repped x) = unrep' x
+gpuAbs = gpuAbsEnv emptyEnv
+
+gpuAbsEnv :: forall t. Env -> GPUExp t -> t
+gpuAbsEnv env (Var v) =
+  case envLookup env v of
+    Just x -> gpuAbsEnv env x
+    Nothing -> error $ "No binding for var " ++ show v
+gpuAbsEnv env (CaseExp x f) = sumMatchAbs env f (gpuAbsEnv env x)
+gpuAbsEnv env FalseExp = False
+gpuAbsEnv env TrueExp  = True
+gpuAbsEnv env (Repped x) = unrep' x
 -- gpuAbs (Lam f) = gpuAbs . f . rep
 -- gpuAbs (Apply f x) = gpuAbs f (gpuAbs x)
-gpuAbs (Lit x)  = x
-gpuAbs (Add x y) = gpuAbs x + gpuAbs y
-gpuAbs (Sub x y) = gpuAbs x - gpuAbs y
-gpuAbs (Mul x y) = gpuAbs x * gpuAbs y
-gpuAbs (FromEnum x) = fromEnum (gpuAbs x)
-gpuAbs (FromIntegral x) = fromIntegral (gpuAbs x)
-gpuAbs (Sqrt x) = sqrt (gpuAbs x)
-gpuAbs (Equal x y) = gpuAbs x == gpuAbs y
-gpuAbs (Lte x y) = gpuAbs x <= gpuAbs y
-gpuAbs (Gt x y) = gpuAbs x > gpuAbs y
-gpuAbs (Not x) = not (gpuAbs x)
-gpuAbs (LeftExp x) = Left (gpuAbs x)
-gpuAbs (RightExp y) = Right (gpuAbs y)
-gpuAbs (PairExp x y) = (gpuAbs x, gpuAbs y)
-gpuAbs (StepExp x) = Step $ gpuAbs x
-gpuAbs (DoneExp y) = Done $ gpuAbs y
-gpuAbs (TailRec f) = \x ->
-  case gpuAbs f x of
-    Step x' -> gpuAbs (TailRec f) x'
+gpuAbsEnv env (Lit x)  = x
+gpuAbsEnv env (Add x y) = gpuAbsEnv env x + gpuAbsEnv env y
+gpuAbsEnv env (Sub x y) = gpuAbsEnv env x - gpuAbsEnv env y
+gpuAbsEnv env (Mul x y) = gpuAbsEnv env x * gpuAbsEnv env y
+gpuAbsEnv env (FromEnum x) = fromEnum (gpuAbsEnv env x)
+gpuAbsEnv env (FromIntegral x) = fromIntegral (gpuAbsEnv env x)
+gpuAbsEnv env (Sqrt x) = sqrt (gpuAbsEnv env x)
+gpuAbsEnv env (Equal x y) = gpuAbsEnv env x == gpuAbsEnv env y
+gpuAbsEnv env (Lte x y) = gpuAbsEnv env x <= gpuAbsEnv env y
+gpuAbsEnv env (Gt x y) = gpuAbsEnv env x > gpuAbsEnv env y
+gpuAbsEnv env (Not x) = not (gpuAbsEnv env x)
+gpuAbsEnv env (LeftExp x) = Left (gpuAbsEnv env x)
+gpuAbsEnv env (RightExp y) = Right (gpuAbsEnv env y)
+gpuAbsEnv env (PairExp x y) = (gpuAbsEnv env x, gpuAbsEnv env y)
+gpuAbsEnv env (StepExp x) = Step $ gpuAbsEnv env x
+gpuAbsEnv env (DoneExp y) = Done $ gpuAbsEnv env y
+gpuAbsEnv env (TailRec f) = \x ->
+  case gpuAbsEnv env f x of
+    Step x' -> gpuAbsEnv env (TailRec f) x'
     Done r  -> r
-gpuAbs (IfThenElse cond t f)
-  | gpuAbs cond = gpuAbs t
-  | otherwise = gpuAbs f
-gpuAbs (Construct x) = x
-gpuAbs (ConstructAp f x) = gpuAbs f (gpuAbs x)
+gpuAbsEnv env (IfThenElse cond t f)
+  | gpuAbsEnv env cond = gpuAbsEnv env t
+  | otherwise = gpuAbsEnv env f
+gpuAbsEnv env (Construct x) = x
+gpuAbsEnv env (ConstructAp f x) = gpuAbsEnv env f (gpuAbsEnv env x)
 
-gpuAbs e@(SumMatchExp {}) = MkSumMatch (sumMatchAbs e)
-gpuAbs e@(OneSumMatch {}) = MkSumMatch (sumMatchAbs e)
-gpuAbs EmptyMatch = MkSumMatch absurd
+gpuAbsEnv env e@(SumMatchExp {}) = MkSumMatch (sumMatchAbs env e)
+gpuAbsEnv env e@(OneSumMatch {}) = MkSumMatch (sumMatchAbs env e)
+gpuAbsEnv env EmptyMatch = MkSumMatch absurd
 
-gpuAbs e@(ProdMatchExp {}) = MkProdMatch (prodMatchAbs e)
-gpuAbs e@(OneProdMatch {}) = MkProdMatch (prodMatchAbs e)
-gpuAbs e@(NullaryMatch {}) = MkProdMatch (prodMatchAbs e)
+gpuAbsEnv env e@(ProdMatchExp {}) = MkProdMatch (prodMatchAbs env e)
+gpuAbsEnv env e@(OneProdMatch {}) = MkProdMatch (prodMatchAbs env e)
+gpuAbsEnv env e@(NullaryMatch {}) = MkProdMatch (prodMatchAbs env e)
 
-gpuAbs (Lam (name :: Name a) (body :: GPUExp b)) = \(arg :: a) ->
+gpuAbsEnv env (FstExp x) = fst (gpuAbsEnv env x)
+gpuAbsEnv env (SndExp x) = snd (gpuAbsEnv env x)
+
+gpuAbsEnv env (Lam (name :: Name a) (body :: GPUExp b)) = \(arg :: a) ->
 
     let go :: forall x. GPUExp x -> GPUExp x
         go expr@(Var name2 :: GPUExp t') =
           case eqT :: Maybe (t' :~: a) of
-            Just Refl -> rep arg
-            Nothing   -> expr
+            Just Refl
+              | name == name2 -> rep arg
+            Nothing   ->
+              case envLookup env name2 of
+                Just v -> v
+                Nothing -> expr
 
         go (CaseExp x f) = CaseExp (go x) (go f)
 
@@ -491,9 +535,12 @@ gpuAbs (Lam (name :: Name a) (body :: GPUExp b)) = \(arg :: a) ->
         go FalseExp = FalseExp
         go TrueExp = TrueExp
         go (Repped x) = Repped x
+        go (Lit x) = Lit x
+        go (FstExp x) = FstExp (go x)
+        go (SndExp x) = SndExp (go x)
     in
 
-    gpuAbs $ go body
+    gpuAbsEnv (extendEnv env (name :=> rep arg)) $ go body
 
 class Canonical t where
   type GenericOp t :: (* -> *) -> (* -> *) -> * -> *
