@@ -64,7 +64,8 @@ executed.
           A2 x -> fromIntegral x
           A1 x y -> x + y))
 
-6. isEven:
+6.
+isEven:
 
 
     example6 :: Int -> Bool
@@ -103,7 +104,8 @@ executed.
         (case p of
           IntPair x y -> y))
 
-9. factorial:
+9.
+factorial:
 
 
     example9 :: IntPair -> Int
@@ -115,7 +117,8 @@ executed.
               then example8 p
               else example9 (IntPair (x-1) (x*y))))
 
-10. Mandelbrot:
+10.
+Mandelbrot:
 
 
     mandelbrot_nextZ :: (Complex Double, Complex Double) -> Complex Double
