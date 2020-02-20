@@ -1,4 +1,4 @@
-Current examples (all work with transformation before the attempt to add
+Current examples (all work with Core plugin transformation before the attempt to add
 lambdas). Note that the "underscore functions" (like `example2_`) exist to
 prevent GHC from inlining and partially evaluating before the plugin is
 executed.
