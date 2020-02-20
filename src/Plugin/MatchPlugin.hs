@@ -25,6 +25,8 @@ import           GhcPlugins
 
 import           InstEnv
 
+-- import           Literal (mkMachInt)
+
 import           FamInstEnv
 
 import           TcSMonad
@@ -35,6 +37,7 @@ import           Inst
 
 import           Pair
 
+import qualified Data.Kind as Kind
 
 import           Control.Monad
 import           Control.Monad.Writer hiding (pass, Alt)
@@ -345,7 +348,8 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
           return (Lam (setVarType v ty) bodyMarked)
 
         -- Numeric literals
-        go expr@(Lit x :@ ty :@ dict) = do
+        go expr@(Lit x :@ ty@(Type{}) :@ dict)
+          | isDict dict = do
           dflags <- lift $ getDynFlags
           litId <- lift $ findIdTH guts 'Lit
           return (Var litId :@ ty :@ dict :@ expr)
@@ -353,10 +357,10 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
         go (Var v)
           | Just b <- builtin v = return b
 
-        go expr@(Var v :@ tyA@(Type {}) :@ tyB@(Type {}) :@ dict1 :@ dict2 :@ name :@ body)
-          | isLam v = do
-              markedBody <- mark body
-              return (Var v:@ tyA :@ tyB :@ dict1 :@ dict2 :@ name :@ markedBody)
+        -- go expr@(Var v :@ tyA@(Type {}) :@ tyB@(Type {}) :@ dict1 :@ dict2 :@ name :@ body)
+        --   | isLam v, isDict dict1, isDict dict2 = do
+        --       markedBody <- mark body
+        --       return (Var v:@ tyA :@ tyB :@ dict1 :@ dict2 :@ name :@ markedBody)
 
         go expr@(Var v)
           | False <- isFunTy (varType v) = whenNotExprTyped guts expr $ do
@@ -462,7 +466,8 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
   --           :@ ((Lam v' (Data.transform (go varId newTy) e)) :@ (Var varId :@ Type origTy :@ typeableDict :@ nameVal)))
 
         go expr
-          | Just (fId, tyArgs, dicts) <- splitTypeApps_maybe expr = whenNotExprTyped guts expr $ do
+          | Just (fId, tyArgs, dicts) <- splitTypeApps_maybe expr
+            ,all isDictVar dicts = whenNotExprTyped guts expr $ do
               constructId <- lift $ findIdTH guts 'Construct
 
               let expr' = mkTyApps (Var fId) tyArgs
@@ -651,7 +656,7 @@ transformSumMatch guts mark scrutinee wild resultTy alts@(alt1@(DataAlt dataAlt1
       sumMatchId <- lift $ findIdTH guts 'SumMatchExp
 
 
-      let Pair coB coA = coercionKind co
+      let coPair@(Pair coB coA) = coercionKind co
 
 
       dictA <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [ty1])
@@ -659,6 +664,8 @@ transformSumMatch guts mark scrutinee wild resultTy alts@(alt1@(DataAlt dataAlt1
 
       ty1' <- lift $ repTyUnwrap guts ty1
       restTy' <- lift $ repTyUnwrap guts restTy
+
+      liftIO $ putStrLn $ "coPair = " ++ showPpr dflags coPair
 
       return (Var sumMatchId
                 :@ Type ty1'
@@ -818,8 +825,9 @@ transformLams guts mark e0 = Data.transformM go e0
           -- liftIO $ putStrLn $ "(argTy', bodyTy') = " ++ showPpr dflags (argTy', bodyTy')
 
           iHash <- lift $ findIdTH guts 'GHC.Types.I#
+          -- intTy <- findTypeTH guts ''Int#
 
-          let nameInt =  (Lit (LitNumber LitNumInt (fromIntegral uniq) intTy))
+          let nameInt =  Var iHash :@ Lit (mkLitInt dflags (fromIntegral uniq))
 
           return (Var lamName :@ Type bodyTy' :@ Type argTy' :@ nameInt :@ body')
         else return expr
@@ -832,16 +840,18 @@ transformLams guts mark e0 = Data.transformM go e0
       | name' == name = do
 
         varName <- findIdTH guts 'Expr.Var
-        intTy <- findTypeTH guts ''Int
+        -- intTy <- findTypeTH guts ''Int#
 
         varTy' <- unwrapExpType guts (varType name)
 
         iHash <- findIdTH guts 'GHC.Types.I#
 
-        let nameInt =  (Lit (LitNumber LitNumInt (fromIntegral uniq) intTy))
+        dflags <- getDynFlags
+        let nameInt =  Var iHash :@ Lit (mkLitInt dflags (fromIntegral uniq))
 
-        typeableTyCon <- findTyConTH guts ''Typeable'
-        typeableDict <- buildDictionaryT guts (mkTyConApp typeableTyCon [varTy'])
+        typeableTyCon <- findTyConTH guts ''Typeable
+        typeType <- findTypeTH guts ''Kind.Type
+        typeableDict <- buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, varTy'])
 
         return (Var varName :@ Type varTy' :@ typeableDict :@ nameInt)
     subst0 _ _ expr = return expr
@@ -857,8 +867,8 @@ abstractOver :: ModGuts -> Var -> Expr Var -> MatchM (Expr Var)
 abstractOver guts v e = do
   expTyCon <- lift $ findTyConTH guts ''GPUExp
   repTyCon <- lift $ findTyConTH guts ''GPURep
-  typeableTyCon <- lift $ findTyConTH guts ''Typeable'
-  intTy <- lift $ findTypeTH guts ''Int
+  typeableTyCon <- lift $ findTyConTH guts ''Typeable
+  -- intTy <- lift $ findTypeTH guts ''Int#
 
   -- lamFnId <- lift $ findIdTH guts 'Expr.lam
 
@@ -866,13 +876,18 @@ abstractOver guts v e = do
   varId <- lift $ findIdTH guts 'Expr.Var
   nameId <- lift $ findIdTH guts 'Expr.Name
 
+  typeType <- lift $ findTypeTH guts ''Kind.Type
+
   uniq <- newUnique
 
-  typeableDict <- lift $ buildDictionaryT guts (mkTyConApp typeableTyCon [varType v])
+  typeableDict <- lift $ buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, varType v])
+  iHash <- lift $ findIdTH guts 'GHC.Types.I#
+
+  dflags <- getDynFlags
 
   let origTy = varType v
       newTy = mkTyConApp expTyCon [origTy]
-      nameInt = Lit (LitNumber LitNumInt (fromIntegral uniq) intTy)
+      nameInt = Var iHash :@ Lit (mkLitInt dflags (fromIntegral uniq))
       nameVal = Var nameId :@ Type origTy :@ nameInt
       v' = setVarType v newTy
 
