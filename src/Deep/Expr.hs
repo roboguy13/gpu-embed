@@ -76,7 +76,7 @@ data Iter a b
   | Done a
   deriving (Functor, Generic)
 
-newtype Name a = Name Int deriving (Eq, Show)
+data Name a = Name Int deriving (Eq, Show)
 
 data EnvMapping =
   forall a. Typeable a => (Name a) :=> GPUExp a
@@ -105,12 +105,6 @@ namesEq (Name n) (Name n') =
       | n == n' -> Just Refl
       | otherwise -> Nothing
     Nothing   -> Nothing
-
--- XXX: A hack to get around the fact that 'Typeable' is defined in
--- a hidden package and this makes it challenging to directly build a dictionary
--- for in the Core plugin
-class Typeable a => Typeable' a
-instance Typeable a => Typeable' a
 
 data GPUExp t where
   CaseExp :: forall t x r. (GPURep t, GPURepTy x ~ x, GPURepTy t ~ x) => GPUExp t -> GPUExp (SumMatch x r) -> GPUExp r
@@ -143,8 +137,8 @@ data GPUExp t where
   Repped :: GPURep a => GPURepTy a -> GPUExp a
 
   -- Lam :: GPURep a => Int -> GPUExp b -> GPUExp (a -> b)
-  Lam :: forall a b. (GPURep a, Typeable' a) => Name a -> GPUExp b -> GPUExp (a -> b)
-  Var :: forall a. Typeable' a => Name a -> GPUExp a -- Constructed internally
+  Lam :: forall a b. (GPURep a, Typeable a) => Name a -> GPUExp b -> GPUExp (a -> b)
+  Var :: forall a. Typeable a => Name a -> GPUExp a -- Constructed internally
 
   -- Apply :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
@@ -201,7 +195,7 @@ data GPUExp t where
 deepFromInteger :: Num b => Integer -> GPUExp b
 deepFromInteger = FromIntegral . Lit
 
--- lam :: forall a b. (GPURep a, Typeable' a) => Name a -> (GPUExp a -> GPUExp b) -> GPUExp (a -> b)
+-- lam :: forall a b. (GPURep a, Typeable a) => Name a -> (GPUExp a -> GPUExp b) -> GPUExp (a -> b)
 -- lam name f = Lam name (f (Var name))
 
 runIter :: forall a b. (GPURep a, GPURep b) => (a -> Iter b a) -> a -> b
@@ -493,7 +487,7 @@ gpuAbsEnv env (Lam (name :: Name a) (body :: GPUExp b)) = \(arg :: a) ->
           case eqT :: Maybe (t' :~: a) of
             Just Refl
               | name == name2 -> rep arg
-            Nothing   ->
+            _   ->
               case envLookup env name2 of
                 Just v -> v
                 Nothing -> expr

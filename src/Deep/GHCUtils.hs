@@ -27,6 +27,8 @@ import           FamInstEnv
 
 import           Class
 
+import           Packages
+
 import           Coercion
 
 import           Finder
@@ -605,8 +607,8 @@ lookupRdrNameInModule :: HscEnv -> ModGuts -> ModuleName -> RdrName -> IO (Maybe
 lookupRdrNameInModule hsc_env guts mod_name rdr_name = do
     -- First find the package the module resides in by searching exposed packages and home modules
     found_module <- findImportedModule hsc_env mod_name Nothing
-    case found_module of
-        Found _ mod -> do
+
+    let go mod = do
             -- Find the exports of the module
             (_, mb_iface) <- initTcFromModGuts hsc_env guts HsSrcFile False $
                              initIfaceTcRn $
@@ -629,6 +631,14 @@ lookupRdrNameInModule hsc_env guts mod_name rdr_name = do
                         _     -> panic "lookupRdrNameInModule"
 
                 Nothing -> error $ "Could not determine the exports of the module " ++ moduleNameString mod_name --throwCmdLineErrorS dflags $ hsep [ptext (sLit "Could not determine the exports of the module"), ppr mod_name]
+
+    case found_module of
+        Found _ mod -> go mod
+        NotFound {} ->
+          case lookupModuleWithSuggestions dflags mod_name Nothing of
+            LookupHidden _ ((mod, _):_) ->  go mod
+            _ -> error "Cannot find module"
+          -- error $ "Cannot find module: " ++ showPpr dflags fr_mods_hidden ++ "\n===>" ++ showPpr dflags fr_unusables
         err -> --throwCmdLineErrorS dflags $ cannotFindModule dflags mod_name err
           error $ "Cannot find module: " ++ moduleNameString mod_name
                   ++ showSDoc dflags (cannotFindModule dflags mod_name err)

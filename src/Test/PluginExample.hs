@@ -1,11 +1,11 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TypeApplications #-}
 
-{-# OPTIONS_GHC -ddump-simpl -O0 -dcore-lint -fplugin=Plugin.MatchPlugin #-}
+{-# OPTIONS_GHC -ddump-simpl -O0 -dcore-lint -dcmm-lint -dstg-lint -fcatch-bottoms -fplugin=Plugin.MatchPlugin #-}
 
 module Test.PluginExample where
 
-import           GHC.Float
-
+import           GHC.Float 
 import           Data.List
 
 import           Deep.Expr
@@ -37,21 +37,21 @@ data Example = N Nat | B Bool deriving (Generic, Show)
 eitherExample :: Int -> Either Int Bool
 eitherExample x = Right False
 
--- example1 :: Int
--- example1 =
---   internalize (externalize
---     (case eitherExample 1 of
---       Left x -> x * 2
---       Right y -> fromEnum y))
--- {-# NOINLINE example1 #-}
+example1 :: Int
+example1 =
+  internalize (externalize
+    (case eitherExample 1 of
+      Left x -> x * 2
+      Right y -> fromEnum y))
+{-# NOINLINE example1 #-}
 
 data Example' = N' Int | B' Bool deriving (Show, Generic)
 
 instance GPURep Example'
 
-example2_ :: Int -> Example'
-example2_ x = B' False
-{-# NOINLINE example2_ #-}
+-- example2_ :: Int -> Example'
+-- example2_ x = B' False
+-- {-# NOINLINE example2_ #-}
 
 -- example2 :: Example'
 -- example2 =
@@ -178,6 +178,11 @@ main =
 
 
 
+-- main :: IO ()
+-- main =
+--   -- print (example6 3, example6 4, example9 (IntPair 5 1))
+--   print example1
+
 
 
 
@@ -227,9 +232,6 @@ mandelbrot_height :: Int
 mandelbrot_height = 40
 
 
--- main :: IO ()
--- main = print (example6 3, example6 4, example9 (IntPair 5 1))
-
 -- thExample2 :: Q Exp
 -- thExample2 = do
 --   exp <-
@@ -249,3 +251,4 @@ mandelbrot_height = 40
 --         B' b -> B' (not b)
 --     |]
 --   transformExpr exp
+
