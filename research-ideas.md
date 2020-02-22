@@ -13,10 +13,14 @@ Consider the following code:
     data Child = LeftChild | RightChild
     type TreePath = [Child]
 
-    parMapTree :: FutureTree a -> Expr (a -> TreePath -> b) -> Tree b
+    parMapTree :: Tree a -> Expr (a -> TreePath -> b) -> Tree b
 
 Consider an implementation of `parMapTree` which sends the computation over to a
 GPU.
+
+Calling `parMapTree` with a `FutureTree` allows us to generate the leaf values
+of a tree in parallel when we know (and *only* know) the structure of the tree
+before the parallel computation gets sent to the GPU.
 
 The entire structure of the `FutureTree` is known before `parMapTree` is
 executed. This means the entire tree structure is known before the computation
@@ -37,7 +41,7 @@ GPU:
 This could be composed with the previous map function to obtain this tree
 map/reduce:
 
-    parTreeMapReduce :: FutureTree a -> Expr (a -> TreePath -> b) -> Expr (a -> a -> a) -> a
+    parTreeMapReduce :: Tree a -> Expr (a -> TreePath -> b) -> Expr (a -> a -> a) -> a
     parTreeMapReduce ft map_fn reduce_fn = parTreeReduce (parMapTree ft map_fn) reduce_fn
 
 An unfold tree operation could also be implemented and used in compositions with
