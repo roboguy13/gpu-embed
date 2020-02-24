@@ -692,20 +692,45 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \subsection{Syntactic Transformations of the Core Plugin}
 
 \begin{align*}
-  &C\expr{\ttt{externalize (x + y)}} = \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
-  &C\expr{\ttt{externalize (case scrutinee of \{ ... \})}} = \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{\{ ... \}}}\\
+  D&\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
+      &:= \begin{cases}
+        \ttt{f = internalize $C^{*}\expr{\ttt{externalize (runIter $A\expr{\lambda \ttt{x} \rarr \ttt{case s of $T_{\ttt{f}}\expr{\ttt{\{ ... \}}}$}}$)}}$} & \text{if \ttt{f} occurs in \ttt{\{ ... \}}}\\
+        \ttt{f x = internalize $C^{*}\expr{\ttt{externalize (case s of \{ ... \})}}$} & \text{otherwise}
+      \end{cases}\\
+\end{align*}
+
+\begin{align*}
+  T_{\ttt{f}}&\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}} := \\
+    &:=
+      \begin{cases}
+        \ttt{\{ K x0 ... xN} \rarr \ttt{body}[\ttt{f} \mapsto \ttt{Step}]; T_{\ttt{f}}\expr{\ttt{\{ ... \}}}\ttt{ \}} & \text{if \ttt{f} occurs in \ttt{body}}\\
+        \ttt{\{ K x0 ... xN $\rarr$ Done body; ... \}} & \text{otherwise}
+      \end{cases}\\
+  T_f&\expr{\ttt{\{ \}}} := \ttt{\{ \}}\\
+\end{align*}
+\begin{align*}
+  &C^{*}\expr{\ttt{x}} :=
+    \begin{cases}
+      x & \text{if x has no marked subexpressions}\\
+      C^{*}\expr{C\expr{\ttt{externalize y}}} & \text{if \ttt{externalize y} is the first marked subexpression of \ttt{x}}\\
+    \end{cases}\\
+\end{align*}
+\begin{align*}
+  &C\expr{\ttt{externalize (runIter x)}} := \ttt{TailRec $M\expr{\ttt{x}}$}\\
+  &C\expr{\ttt{externalize (x + y)}} := \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
+  &C\expr{\ttt{externalize (case scrutinee of \{ ... \})}} := \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{\{ ... \}}}\\
   &\\
-  &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}} = \ttt{SumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body0}}\; B\expr{\ttt{\{ ... \}}}\\
-  &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body \}}} = \ttt{OneSumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body}}\\
+  &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}} := \ttt{SumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body0}}\; B\expr{\ttt{\{ ... \}}}\\
+  &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body \}}} := \ttt{OneSumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body}}\\
   &B\expr{\ttt{\{ \}}} = \ttt{EmptyMatch}\\
   &\\
-  &P\expr{\ttt{x0 x1 ... $\rarr$ body}} = \ttt{ProdMatchExp }A\expr{\ttt{$\lambda$ x0 $\rarr$ $P\expr{\ttt{x1 ... $\rarr$ body}}$}}\\
-  &P\expr{\ttt{x $\rarr$ body}} = \ttt{OneProdMatchExp }A\expr{\ttt{$\lambda$ x $\rarr$ body}}\\
-  &P\expr{\ttt{ $\rarr$ body}} = \ttt{NullaryMatch $M\expr{\ttt{body}}$}\\
+  &P\expr{\ttt{x0 x1 ... $\rarr$ body}} := \ttt{ProdMatchExp }A\expr{\ttt{$\lambda$ x0 $\rarr$ $P\expr{\ttt{x1 ... $\rarr$ body}}$}}\\
+  &P\expr{\ttt{x $\rarr$ body}} := \ttt{OneProdMatchExp }A\expr{\ttt{$\lambda$ x $\rarr$ body}}\\
+  &P\expr{\ttt{ $\rarr$ body}} := \ttt{NullaryMatch $M\expr{\ttt{body}}$}\\
   &\\
-  &A\expr{\ttt{$\lambda$(x :: a) $\rarr$ body}} = \ttt{Lam (Name @a uniq) $M\expr{\ttt{body$[\ttt{x} \mapsto \ttt{Var uniq}]$}}$}\text{\;\;\;\;\;(where \ttt{uniq} is a globally unique identifier)}\\
+  &A\expr{\ttt{$\lambda$(x :: a) $\rarr$ body}} := \ttt{Lam (Name @a uniq) $M\expr{\ttt{body$[\ttt{x} \mapsto \ttt{Var uniq}]$}}$}\text{\;\;\;\;\;(where \ttt{uniq} is a globally unique identifier)}\\
   &\\
-  &M\expr{\ttt{(x :: a)}} =
+  &M\expr{\ttt{(x :: a)}} :=
     \begin{cases}
       \ttt{externalize x} & \text{if}\; \nexists t, a\; \typeeq E\; t\\
       \ttt{x} & \text{if}\; \exists t, a\; \typeeq E\; t
