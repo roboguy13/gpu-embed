@@ -770,6 +770,9 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
       \end{cases}\\
   T_{\ttt{f}}&\expr{\ttt{\{ \}}} := \ttt{\{ \}}\\
 \end{align*}
+
+(Note that the tail recursion transformation given by $D$ and $T_{\ttt{f}}$ is completely independent of the \ttt{E} type and the transformations associated to the \ttt{E} type. As a result, the tail recursion transformation can be used on its own.)
+
 \begin{align*}
   &C^{*}\expr{\ttt{x}} :=
     \begin{cases}
@@ -806,7 +809,13 @@ full transformation step (that is, $C$) eliminates one mark. Therefore, the
 transformation will terminate.
 
 
+\clearpage
 \section{Citations and Bibliographies}
+
+
+\begin{tcolorbox}
+  \textbf{TODO}: Fill in
+\end{tcolorbox}
 
 % The use of \BibTeX\ for the preparation and formatting of one's
 % references is strongly recommended. Authors' names should be complete
