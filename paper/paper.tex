@@ -703,7 +703,7 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
   T_{\ttt{f}}&\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}} := \\
     &:=
       \begin{cases}
-        \ttt{\{ K x0 ... xN} \rarr \ttt{body}[\ttt{f} \mapsto \ttt{Step}]; T_{\ttt{f}}\expr{\ttt{\{ ... \}}}\ttt{ \}} & \text{if \ttt{f} occurs in \ttt{body}}\\
+        \ttt{\{ K x0 ... xN $\rarr$ body}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T_{\ttt{f}}\expr{\ttt{\{ ... \}}}\ttt{ \}} & \text{if \ttt{f} occurs in \ttt{body}}\\
         \ttt{\{ K x0 ... xN $\rarr$ Done body; ... \}} & \text{otherwise}
       \end{cases}\\
   T_f&\expr{\ttt{\{ \}}} := \ttt{\{ \}}\\
