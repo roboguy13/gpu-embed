@@ -630,7 +630,7 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 
 \begin{tikzpicture}[node distance=2cm]
 \node (start) [startstop] {Core from GHC};
-  \node (tailrec) [process, below of=start]{Transform tail recursion (if applicable)};
+  \node (tailrec) [process, below of=start]{Transform tail recursion of definitions with a mark (when applicable)};
   \node (findmark) [process, below of=tailrec]{Find marked expression and erase mark};
     \node (handlecase) [process, below of=findmark]{Mark scrutinee};
     \node (handleprim) [process, right of=handlecase, xshift=1.6cm]{Encode as EDSL primitive};
