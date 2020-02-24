@@ -338,14 +338,14 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
           else
             transformSumMatch guts mark scrutinee wild ty alts
 
-        go expr@(Lam v body) = do
-          expTyCon <- lift $ findTyConTH guts ''GPUExp
+        -- go expr@(Lam v body) = do
+        --   expTyCon <- lift $ findTyConTH guts ''GPUExp
 
-          let ty = mkTyConApp expTyCon [varType v]
+        --   let ty = mkTyConApp expTyCon [varType v]
 
-          bodyMarked <- mark (replaceVarType v ty body)
+        --   bodyMarked <- mark (replaceVarType v ty body)
 
-          return (Lam (setVarType v ty) bodyMarked)
+        --   return (Lam (setVarType v ty) bodyMarked)
 
         -- Numeric literals
         go expr@(Lit x :@ ty@(Type{}) :@ dict)
@@ -361,6 +361,8 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
         --   | isLam v, isDict dict1, isDict dict2 = do
         --       markedBody <- mark body
         --       return (Var v:@ tyA :@ tyB :@ dict1 :@ dict2 :@ name :@ markedBody)
+
+        go expr@(Lam v e) = abstractOver guts v e
 
         go expr@(Var v)
           | False <- isFunTy (varType v) = whenNotExprTyped guts expr $ do
@@ -743,7 +745,8 @@ transformTailRec guts recVar e0 = do
               resultTyDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [resultTy])
               tyDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [ty])
 
-              theLam <- abstractOver guts lamV x'
+              -- theLam <- abstractOver guts lamV x'
+              let theLam = Lam lamV x'
 
               return (Var f :@ fTyArg :@ fDict :@
                         (Var runIterId :@ Type resultTy :@ Type ty :@ resultTyDict :@ tyDict :@ theLam))
