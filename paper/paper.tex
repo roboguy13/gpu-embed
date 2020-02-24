@@ -495,7 +495,8 @@ data Iter a b = Step b | Done a
   deriving (Functor, Generic)
 
 runIter :: (ERep a, ERep b)
-  => (a -> Iter b a) -> a -> b
+  => (a -> Iter b a)
+     -> (a -> b)
 runIter f = go
   where
     go x =
@@ -504,7 +505,8 @@ runIter f = go
         Step x' -> go x'
 \end{lstlisting}
 
-In the \ttt{E} type, this is represented by:
+In the \ttt{E} type, this is used to represent tail recursion by
+the following constructors:
 
 \begin{lstlisting}
 data E t where
