@@ -687,7 +687,7 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \end{tikzpicture}
 
 \clearpage
-\subsection{Core Plugin Transformations}
+\subsection{Syntactic Transformations of the Core Plugin}
 
 \begin{align*}
   &C\expr{\ttt{externalize (x + y)}} = \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
@@ -698,7 +698,7 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
   &B\expr{\ttt{\{ \}}} = \ttt{EmptyMatch}\\
   &\\
   &P\expr{\ttt{x0 x1 ... $\rarr$ body}} = \ttt{ProdMatchExp }A\expr{\ttt{$\lambda$ x0 $\rarr$ $P\expr{\ttt{x1 ... $\rarr$ body}}$}}\\
-  &P\expr{\ttt{x $\rarr$ body}} = \ttt{OneProdMatchExp }A\expr{\ttt{$\lambda$ x $\rarr$ $M\expr{\ttt{body}}$}}\\
+  &P\expr{\ttt{x $\rarr$ body}} = \ttt{OneProdMatchExp }A\expr{\ttt{$\lambda$ x $\rarr$ body}}\\
   &P\expr{\ttt{ $\rarr$ body}} = \ttt{NullaryMatch $M\expr{\ttt{body}}$}\\
   &\\
   &A\expr{\ttt{$\lambda$(x :: a) $\rarr$ body}} = \ttt{Lam (Name @a uniq) $M\expr{\ttt{body$[\ttt{x} \mapsto \ttt{Var uniq}]$}}$}\text{\;\;\;\;\;(where \ttt{uniq} is a globally unique identifier)}\\
@@ -710,6 +710,11 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
     \end{cases}
 \end{align*}
 
+
+Note that the total number of marks introduced is upper bounded by the number of
+subexpressions in the original Core given to the transformation by GHC and each
+full transformation step (that is, $C$) eliminates one mark. Therefore, the
+transformation will terminate.
 
 
 \section{Citations and Bibliographies}
