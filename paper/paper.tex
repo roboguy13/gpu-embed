@@ -1,4 +1,4 @@
-%%
+
 %% This is file `sample-acmsmall.tex',
 %% generated with the docstrip utility.
 %%
@@ -232,7 +232,7 @@ incrementally as they are needed.
 
 In the example below, \ttt{example} would get transformed into \ttt{example'}:
 
-\begin{lstlisting}
+\begin{lstlisting}[deletekeywords={Ord}]
 import Data.Char (ord)
 
 x :: Either Char Int
@@ -630,7 +630,8 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 
 \begin{tikzpicture}[node distance=2cm]
 \node (start) [startstop] {Core from GHC};
-  \node (findmark) [process, below of=start]{Find marked expression and erase mark};
+  \node (tailrec) [process, below of=start]{Transform tail recursion (if applicable)};
+  \node (findmark) [process, below of=tailrec]{Find marked expression and erase mark};
     \node (handlecase) [process, below of=findmark]{Mark scrutinee};
     \node (handleprim) [process, right of=handlecase, xshift=1.6cm]{Encode as EDSL primitive};
     \node (handleapp) [process, right of=handleprim, xshift=1.6cm]{Wrap with \ttt{Construct} and \ttt{ConstructAp}};
@@ -644,7 +645,8 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
     \node (markbody) [process, below of=abstractvar]{Mark branch body};
     \node (endstep) [process, below of=markbody, right of=markbody, xshift=1.6cm]{End of one transformation step};
 
-  \draw [arrow] (start) -- (findmark);
+  \draw [arrow] (start) -- (tailrec);
+  \draw [arrow] (tailrec) -- (findmark);
   \draw [arrow] (findmark) -- node[anchor=east] {Primitive} (handleprim);
   \draw [arrow] (findmark) -- node[anchor=west] {Function application/non-prim var} (handleapp);
   \draw [arrow] (findmark) -- node[anchor=east] {\ttt{case}} (handlecase);

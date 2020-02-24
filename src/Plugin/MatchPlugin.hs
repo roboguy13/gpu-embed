@@ -321,7 +321,7 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
           falseId <- lift $ findIdTH guts 'False
           trueId <- lift $ findIdTH guts 'True
           iteId <- lift $ findIdTH guts 'IfThenElse
-     
+
           boolTyCon <- lift $ findTyConTH guts ''Bool
 
           let (DataAlt d, _, _) : _ = alts
@@ -410,7 +410,7 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
 
             litId <- lift $ findIdTH guts 'Expr.Lit
             return (Var litId :@ Type doubleTy :@ numDict :@ expr)
-        
+
           | "F#" <- occNameString (occName f) = do
             numTyCon <- lift $ findTyConTH guts ''Num
             floatTyCon <- lift $ findTyConTH guts ''Float
@@ -422,9 +422,9 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
             return (Var litId :@ Type floatTy :@ numDict :@ expr)
 
         go expr@(Var f :@ x)
-          | not (isTypeArg x) && 
+          | not (isTypeArg x) &&
             not (isDerivedOccName (occName f)) && last (occNameString (occName f)) /= '#',
-            Just (aTy, bTy) <- splitFunTy_maybe (varType f) = 
+            Just (aTy, bTy) <- splitFunTy_maybe (varType f) =
               whenNotExprTyped guts expr $ do
 
             repTyCon <- lift $ findTyConTH guts ''GPURep
@@ -1007,7 +1007,7 @@ topNormaliseType' guts ty = (secondM (collapseRepTys guts) =<<) $ do
 
   runTcM guts . fmap fst . runTcS $ do
     famInstEnvs <- getFamInstEnvs
-    
+
     case topNormaliseType_maybe famInstEnvs ty of
       Nothing -> return (normaliseType famInstEnvs Nominal ty)
       Just (co, ty')  ->
@@ -1091,7 +1091,7 @@ splitTypeApps_maybe (lhs0 :@ x) =
 
 splitTypeApps_maybe _ = Nothing
 
-   
+
 
 findIdTH :: ModGuts -> TH.Name -> CoreM Id
 findIdTH guts thName = do
