@@ -485,6 +485,39 @@ which pattern matches according to its input value.
 
 Likewise for \ttt{ProdMatch a b} values.
 
+\section{Representing tail recursion}
+\begin{tcolorbox}
+  \textbf{TODO}: Expand this section
+\end{tcolorbox}
+
+\begin{lstlisting}
+data Iter a b = Step b | Done a
+  deriving (Functor, Generic)
+
+runIter :: (ERep a, ERep b)
+  => (a -> Iter b a) -> a -> b
+runIter f = go
+  where
+    go x =
+      case f x of
+        Done r  -> r
+        Step x' -> go x'
+\end{lstlisting}
+
+In the \ttt{E} type, this is represented by:
+
+\begin{lstlisting}
+data E t where
+  ...
+  StepExp :: E b -> E (Iter a b)
+  DoneExp :: E a -> E (Iter a b)
+
+  TailRec :: (ERep a, ERep b)
+               => E (b -> Iter a b)
+                  -> E (b -> a)
+  ...
+\end{lstlisting}
+
 \section{Representing lambdas}
 This representation of pattern matching depends on the ability to bring
 function values into the expression language. This is accomplished
