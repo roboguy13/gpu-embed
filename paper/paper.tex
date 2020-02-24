@@ -39,7 +39,7 @@
 \tikzstyle{decision} = [diamond, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=green!30]
 \tikzstyle{arrow} = [thick,->,>=stealth]
 
-\lstset{language=haskell, deletekeywords={abs}}
+\lstset{language=haskell, deletekeywords={abs},basicstyle=\ttfamily}
 
 \newcommand{\expr}[1]{\llbracket#1\rrbracket} % Oxford brackets
 \newcommand{\rarr}{\rightarrow}
@@ -625,6 +625,38 @@ absEnv :: forall t. Env -> E t -> t
 absEnv env (CaseExp x f) =
   sumMatchAbs f (absEnv env x)
 
+absEnv env (TailRec f) = \ x ->
+  case absEnv env f x of
+    Step x' -> absEnv env (TailRec f) x'
+    Done r  -> r
+
+absEnv env (Var v) =
+  case envLookup env v of
+    Just x -> absEnv env
+    Nothing ->
+      error
+        ("No binding for name "
+          ++ show v)
+
+absEnv env (Lam (name :: Name a)
+                (body :: E b)) =
+  \ (arg :: a) ->
+    let go :: forall x. E x -> E x
+        go expr@(Var name2 :: E a') =
+          case namesEq name name2 of
+            Just Refl -> rep arg
+            _ ->
+              case envLookup env name2 of
+                Just v  -> v
+                Nothing -> expr
+
+        -- [... traverse rest of expression
+        --      in go ...]
+    in
+    absEnv (extendEnv env
+                      (name :=> rep arg))
+           (go body)
+
 absEnv env (LeftExp x) =
   Left (absEnv env x)
 
@@ -635,14 +667,6 @@ absEnv env (PairExp x y) =
   (absEnv env x, absEnv env y)
 
 absEnv env (Repped x) = unrep x
-
-absEnv env env (Var v) =
-  case envLookup env v of
-    Just x -> absEnv env
-    Nothing ->
-      error
-        ("No binding for name "
-          ++ show v)
 
 ...
 \end{lstlisting}

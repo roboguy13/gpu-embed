@@ -483,12 +483,11 @@ gpuAbsEnv env (Lam (name :: Name a) (body :: GPUExp b)) = \(arg :: a) ->
 
     let go :: forall x. GPUExp x -> GPUExp x
         go expr@(Var name2 :: GPUExp t') =
-          case eqT :: Maybe (t' :~: a) of
-            Just Refl
-              | name == name2 -> rep arg
-            _   ->
+          case namesEq name name2 of
+            Just Refl -> rep arg
+            _ ->
               case envLookup env name2 of
-                Just v -> v
+                Just v  -> v
                 Nothing -> expr
 
         go (CaseExp x f) = CaseExp (go x) (go f)
