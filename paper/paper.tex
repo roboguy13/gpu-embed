@@ -765,6 +765,10 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \clearpage
 \subsection{Syntactic Transformations of the Core Plugin}
 
+\begin{tcolorbox}
+  \textbf{TODO}: Is it appropriate to use Oxford brackets here, in this way?
+\end{tcolorbox}
+
 \begin{align*}
   D&\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
       &:= \begin{cases}
@@ -815,6 +819,7 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
     \end{cases}
 \end{align*}
 
+\clearpage
 
 Note that the total number of marks introduced is upper bounded by the number of
 subexpressions in the original Core given to the transformation by GHC and each
