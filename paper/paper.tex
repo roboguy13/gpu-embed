@@ -756,7 +756,7 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \begin{align*}
   D&\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
       &:= \begin{cases}
-        \ttt{f = internalize $C^{*}\expr{\ttt{externalize (runIter $A\expr{\lambda \ttt{x} \rarr \ttt{case s of $T_{\ttt{f}}\expr{\ttt{\{ ... \}}}$}}$)}}$} & \text{if \ttt{f} occurs in \ttt{\{ ... \}}}\\
+        \ttt{f = internalize $C^{*}\expr{\ttt{externalize (runIter ($\lambda \ttt{x} \rarr \ttt{case s of $T_{\ttt{f}}\expr{\ttt{\{ ... \}}}$}$))}}$} & \text{if \ttt{f} occurs in \ttt{\{ ... \}}}\\
         \ttt{f x = internalize $C^{*}\expr{\ttt{externalize (case s of \{ ... \})}}$} & \text{otherwise}
       \end{cases}\\
 \end{align*}
