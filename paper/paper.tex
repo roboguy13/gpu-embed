@@ -701,7 +701,13 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
   &P\expr{\ttt{x $\rarr$ body}} = \ttt{OneProdMatchExp }A\expr{\texttt{$\lambda$ x $\rarr$ mark body}}\\
   &P\expr{\ttt{ $\rarr$ body}} = \ttt{NullaryMatch (mark body)}\\
   &\\
-  &A\expr{\ttt{$\lambda$(x :: a) $\rarr$ body}} = \ttt{Lam (Name @a uniq) (mark body$[\ttt{x} \mapsto \ttt{Var uniq}]$)}\text{\;\;\;\;\;(where \texttt{uniq} is a globally unique identifier)}
+  &A\expr{\ttt{$\lambda$(x :: a) $\rarr$ body}} = \ttt{Lam (Name @a uniq) (mark body$[\ttt{x} \mapsto \ttt{Var uniq}]$)}\text{\;\;\;\;\;(where \texttt{uniq} is a globally unique identifier)}\\
+  &\\
+  &\ttt{mark (x :: a)} =
+    \begin{cases}
+      \ttt{externalize x} & \text{if}\; \nexists t, a = E\; t\\
+      \ttt{x} & \text{if}\; \exists t, a = E\; t
+    \end{cases}
 \end{align*}
 
 
