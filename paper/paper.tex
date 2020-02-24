@@ -690,20 +690,20 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \subsection{Core Plugin Transformations}
 
 \begin{align*}
-  &C\expr{\ttt{externalize (x + y)}} = \ttt{Add (mark x) (mark y)}\\
-  &C\expr{\ttt{externalize (case scrutinee of \{ ... \})}} = \ttt{CaseExp (mark scrutinee) } B\expr{\ttt{\{ ... \}}}\\
+  &C\expr{\ttt{externalize (x + y)}} = \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
+  &C\expr{\ttt{externalize (case scrutinee of \{ ... \})}} = \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{\{ ... \}}}\\
   &\\
   &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}} = \ttt{SumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body0}}\; B\expr{\ttt{\{ ... \}}}\\
   &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body \}}} = \ttt{OneSumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body}}\\
   &B\expr{\ttt{\{ \}}} = \ttt{EmptyMatch}\\
   &\\
   &P\expr{\ttt{x0 x1 ... $\rarr$ body}} = \ttt{ProdMatchExp }A\expr{\ttt{$\lambda$ x0 $\rarr$ $P\expr{\ttt{x1 ... $\rarr$ body}}$}}\\
-  &P\expr{\ttt{x $\rarr$ body}} = \ttt{OneProdMatchExp }A\expr{\texttt{$\lambda$ x $\rarr$ mark body}}\\
-  &P\expr{\ttt{ $\rarr$ body}} = \ttt{NullaryMatch (mark body)}\\
+  &P\expr{\ttt{x $\rarr$ body}} = \ttt{OneProdMatchExp }A\expr{\ttt{$\lambda$ x $\rarr$ $M\expr{\ttt{body}}$}}\\
+  &P\expr{\ttt{ $\rarr$ body}} = \ttt{NullaryMatch $M\expr{\ttt{body}}$}\\
   &\\
-  &A\expr{\ttt{$\lambda$(x :: a) $\rarr$ body}} = \ttt{Lam (Name @a uniq) (mark body$[\ttt{x} \mapsto \ttt{Var uniq}]$)}\text{\;\;\;\;\;(where \texttt{uniq} is a globally unique identifier)}\\
+  &A\expr{\ttt{$\lambda$(x :: a) $\rarr$ body}} = \ttt{Lam (Name @a uniq) $M\expr{\ttt{body$[\ttt{x} \mapsto \ttt{Var uniq}]$}}$}\text{\;\;\;\;\;(where \ttt{uniq} is a globally unique identifier)}\\
   &\\
-  &\ttt{mark (x :: a)} =
+  &M\expr{\ttt{(x :: a)}} =
     \begin{cases}
       \ttt{externalize x} & \text{if}\; \nexists t, a = E\; t\\
       \ttt{x} & \text{if}\; \exists t, a = E\; t
