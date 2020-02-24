@@ -260,7 +260,7 @@ example' =
 \section{Representing Algebraic Datatypes}
 
 Briefly, a algebraic type \ttt{T} with an automatically generated \ttt{ERep}
-instance will be given representation in terms of \ttt{Either}, \ttt{(,)},
+instance is given representation in terms of \ttt{Either}, \ttt{(,)},
 \ttt{()} and \ttt{Void}. This "standardized" type representation is
 given by \ttt{ERepTy T}. \ttt{ERepTy} is an type family associated to
 the type class \ttt{ERep}. This type will be called the \textit{canonical type}
@@ -422,8 +422,8 @@ Note the \ttt{ERepTy a \typeeq a} constraints. This constraint ensures that the 
 \subsection{\ttt{E (ProdMatch s t)}}
 
 \ttt{E (ProdMatch x y)} is equivalent to a curried function from \ttt{x} to
-\ttt{y} in the expression language .  Note that \ttt{s} will be a (potentially
-nested) pair type. For example, \ttt{E (ProdMatch (a, (b, c)) r)} will be
+\ttt{y} in the expression language .  Note that \ttt{s} is a (potentially
+nested) pair type. For example, \ttt{E (ProdMatch (a, (b, c)) r)} is
 equivalent to \ttt{E (a -> b -> c -> r)}.
 
 \begin{lstlisting}
