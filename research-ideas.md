@@ -33,6 +33,13 @@ Each leaf value could be computed by the GPU in parallel and then put into the
 appropriate places in the `Tree` (whose shape has already been fixed). Putting
 the values into the tree could possibly happen either on the GPU or the CPU.
 
+Specializing a bit, we could additionally have:
+
+    parMapFTree :: FutureTree a -> Expr (TreePath -> a) -> Tree a
+
+In this function, the only information the GPU needs to know is the shape of
+the tree.
+
 Now consider the following function which, again, could be done in parallel on a
 GPU:
 

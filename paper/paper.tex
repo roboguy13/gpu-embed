@@ -22,13 +22,23 @@
 %% in the same archive or directory.)
 %%
 %% The first command in your LaTeX source must be the \documentclass command.
-\documentclass[acmsmall]{acmart}
+\documentclass[sigplan,screen]{acmart}
 \usepackage{booktabs}
 \usepackage{listings}
+\usepackage{tcolorbox}
 
 \lstset{language=haskell, deletekeywords={abs}}
 
+\newcommand{\typeeq}{\raise.17ex\hbox{$\scriptstyle\mathtt{\sim}$}\,}
+
 \newcommand{\ttt}{\texttt}
+
+% \newenvironment<>{todo}[1][]{
+%     \setbeamercolor{block body example}{fg=black,bg=blue}
+%     \setbeamercolor{block title example}{fg=white,bg=red!75!black}
+%     \setbeamertemplate{blocks}[rounded][shadow=false]
+%   \begin{todo}[]}{\end{todo}
+% }
 
 %%
 %% \BibTeX command to typeset BibTeX logo in the docs
@@ -47,13 +57,14 @@
 \acmDOI{1}
 
 
-%%
-%% These commands are for a JOURNAL article.
-\acmJournal{JACM}
-\acmVolume{1}
-\acmNumber{1}
-\acmArticle{1}
-\acmMonth{1}
+%% These commands are for a PROCEEDINGS abstract or paper.
+\acmConference[Woodstock '18]{Woodstock '18: ACM Symposium on Neural
+  Gaze Detection}{June 03--05, 2018}{Woodstock, NY}
+\acmBooktitle{Woodstock '18: ACM Symposium on Neural Gaze Detection,
+  June 03--05, 2018, Woodstock, NY}
+\acmPrice{15.00}
+\acmISBN{978-1-4503-XXXX-X/18/06}
+
 
 %%
 %% Submission ID.
@@ -99,64 +110,6 @@
 \author{Andrew Gill}
 \email{andygill@ku.edu}
 
-% \authornotemark[1]
-% \email{webmaster@marysville-ohio.com}
-% \affiliation{%
-%   \institution{Institute for Clarity in Documentation}
-%   \streetaddress{P.O. Box 1212}
-%   \city{Dublin}
-%   \state{Ohio}
-%   \postcode{43017-6221}
-% }
-
-% \author{Lars Th{\o}rv{\"a}ld}
-% \affiliation{%
-%   \institution{The Th{\o}rv{\"a}ld Group}
-%   \streetaddress{1 Th{\o}rv{\"a}ld Circle}
-%   \city{Hekla}
-%   \country{Iceland}}
-% \email{larst@affiliation.org}
-
-% \author{Valerie B\'eranger}
-% \affiliation{%
-%   \institution{Inria Paris-Rocquencourt}
-%   \city{Rocquencourt}
-%   \country{France}
-% }
-
-% \author{Aparna Patel}
-% \affiliation{%
-%  \institution{Rajiv Gandhi University}
-%  \streetaddress{Rono-Hills}
-%  \city{Doimukh}
-%  \state{Arunachal Pradesh}
-%  \country{India}}
-
-% \author{Huifen Chan}
-% \affiliation{%
-%   \institution{Tsinghua University}
-%   \streetaddress{30 Shuangqing Rd}
-%   \city{Haidian Qu}
-%   \state{Beijing Shi}
-%   \country{China}}
-
-% \author{Charles Palmer}
-% \affiliation{%
-%   \institution{Palmer Research Laboratories}
-%   \streetaddress{8600 Datapoint Drive}
-%   \city{San Antonio}
-%   \state{Texas}
-%   \postcode{78229}}
-% \email{cpalmer@prl.com}
-
-% \author{John Smith}
-% \affiliation{\institution{The Th{\o}rv{\"a}ld Group}}
-% \email{jsmith@affiliation.org}
-
-% \author{Julius P. Kumquat}
-% \affiliation{\institution{The Kumquat Consortium}}
-% \email{jpkumquat@consortium.net}
-
 %%
 %% By default, the full list of authors will be used in the page
 %% headers. Often, this list is too long, and will overlap
@@ -172,7 +125,7 @@
   Domain specific languages (DSLs) provide a powerful tool for to abstract over
   a class of problems. In this paper, we introduce a technique for representing
   algebraic data types and pattern matching in a DSL embedded in Haskell. This
-  representation is mechanized through the use of GHC Generics and Template Haskell.
+  representation is mechanized through the use of GHC Generics and and GHC Core plugin.
 \end{abstract}
 
 \begin{CCSXML}
@@ -242,8 +195,24 @@ different problem domains. Haskell is a language which is particularly
 well-suited to EDSLs due to its lazy evaluation, first-class functions and
 lexical closures.
 
+\subsection{Overview}
+
+In this EDSL, the type representing values in the expression language is \ttt{E
+t} and there are two basic functions which translate values to and from this
+expression language with the following type signatures:
+
+\begin{lstlisting}
+rep :: a -> E a
+abs :: E a -> a
+\end{lstlisting}
+
+In this paper, the data constructors of the \ttt{E} type will be described
+incrementally as they are needed.
+
+
 \subsection{Translation Example} % TODO: Does it make sense for this to be a
                                  % subsection of the intro?
+
 
 In the example below, \ttt{example} would get transformed into \ttt{example'}:
 
@@ -261,15 +230,25 @@ example =
 
 example' :: Int
 example' =
-  abs (CaseExp (rep x)
-               (SumMatch (OneProdMatch (\c -> ord c))
-                         (OneSumMatch
-                           (OneProdMatch (\i -> i)))))
+  abs (CaseExp
+        (rep x)
+        (SumMatchExp (OneProdMatch
+                       (Lam 1 (Ord (Var 1))))
+                     (OneSumMatch
+                       (OneProdMatch
+                         (Lam 2 (Var 2)))))
 \end{lstlisting}
 
 [\ldots]
 
 \section{Representing Algebraic Datatypes}
+
+Briefly, a algebraic type \ttt{T} with an automatically generated \ttt{ERep}
+instance will be given representation in terms of \ttt{Either}, \ttt{(,)},
+\ttt{()} and \ttt{Void}. This "standardized" type representation is
+given by \ttt{ERepTy T}. \ttt{ERepTy} is an type family associated to
+the type class \ttt{ERep}. This type will be called the \textit{canonical type}
+of \ttt{T}.
 
 \subsection{GHC Generics \ttt{Rep}}
 
@@ -321,7 +300,9 @@ class ERep t where
 The key algebraic instances mentioned before are as follows:
 
 \begin{lstlisting}
-instance (ERep a, ERep b) => ERep (Either a b) where
+instance (ERep a, ERep b)
+  => ERep (Either a b) where
+
   type ERepTy (Either a b) = Either a b
 
   rep (Left x)  = LeftExp (rep x)
@@ -330,13 +311,16 @@ instance (ERep a, ERep b) => ERep (Either a b) where
   unrep = id
   rep'  = id
 
-instance (ERep a, ERep b) => ERep (a, b) where
+instance (ERep a, ERep b)
+  => ERep (a, b) where
+
   type ERepTy (a, b) = (a, b)
 
   rep (x, y) = PairExp (rep x) (rep y)
   unrep = id
   rep'  = id
 \end{lstlisting}
+
 
 \section{Representing pattern matches}
 
@@ -346,121 +330,270 @@ Within the \ttt{E} expression language, a pattern match is represented by the
 \begin{lstlisting}
 data E t where
   ...
-  CaseExp :: ERep t => E t -> SumMatch (ERepTy t) r -> E r
+  CaseExp ::
+    (ERep t, ERepTy (ERepTy t) ~ ERepTy t)
+      => ERep t
+         -> E (SumMatch (ERepTy t) r)
+         -> E r
   ...
 \end{lstlisting}
 
-A value of type \ttt{SumMatch a b} represents a computation within the EDSL
+The equality constraint ensures that a canonical type is its own canonical type.
+
+\begin{tcolorbox}
+  \textbf{TODO}: Should we make a synonym for this constraint since it is used in
+multiple places? Like this:
+\begin{lstlisting}
+type CanonicalIsIdem t =
+  ERepTy (ERepTy t) ~ ERepTy t
+\end{lstlisting}
+\end{tcolorbox}
+
+(The above code block is a slight simplification of the actual implementation,
+which has an additional type variable which is used at an "intermediate" point.
+The expanded form is in place to simplify the Core transformation.)
+
+The type \ttt{SumMatch} is defined as
+
+\begin{lstlisting}
+newtype SumMatch a b =
+  MkSumMatch { runSumMatch :: a -> b }
+\end{lstlisting}
+
+For the moment, we will primarily use this type as a type tag and ignore
+the values it can take on.
+
+A value of type \ttt{E (SumMatch a b)} represents a computation within the EDSL
 which destructures a value of type \ttt{E a} and produces a value of type \ttt{E b}.
-Therefore, \ttt{SumMatch (ERepTy t) r} represents a computation which destructures
+Therefore, \ttt{E (SumMatch (ERepTy t) r)} represents a computation which destructures
 a value of type \ttt{E (ERepTy t)} and produces a value of type \ttt{E b}.
 
 
 
-\subsection{\ttt{SumMatch}}
+\subsection{\ttt{E (SumMatch a b)}}
 
-The overall structure of \ttt{SumMatch} is a (heterogeneous) list of \ttt{ProdMatch} values.
-Each item of this list corresponds exactly to one branch in the original \ttt{case} match.
+The overall structure of a \ttt{E (SumMatch a b)} value is a (heterogeneous)
+list of \ttt{E (ProdMatch x y)} values.  Each item of this list corresponds
+exactly to one branch in the original \ttt{case} match.
 
-\begin{lstlisting}
-data SumMatch s t where
-  SumMach ::
-    (ERep a, ERep b, ERepTy b ~ b)
-      => ProdMatch a r -> SumMatch b r -> SumMatch (Either a b) r
-
-  EmptyMatch :: SumMatch Void r
-
-  OneSumMatch ::
-    (ERep a, ERep b, ERepTy a ~ a)
-      => ProdMatch a b -> SumMatch a b
-\end{lstlisting}
-
-Note the \ttt{ERepTy a ~ a} constraints. This constraint ensures that the type \ttt{a}
-is already in canonical form (that is, consists entirely of \ttt{Either}, \ttt{(,)} and
-base types).
-
-\subsection{\ttt{ProdMatch}}
-
-\ttt{ProdMatch s t} is equivalent to a function a curried function from \ttt{s} to \ttt{t}.
-Note that \ttt{s} will be a (potentially nested) pair type. For example,
-\ttt{ProdMatch (a, (b, c)) r} will be equivalent to \ttt{a -> b -> c -> r}.
-
-\begin{lstlisting}
-data ProdMatch s t where
-  ProdMatch ::
-    (ERep a, ERep b)
-      => (E a -> ProdMatch b r) -> ProdMatch (a, b) r
-
-  OneProdMatch :: ERep a => (E a -> E r) -> ProdMatch a r
-
-  NullaryMatch :: ERep r => E r -> ProdMatch a r
-\end{lstlisting}
-
-\section{Recovering standard semantics for pattern matches}
-
-\begin{lstlisting}
-sumMatchAbs :: ERep s => SumMatch (ERepTy s) t -> s -> t
-...
-
-prodMatchAbs :: ERep s => ProdMatch s t -> s -> t
-...
-
-abs :: E t -> t
-abs (CaseExp x f) = sumMatchAbs f (abs x)
-
-abs (LeftExp x) = Left (abs x)
-abs (RightExp y) = Right (abs y)
-abs (PairExp x y) = (abs x, abs y)
-
-abs (Repped x) = unrep x
-...
-\end{lstlisting}
-
-\section{Constructing values}
-
-\ttt{construct} is designed to bring Haskell constructors into the EDSL world.
-
-\begin{lstlisting}
-construct ::
-  Construct (a -> b)
-    => (a -> b) -> LiftedFn (a -> b)
-construct = construct' . ConstructE
-
--- Example: LiftedFn (a -> b -> c) is: E a -> E b -> E c
-type family LiftedFn t where
-  LiftedFn (a -> b) = E a -> LiftedFn b
-  LiftedFn b        = E b
-
-class Construct t where
-  construct' :: E t -> LiftedFn t
-\end{lstlisting}
-
-The "helper constructors" \ttt{ConstructE} are part of the \ttt{E} type:
+The following constructors generate \ttt{SumMatch}-tagged values in the
+expression language:
 
 \begin{lstlisting}
 data E t where
   ...
-  ConstructE :: (a -> b) -> E (a -> b)
-  ConstructAp :: ERep a => E (a -> b) -> E a -> E b
+  SumMatchExp ::
+    (ERep a, ERep b, ERepTy b ~ b)
+      => E (ProdMatch a r)
+         -> E (SumMatch b r)
+         -> E (SumMatch (Either a b) r)
+
+  OneSumMatch ::
+    (ERep a, ERep b, ERepTy a ~ a)
+      => E (ProdMatch a b)
+         -> E (SumMatch a b)
+
+
+  EmptyMatch ::
+    (ERep b) => E (SumMatch Void b)
   ...
 \end{lstlisting}
 
-Example GHCi session, demonstrating \ttt{construct}:
+Note the \ttt{ERepTy a \typeeq a} constraints. This constraint ensures that the type
+\ttt{a} is already in canonical form (that is, consists entirely of
+\ttt{Either}, \ttt{(,)} and base types).
+
+\subsection{\ttt{E (ProdMatch s t)}}
+
+\ttt{E (ProdMatch x y)} is equivalent to a curried function from \ttt{x} to
+\ttt{y} in the expression language .  Note that \ttt{s} will be a (potentially
+nested) pair type. For example, \ttt{E (ProdMatch (a, (b, c)) r)} will be
+equivalent to \ttt{E (a -> b -> c -> r)}.
 
 \begin{lstlisting}
-ghci> :t construct (,)
-construct (,)
-  :: (ERep a, ERep b) => E a -> E b -> E (a, b)
+data E t where
+  ...
+  ProdMatchExp ::
+    (ERep a, ERep b)
+      => E (a -> ProdMatch b r)
+         -> E (ProdMatch (a, b) r)
 
-ghci> :t construct (,,)
-construct (,,)
-  :: (ERep a, ERep b, ERep c) =>
-     E a -> E b -> E c -> E (a, b, c)
+  NullaryMatch ::
+    (ERep a)
+      => E r -> E (ProdMatch a r)
 
-ghci> :t construct (,,) (rep False) (rep 3.1 :: E Float) (rep 1 :: E Int)
-construct (,,) (rep False) (rep 3.1 :: E Float) (rep 1 :: E Int)
-  :: E (Bool, Float, Int)
+
+  OneProdMatch ::
+    (ERep a)
+      => E (a -> b) -> E (ProdMatch a b)
+  ...
 \end{lstlisting}
+
+The \ttt{ProdMatch} type is defined similarly to the \ttt{SumMatch} type and is
+similiarly used primarily as a type tag:
+
+\begin{lstlisting}
+newtype ProdMatch a b =
+  MkProdMatch { runProdMatch :: a -> b }
+\end{lstlisting}
+
+\subsection{Connection to Church encodings}
+TODO: Write this subsection
+
+\subsection{An aside on \ttt{ProdMatch} and \ttt{SumMatch} values}
+
+Though \ttt{ProdMatch} and \ttt{SumMatch} are used throughout this EDSL as type
+tags, they do have values and they are not trivial values. The reason for this
+is that it connects the encoded pattern matches (values from the \ttt{E}) type
+to their semantics. A value of type \ttt{E (SumMatch a b)} is an expression
+which takes in a value of type \ttt{a} (embedded within the expression
+language), internally performs some pattern matching, and produces a value of
+type \ttt{b} (again, embedded within the expression language). This is exactly
+the semantics of a function from \ttt{a} to \ttt{b}. Likewise for \ttt{ProdMatch a b}.
+
+Recall the previously mentioned function
+
+\begin{lstlisting}
+abs :: E a -> a
+\end{lstlisting}
+
+Now consider at the type of \ttt{abs} when it is specialized to take \ttt{E
+(SumMatch a b)} values:
+
+\begin{lstlisting}
+abs :: E (SumMatch a b) -> SumMatch a b
+\end{lstlisting}
+
+The \ttt{SumMatch a b} value which \ttt{abs} returns is exactly the function
+which pattern matches according to its input value.
+
+Likewise for \ttt{ProdMatch a b} values.
+
+\section{Representing lambdas}
+This representation of pattern matching depends on the ability to bring
+function values into the expression language. This is accomplished
+with the following constructors:
+
+\begin{lstlisting}
+data E t where
+  ...
+  Lam ::
+    (ERep a, Typeable a)
+      => Name a -> E b -> E (a -> b)
+
+  Var :: (Typeable a) => Name a -> E a
+\end{lstlisting}
+
+The \ttt{Typeable} constraints are necessary to lookup correctly typed
+values in the variable binding environment later on.
+
+The \ttt{Name t} type represents a lambda variable identifier together with its
+type \ttt{t}:
+
+\begin{lstlisting}
+newtype Name a = Name Int
+  deriving (Eq, Show)
+
+namesEq :: forall a b.
+  (Typeable a, Typeable b)
+    => Name a -> Name b -> Maybe (a :~: b)
+namesEq (Name n) (Name n') =
+  case eqT :: Maybe (a :~: b) of
+    Just Refl
+      | n == n' -> Just Refl
+      | otherwise -> Nothing
+    Nothing   -> Nothing
+\end{lstlisting}
+
+(Note that the \ttt{ScopedTypeVariables} extension is enabled.)
+
+In the Core transformation, each lambda is given a \ttt{Name} with a globally
+unique \ttt{Int}, sidestepping any name capture issues.
+
+The following datatypes are used to represent a variable binding environment
+of typed names to expression language values:
+
+\begin{lstlisting}
+data EnvMapping where
+  (:=>) :: forall a.
+    Typeable a
+    => Name a -> E a -> EnvMapping
+\end{lstlisting}
+
+This type encodes a single variable binding, with values of the form \ttt{n :=>
+v}, where \ttt{n} is a typed name and \ttt{v} is the value it is bound to.
+
+These bindings are grouped together in the \ttt{Env} type:
+
+\begin{lstlisting}
+newtype Env = Env [EnvMapping]
+
+emptyEnv :: Env
+emptyEnv = Env []
+
+extendEnv :: Env -> EnvMapping -> Env
+extendEnv (Env maps) m = Env (m:maps)
+
+envLookup :: Typeable a
+  => Env -> Name a -> Maybe (E a)
+envLookup (Env maps) = go maps
+  where
+    go []                = Nothing
+
+    go ((n' :=> e):rest) =
+      case namesEq n n' of
+        Just Refl -> Just e
+        Nothing   -> go rest
+\end{lstlisting}
+
+
+\section{Recovering standard semantics for pattern matches}
+
+\begin{lstlisting}
+abs :: forall t. E t -> t
+abs = absEnv emptyEnv
+
+sumMatchAbs ::
+  (ERepTy (ERepTy s) ~ ERepTy s, ERep s)
+  => Env
+    -> E (SumMatch (ERepTy s) t)
+    -> s
+    -> t
+...
+
+prodMatchAbs :: (ERep s)
+  => Env
+     -> E (ProdMatch s t)
+     -> s
+     -> t
+...
+
+absEnv :: forall t. Env -> E t -> t
+absEnv env (CaseExp x f) =
+  sumMatchAbs f (absEnv env x)
+
+absEnv env (LeftExp x) =
+  Left (absEnv env x)
+
+absEnv env (RightExp y) =
+  Right (absEnv env y)
+
+absEnv env (PairExp x y) =
+  (absEnv env x, absEnv env y)
+
+absEnv env (Repped x) = unrep x
+
+absEnv env env (Var v) =
+  case envLookup env v of
+    Just x -> absEnv env
+    Nothing ->
+      error
+        ("No binding for name "
+          ++ show v)
+
+...
+\end{lstlisting}
+
 
 
 \section{Citations and Bibliographies}

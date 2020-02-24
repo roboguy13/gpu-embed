@@ -76,10 +76,10 @@ data Iter a b
   | Done a
   deriving (Functor, Generic)
 
-data Name a = Name Int deriving (Eq, Show)
+newtype Name a = Name Int deriving (Eq, Show)
 
-data EnvMapping =
-  forall a. Typeable a => (Name a) :=> GPUExp a
+data EnvMapping where
+  (:=>) :: forall a. Typeable a => (Name a) -> GPUExp a -> EnvMapping
 
 newtype Env = Env [EnvMapping]
 
@@ -89,11 +89,11 @@ emptyEnv = Env []
 extendEnv :: Env -> EnvMapping -> Env
 extendEnv (Env maps) m = Env (m:maps)
 
-envLookup :: forall a. Typeable a => Env -> Name a -> Maybe (GPUExp a)
-envLookup (Env maps) n@(Name _) = go maps
+envLookup :: Typeable a => Env -> Name a -> Maybe (GPUExp a)
+envLookup (Env maps) n = go maps
   where
     go [] = Nothing
-    go ((n'@(Name _) :=> e):rest) =
+    go ((n' :=> e):rest) =
       case namesEq n n' of
         Just Refl -> Just e
         Nothing   -> go rest
@@ -136,7 +136,6 @@ data GPUExp t where
 
   Repped :: GPURep a => GPURepTy a -> GPUExp a
 
-  -- Lam :: GPURep a => Int -> GPUExp b -> GPUExp (a -> b)
   Lam :: forall a b. (GPURep a, Typeable a) => Name a -> GPUExp b -> GPUExp (a -> b)
   Var :: forall a. Typeable a => Name a -> GPUExp a -- Constructed internally
 
@@ -269,8 +268,8 @@ instance (GPURep a, GPURep b) => GPURep (Either a b) where
   -- type GPURepTy (Either a b) = Either (GPURepTy a) (GPURepTy b)
   type GPURepTy (Either a b) = Either a b
 
-  rep (Left x) = LeftExp (Construct x)
-  rep (Right y) = RightExp (Construct y)
+  rep (Left x) = LeftExp (rep x)
+  rep (Right y) = RightExp (rep y)
 
   rep' = id
   unrep' = id
@@ -288,7 +287,7 @@ instance (GPURep a, GPURep b) => GPURep (a, b) where
   -- type GPURepTy (a, b) =  (GPURepTy a, GPURepTy b)
   type GPURepTy (a, b) =  (a, b)
 
-  rep (x, y) = PairExp (Construct x) (Construct y) --uncurry PairExp
+  rep (x, y) = PairExp (rep x) (rep y) --uncurry PairExp
   rep' = id
   unrep' = id
 
@@ -436,7 +435,7 @@ gpuAbsEnv :: forall t. Env -> GPUExp t -> t
 gpuAbsEnv env (Var v) =
   case envLookup env v of
     Just x -> gpuAbsEnv env x
-    Nothing -> error $ "No binding for var " ++ show v
+    Nothing -> error $ "No binding for name " ++ show v
 gpuAbsEnv env (CaseExp x f) = sumMatchAbs env f (gpuAbsEnv env x)
 gpuAbsEnv env FalseExp = False
 gpuAbsEnv env TrueExp  = True
