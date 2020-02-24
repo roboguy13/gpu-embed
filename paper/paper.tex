@@ -225,6 +225,17 @@ abs :: E a -> a
 In this paper, the data constructors of the \ttt{E} type will be described
 incrementally as they are needed.
 
+\subsection{Structure of the Paper}
+
+\begin{itemize}
+  \item In section 3, an EDSL representation of pattern matching will be
+    introduced.
+  \item Sections 4 and 5 will discuss techniques for representing tail recursion
+    and lambdas (respectively) in an EDSL. The tail recursion transformation
+    does not depend on the rest of the EDSL and can be used separately from it.
+  \item Section 7 describes the general control flow and specific syntactic
+    transformations of the Core plugin.
+\end{itemize}
 
 \subsection{Translation Example} % TODO: Does it make sense for this to be a
                                  % subsection of the intro?
