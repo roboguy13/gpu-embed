@@ -784,6 +784,7 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
   &C\expr{\ttt{externalize (runIter x)}} := \ttt{TailRec $M\expr{\ttt{x}}$}\\
   &C\expr{\ttt{externalize (x + y)}} := \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
   &C\expr{\ttt{externalize (case scrutinee of \{ ... \})}} := \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{\{ ... \}}}\\
+  &C\expr{\ttt{externalize ($\lambda$x $\rarr$ body)}} := A\expr{\lambda \ttt{x} \rarr \ttt{body}}\\
   &\\
   &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}} := \ttt{SumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body0}}\; B\expr{\ttt{\{ ... \}}}\\
   &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body \}}} := \ttt{OneSumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body}}\\
