@@ -711,7 +711,7 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \begin{align*}
   &C^{*}\expr{\ttt{x}} :=
     \begin{cases}
-      x & \text{if x has no marked subexpressions}\\
+      \ttt{x} & \text{if \ttt{x} has no marked subexpressions}\\
       C^{*}\expr{C\expr{\ttt{externalize y}}} & \text{if \ttt{externalize y} is the first marked subexpression of \ttt{x}}\\
     \end{cases}\\
 \end{align*}
