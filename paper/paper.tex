@@ -829,13 +829,13 @@ In the following flowchart, the names in parentheses in a node refers to the nam
     \node (handleprim) [process, right of=handlecase, xshift=1.6cm]{($C$) Encode as EDSL primitive};
     \node (handleapp) [process, right of=handleprim, xshift=1.6cm]{($C$) Wrap with \ttt{Construct} and \ttt{ConstructAp}};
 
-    \node (marksubs1) [process, below of=handleprim]{($C$) Mark sub-expressions};
-    \node (marksubs2) [process, below of=handleapp]{($C$) Mark sub-expressions};
+    \node (marksubs1) [process, below of=handleprim]{($C, M$) Mark sub-expressions};
+    \node (marksubs2) [process, below of=handleapp]{($C, M$) Mark sub-expressions};
 
     \node (onebranch) [process, below of=handlecase]{($B$) Transform one branch};
     \node (prodmatch) [process, below of=onebranch]{($P$) Transform one field in product match of current branch};
-    \node (abstractvar) [process, below of=prodmatch]{($P$) Abstract the pattern variable of the field with \ttt{Lam} and \ttt{Var}};
-    \node (markbody) [process, below of=abstractvar]{($P$) Mark branch body};
+    \node (abstractvar) [process, below of=prodmatch]{($P, A$) Abstract the pattern variable of the field with \ttt{Lam} and \ttt{Var}};
+    \node (markbody) [process, below of=abstractvar]{($P, M$) Mark branch body};
     \node (endstep) [process, below of=markbody, right of=markbody, xshift=1.6cm]{End of one transformation step};
 
   \draw [arrow] (start) -- (tailrec);
