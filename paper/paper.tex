@@ -771,28 +771,32 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \begin{tcolorbox}
   \textbf{TODO}: Does this subsection use Oxford brackets in an appropriate way?
 \end{tcolorbox}
+
 \begin{align*}
   D&\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
       &:= \begin{cases}
-        \ttt{f = internalize $C^{*}\expr{\ttt{externalize (runIter ($\lambda \ttt{x} \rarr \ttt{case s of $T_{\ttt{f}}\expr{\ttt{\{ ... \}}}$}$))}}$} & \text{if \ttt{f} occurs free in \ttt{\{ ... \}}}\\
+        \ttt{f = internalize $C^{*}\expr{\ttt{externalize (runIter ($\lambda \ttt{x} \rarr \ttt{case s of $T'_{\ttt{f}}\expr{\ttt{\{ ... \}}}$}$))}}$} & \text{if \ttt{f} occurs free in \ttt{\{ ... \}}}\\
         \ttt{f x = internalize $C^{*}\expr{\ttt{externalize (case s of \{ ... \})}}$} & \text{otherwise}
       \end{cases}
 \end{align*}
 
 \begin{align*}
-  T_{\ttt{f}}&\expr{\ttt{\{ K x0 ... xN $\rarr$ case s of \{ ...$_A$ \}; ...$_B$ \}}}\\
-    &:= % \ttt{\{ K x0 ... xN $\rarr$ case s of \{ ...$_A$ \} \}}\\
-      \begin{cases}
-        \ttt{\{ K x0 ... xN $\rarr$ case s of $T_{\ttt{f}}\expr{\ttt{\{ ...$_A$ \}}}$; $T_{\ttt{f}}\expr{\ttt{\{ ...$_B$ \}}}$\}} & \text{if \ttt{f} occurs free in \ttt{\{ ...$_A$ \}}}\\
-        \ttt{\{ K x0 ... xN $\rarr$ Done (case s of \{ ...$_A$ \}); $T_{\ttt{f}}\expr{\ttt{\{ ...$_B$ \}}}\}$} & \text{otherwise}
-      \end{cases}\\
-  T_{\ttt{f}}&\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}}\\
+  T'_{\ttt{f}}&\expr{\ttt{\{ K x0 ... xN $\rarr$ case s of \{ ...$_A$ \}; ...$_B$ \}}}\\
+    &:=
+        \ttt{\{ K x0 ... xN $\rarr$ $T_{\ttt{f}}\expr{\ttt{case s of \{ ...$_A$ \}}}$; $T'_{\ttt{f}}\expr{\ttt{\{ ...$_B$ \}}}$\}}\\
+  T'_{\ttt{f}}&\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}}\\
     &:=
       \begin{cases}
-        \ttt{\{ K x0 ... xN $\rarr$ body}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T_{\ttt{f}}\expr{\ttt{\{ ... \}}}\ttt{ \}} & \text{if \ttt{f} occurs free in \ttt{body}}\\
+        \ttt{\{ K x0 ... xN $\rarr$ body}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T'_{\ttt{f}}\expr{\ttt{\{ ... \}}}\ttt{ \}} & \text{if \ttt{f} occurs free in \ttt{body}}\\
         \ttt{\{ K x0 ... xN $\rarr$ Done body; ... \}} & \text{otherwise}
       \end{cases}\\
-  T_{\ttt{f}}&\expr{\ttt{\{ \}}} := \ttt{\{ \}}\\
+  T'_{\ttt{f}}&\expr{\ttt{\{ \}}} := \ttt{\{ \}}\\
+  T_{\ttt{f}}&\expr{\ttt{case s of \{ ... \}}}\\
+    &:=
+      \begin{cases}
+        \ttt{case s of $T'_{\ttt{f}}\expr{\ttt{\{ ... \}}}$} & \text{if \ttt{f} occurs free in \ttt{\{ ... \}}}\\
+        \ttt{Done (case s of \{ ... \})} & \text{otherwise}
+      \end{cases}
 \end{align*}
 \begin{align*}
   &C^{*}\expr{\ttt{x}} :=
