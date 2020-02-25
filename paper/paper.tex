@@ -288,11 +288,10 @@ example' =
 \section{Representing Algebraic Datatypes}
 
 Briefly, a algebraic type \ttt{T} with an automatically generated \ttt{ERep}
-instance is given representation in terms of \ttt{Either}, \ttt{(,)},
-\ttt{()} and \ttt{Void}. This "standardized" type representation is
-given by \ttt{ERepTy T}. \ttt{ERepTy} is an type family associated to
-the type class \ttt{ERep}. This type will be called the \textit{canonical type}
-of \ttt{T}.
+instance is given a representation in terms of \ttt{Either}, \ttt{(,)}, \ttt{()}
+and \ttt{Void}.  This "standardized" type representation is given by \ttt{ERepTy
+T}. \ttt{ERepTy} is an type family associated to the type class \ttt{ERep}. This
+type will be called the \textit{canonical type} of \ttt{T}.
 
 Only the "outermost" type will be deconstructed into these fundamental building
 blocks, and further deconstruction can take place on these pieces later on. For
@@ -312,8 +311,8 @@ Note that the instance definition is automatically generated from the
 \ttt{Generic} instance.
 
 Given this code, \ttt{ERep ComplexPair \typeeq (Complex Double, Complex Double)}. Here
-is an example that demonstrates why this is more useful than if it *fully* deconstructed
-each type into \ttt{Either}s and \ttt{(,)}:
+is an example that demonstrates why this is more useful than if it \textit{fully} deconstructed
+each type into \ttt{Either}, \ttt{(,)} and \ttt{()}:
 
 \begin{lstlisting}
 sumComplexPair ::
@@ -324,12 +323,11 @@ sumComplexPair p =
       ComplexPair a b -> a + b))
 \end{lstlisting}
 
-If \ttt{ERep ComplexPair} was fully deconstructed into
-\ttt{((Double, Double), (Double, Double))}, we would need a \ttt{Num}
-instance for \ttt{(Double, Double)}.
-What we really want is to use the \ttt{Num} instance that already
-exists for \ttt{Complex Double}, and this is what preserving this type
-information allows us to do.
+If \ttt{ERep ComplexPair} were fully deconstructed into \ttt{((Double, Double),
+(Double, Double))}, we would need a \ttt{Num} instance for \ttt{(Double,
+Double)}.  What we really want is to use the fact that a \ttt{Num} instance
+already exists for \ttt{Complex Double}. This is exactly what preserving this
+type information allows us to do.
 
 It is important to note that we are still able to further deconstruct this type
 with further pattern matches, since \ttt{ERep (Complex Double) \typeeq (Double, Double)}:
@@ -825,7 +823,7 @@ In the following flowchart, the names in parentheses in a node refers to the nam
 
 \begin{tikzpicture}[node distance=2cm]
 \node (start) [startstop] {Core from GHC};
-  \node (tailrec) [process, below of=start, yshift=-0.5cm]{($D, T, T'$) Transform tail recursion of definitions that have a mark (when applicable)};
+  \node (tailrec) [process, below of=start, yshift=-0.5cm]{($D, T_{\ttt{f}}, T'_{\ttt{f}}$) Transform tail recursion of definitions that have a mark (when applicable)};
   \node (findmark) [process, below of=tailrec, yshift=-0.5cm]{($C^*$) Find marked expression and erase mark};
     \node (handlecase) [process, below of=findmark]{($C$) Mark scrutinee};
     \node (handleprim) [process, right of=handlecase, xshift=1.6cm]{($C$) Encode as EDSL primitive};
