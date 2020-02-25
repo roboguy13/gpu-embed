@@ -503,7 +503,7 @@ transformProdMatch guts mark resultTy ty0_ (altCon@(DataAlt dataAlt), vars0, bod
     go body pairTyCon repTyCon (ty1:_) [] = do
       nullaryMatchId <- lift $ findIdTH guts 'NullaryMatch
 
-      resultTyDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [resultTy])
+      resultTyDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [ty1])
 
       return (Var nullaryMatchId :@ Type ty1 :@ Type resultTy :@ resultTyDict :@ body)
 
