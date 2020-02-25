@@ -351,6 +351,11 @@ instance GPURep (U1 p) where
   rep' U1 = ()
   unrep' () = U1
 
+instance GPURep () where
+  type GPURepTy () = ()
+
+  rep' = id
+  unrep' = id
 
 class GenericRep repr where
     type GenericRepTy repr
