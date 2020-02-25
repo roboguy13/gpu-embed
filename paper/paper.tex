@@ -825,7 +825,7 @@ In the following flowchart, the names in parentheses in a node refers to the nam
 \node (start) [startstop] {Core from GHC};
   \node (tailrec) [process, below of=start, yshift=-0.5cm]{($D, T_{\ttt{f}}, T'_{\ttt{f}}$) Transform tail recursion of definitions that have a mark (when applicable)};
   \node (findmark) [process, below of=tailrec, yshift=-0.5cm]{($C^*$) Find marked expression and erase mark};
-    \node (handlecase) [process, below of=findmark]{($C$) Mark scrutinee};
+    \node (handlecase) [process, below of=findmark]{($C, M$) Mark scrutinee};
     \node (handleprim) [process, right of=handlecase, xshift=1.6cm]{($C$) Encode as EDSL primitive};
     \node (handleapp) [process, right of=handleprim, xshift=1.6cm]{($C$) Wrap with \ttt{Construct} and \ttt{ConstructAp}};
 
@@ -834,7 +834,7 @@ In the following flowchart, the names in parentheses in a node refers to the nam
 
     \node (onebranch) [process, below of=handlecase]{($B$) Transform one branch};
     \node (prodmatch) [process, below of=onebranch]{($P$) Transform one field in product match of current branch};
-    \node (abstractvar) [process, below of=prodmatch]{($P, A$) Abstract the pattern variable of the field with \ttt{Lam} and \ttt{Var}};
+    \node (abstractvar) [process, below of=prodmatch, yshift=-0.5cm]{($P, A$) Abstract the pattern variable of the field with \ttt{Lam} and \ttt{Var}};
     \node (markbody) [process, below of=abstractvar]{($P, M$) Mark branch body};
     \node (endstep) [process, below of=markbody, right of=markbody, xshift=1.6cm]{End of one transformation step};
 
