@@ -309,7 +309,7 @@ data ComplexPair where
   ComplexPair :: Complex Double
                  -> Complex Double
                  -> ComplexPair
-  deriving (Generic, Eq, Show)
+  deriving (Generic, Show)
 
 instance ERep ComplexPair
 \end{lstlisting}
@@ -400,7 +400,11 @@ intListSum t =
 
 \subsection{GHC Generics \ttt{Rep}}
 
-[Remove metadata from Generic representation and turn tree-like structure into a (nested) list-like structure]
+\begin{todo}
+  This section is to talk about the details of GHC's generic \ttt{Rep} representation
+  and how it is converted to the representation in this paper. Should this section
+  exist?
+\end{todo}
 
 \subsection{\ttt{E}, \ttt{ERep}, \ttt{ERepTy}}
 
@@ -411,8 +415,8 @@ all Haskell types which can be represented in the DSL. \ttt{ERepTy} is a type
 family associated to the \ttt{ERep} type class, which represents a "canonical form"
 of the given type. This canonical form can be immediately constructed in the EDSL.
 Canonical form types crucially include \ttt{Either} and \ttt{(,)}, which
-allow all combinations of basic sum types and product types to be encoded. More
-information on this encoding is given in [a different section].
+allow all combinations of basic sum types and product types to be encoded, in the
+manner described at the beginning of Section 2.
 
 This information is brought into the \ttt{E} type via the constructor
 \ttt{Repped}. The \ttt{E} also contains constructors representing \ttt{Either}
