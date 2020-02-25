@@ -233,6 +233,10 @@ incrementally as they are needed.
   \item Sections 4 and 5 will discuss techniques for representing tail recursion
     and lambdas (respectively) in an EDSL. The tail recursion transformation
     does not depend on the rest of the EDSL and can be used separately from it.
+  \item Section 6 provides an implementation of \ttt{abs} which interprets an EDSL
+    expression under the "standard" semantics (that is, applying this implementation
+    to the result of the Core transformation will result in a program that behaves exactly
+    the same as the original, untransformed, program).
   \item Section 7 describes the general control flow and specific syntactic
     transformations of the Core plugin.
 \end{itemize}
