@@ -50,6 +50,13 @@
 
 \newcommand{\ttt}{\texttt}
 
+\newenvironment{todo}
+  {\begin{tcolorbox}
+   \textbf{TODO}:
+  }
+  {\end{tcolorbox}
+  }
+
 % \newenvironment<>{todo}[1][]{
 %     \setbeamercolor{block body example}{fg=black,bg=blue}
 %     \setbeamercolor{block title example}{fg=white,bg=red!75!black}
@@ -252,9 +259,9 @@ In this paper, the data constructors of the \ttt{E} type will be described
 incrementally as they are needed.
 
 \subsection{Translation Example}
-\begin{tcolorbox}
-  \textbf{TODO}: Does it make sense for this to be a subsection of the intro?
-\end{tcolorbox}
+\begin{todo}
+  Does it make sense for this to be a subsection of the intro?
+\end{todo}
 
 In the example below, the Core plugin transforms \ttt{example} into \ttt{example'}:
 \begin{lstlisting}[deletekeywords={Ord}]
@@ -345,10 +352,10 @@ realSum p =
                 a_real + b_real))
 \end{lstlisting}
 
-\begin{tcolorbox}
-  \textbf{TODO}: Should we use a single nested pattern match in the above block? Both
+\begin{todo}
+  Should we use a single nested pattern match in the above block? Both
   are functional (and equivalent) from a technical perspective.
-\end{tcolorbox}
+\end{todo}
 
 An additional benefit of this is that recursive types require no special handling. For
 example, consider:
@@ -481,14 +488,14 @@ data E t where
 
 The equality constraint ensures that a canonical type is its own canonical type.
 
-\begin{tcolorbox}
-  \textbf{TODO}: Should we make a synonym for this constraint since it is used in
+\begin{todo}
+  Should we make a synonym for this constraint since it is used in
 multiple places? Like this:
 \begin{lstlisting}
 type CanonicalIsIdem t =
   ERepTy (ERepTy t) ~ ERepTy t
 \end{lstlisting}
-\end{tcolorbox}
+\end{todo}
 
 (The above code block is a slight simplification of the actual implementation,
 which has an additional type variable which is used at an "intermediate" point.
@@ -579,9 +586,9 @@ newtype ProdMatch a b =
 \end{lstlisting}
 
 \subsection{Connection to Church encodings}
-\begin{tcolorbox}
-  \textbf{TODO}: Write this subsection
-\end{tcolorbox}
+\begin{todo}
+  Write this subsection
+\end{todo}
 
 \subsection{An aside on \ttt{ProdMatch} and \ttt{SumMatch} values}
 
@@ -619,9 +626,9 @@ which pattern matches according to its input value.
 Likewise for \ttt{ProdMatch a b} values.
 
 \section{Representing tail recursion}
-\begin{tcolorbox}
-  \textbf{TODO}: Expand the explanation in this section
-\end{tcolorbox}
+\begin{todo}
+  Expand the explanation in this section
+\end{todo}
 
 \begin{lstlisting}
 data Iter a b = Step b | Done a
@@ -883,9 +890,9 @@ In the following flowchart, the names in parentheses in a node refers to the nam
 
 \clearpage
 \subsection{Syntactic Transformations of the Core Plugin}
-\begin{tcolorbox}
-  \textbf{TODO}: Should we use Oxford brackets here? Maybe a bit unusual, but we are operating syntactically and mapping from \ttt{a} to \ttt{E a} (could \ttt{E a} be considered an "intermediary" semantic domain?).
-\end{tcolorbox}
+\begin{todo}
+  Should we use Oxford brackets here? Maybe a bit unusual, but we are operating syntactically and mapping from \ttt{a} to \ttt{E a} (could \ttt{E a} be considered an "intermediary" semantic domain?).
+\end{todo}
 \vspace*{-0.6cm}
 \begin{align*}
   D&\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
@@ -962,9 +969,9 @@ transformation will terminate.
 \section{Citations and Bibliographies}
 
 
-\begin{tcolorbox}
-  \textbf{TODO}: Fill in
-\end{tcolorbox}
+\begin{todo}
+  Fill in
+\end{todo}
 
 % The use of \BibTeX\ for the preparation and formatting of one's
 % references is strongly recommended. Authors' names should be complete
