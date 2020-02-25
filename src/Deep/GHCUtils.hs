@@ -112,7 +112,6 @@ buildDictionaryT guts = \ ty0 -> do
             Just (tyCon, tyArgs) -> do
                 tyArgs' <- mapM (normaliseType' guts) tyArgs
                 let r = mkTyConApp tyCon tyArgs'
-                liftIO $ putStrLn $ "r = " ++ showPpr dflags tyArgs'
                 return r
             Nothing -> return ty0
 
@@ -146,8 +145,8 @@ tryToFillCoHoles guts bind =
     go :: CoreExpr -> CoreM CoreExpr
     go expr@(Coercion (HoleCo coHole@(CoercionHole {ch_co_var}))) = do
       dflags <- getDynFlags
-      liftIO $ putStrLn ("got to a co hole named " ++ showPpr dflags ch_co_var)
-      liftIO $ putStrLn ("    with type " ++ showPpr dflags (varType ch_co_var))
+      -- liftIO $ putStrLn ("got to a co hole named " ++ showPpr dflags ch_co_var)
+      -- liftIO $ putStrLn ("    with type " ++ showPpr dflags (varType ch_co_var))
       case varType ch_co_var of
         CoercionTy co -> do
           let mkCo r t = mkReflCo r t
@@ -173,8 +172,6 @@ tryToFillCoHoles guts bind =
           return expr
         TyConApp tyCon lst@(_:_:ty:_) -> do
           return (Coercion (mkReflCo Nominal ty))
-          -- liftIO $ putStrLn ("    TyConApp (" ++ showPpr dflags tyCon ++ ") (" ++ showPpr dflags xs ++ ")")
-          -- return expr
         _ -> do
           liftIO $ putStrLn "    cannot fill (outer)"
           return expr

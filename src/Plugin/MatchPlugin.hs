@@ -284,8 +284,6 @@ mark0 guts x = do
           repTyCon <- lift $ findTyConTH guts ''GPURep
           dflags <- getDynFlags
 
-          liftIO $ putStrLn $ "mark0: xTy = " ++ showPpr dflags xTy
-          liftIO $ putStrLn $ "mark0: x   = {{" ++ showPpr dflags x ++ "}}"
           dict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [xTy])
 
           return (Var externalizeName :@ Type xTy :@ dict :@ x)
@@ -315,7 +313,6 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
 
         go :: Expr Var -> MatchM (Expr Var)
         go (Case scrutinee wild ty alts) = do
-          liftIO $ putStrLn "saw a case"
           dflags <- getDynFlags
 
           falseId <- lift $ findIdTH guts 'False
@@ -485,7 +482,6 @@ transformProdMatch guts mark resultTy ty0_ (altCon@(DataAlt dataAlt), vars0, bod
   repTyCon <- lift $ findTyConTH guts ''GPURep
 
   ty0 <- lift $ (unwrapExpType guts <=< unwrapExpType guts) ty0_
-  liftIO $ putStrLn $ "ty0 = " ++ showPpr dflags ty0
 
   repType <- lift $ computeRepType guts ty0
 
@@ -667,8 +663,6 @@ transformSumMatch guts mark scrutinee wild resultTy alts@(alt1@(DataAlt dataAlt1
       ty1' <- lift $ repTyUnwrap guts ty1
       restTy' <- lift $ repTyUnwrap guts restTy
 
-      liftIO $ putStrLn $ "coPair = " ++ showPpr dflags coPair
-
       return (Var sumMatchId
                 :@ Type ty1'
                 :@ Type restTy'
@@ -825,8 +819,6 @@ transformLams guts mark e0 = Data.transformM go e0
           argTy' <- lift $ unwrapExpType guts (varType arg)
           bodyTy' <- lift $ unwrapExpType guts (exprType body')
 
-          -- liftIO $ putStrLn $ "(argTy', bodyTy') = " ++ showPpr dflags (argTy', bodyTy')
-
           iHash <- lift $ findIdTH guts 'GHC.Types.I#
           -- intTy <- findTypeTH guts ''Int#
 
@@ -897,7 +889,6 @@ abstractOver guts v e = do
   eTy' <- lift $ unwrapExpType guts (exprType e)
 
   dflags <- getDynFlags
-  liftIO $ putStrLn $ "varType v = " ++ showPpr dflags (varType v)
 
   repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [varType v])
 
