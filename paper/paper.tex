@@ -246,7 +246,7 @@ incrementally as they are needed.
   \textbf{TODO}: Does it make sense for this to be a subsection of the intro?
 \end{tcolorbox}
 
-In the example below, \ttt{example} would get transformed into \ttt{example'}:
+In the example below, the Core plugin transforms \ttt{example} into \ttt{example'}:
 
 \begin{lstlisting}[deletekeywords={Ord}]
 import Data.Char (ord)
@@ -256,9 +256,10 @@ x = Left 'a'
 
 example :: Int
 example =
-  case x of
-    Left  c -> ord c
-    Right i -> i
+  internalize (externalize
+    (case x of
+      Left  c -> ord c
+      Right i -> i))
 
 example' :: Int
 example' =
