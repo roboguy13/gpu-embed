@@ -247,13 +247,11 @@ incrementally as they are needed.
 \end{tcolorbox}
 
 In the example below, the Core plugin transforms \ttt{example} into \ttt{example'}:
-
 \begin{lstlisting}[deletekeywords={Ord}]
 import Data.Char (ord)
 
 x :: Either Char Int
 x = Left 'a'
-
 example :: Int
 example =
   internalize (externalize
