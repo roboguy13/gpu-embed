@@ -152,7 +152,7 @@ data ComplexPair where
   ComplexPair :: Complex Double
                  -> Complex Double
                  -> ComplexPair
-  deriving (Generic, Eq, Show)
+  deriving (Generic, Show)
 
 instance GPURep ComplexPair
 
@@ -174,6 +174,7 @@ mandelbrot_nextZ t =
   internalize (externalize
     (case t of
       (c, z) -> (z*z) + c))
+{-# NOINLINE mandelbrot_nextZ #-}
 
 mandelbrot_helper :: (Int, Complex Double, Complex Double) -> Maybe Int
 mandelbrot_helper t =
@@ -188,6 +189,7 @@ mandelbrot_helper t =
                 if (real*real) + (imag*imag) > 4
                   then Just iters
                   else mandelbrot_helper (iters+1, c, mandelbrot_nextZ (c, z))))
+{-# NOINLINE mandelbrot_helper #-}
 
 mandelbrot_point :: Complex Double -> Maybe Int
 mandelbrot_point c =
@@ -214,6 +216,7 @@ intListLength_helper p =
         case t of
           Nil -> acc
           Cons _ xs -> intListLength_helper (acc+1, xs)))
+{-# NOINLINE intListLength_helper #-}
 
 intListLength :: IntList -> Int
 intListLength t = internalize (externalize (intListLength_helper (0, t)))
@@ -226,21 +229,21 @@ intListSum_helper p =
          case t of
            Nil -> acc
            Cons x xs -> intListSum_helper (x+acc, xs)))
+{-# NOINLINE intListSum_helper #-}
 
 intListSum :: IntList -> Int
 intListSum t =
   internalize (externalize (intListSum_helper (0, t)))
 
 main :: IO ()
-main =
+main = do
   let intList = Cons 10 (Cons 100 (Cons 1000 (Cons 10000 Nil)))
-  in
   print (isEmpty Nil, isEmpty (Cons 1 Nil)
         ,intListLength intList
         ,intListSum intList
         )
-  -- print $ realSum (ComplexPair (2 :+ 100) (3 :+ 10000))
-  -- putStrLn mandelbrotTestAscii
+  print $ realSum (ComplexPair (2 :+ 100) (3 :+ 10000))
+  putStrLn mandelbrotTestAscii
 
 
 

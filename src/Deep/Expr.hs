@@ -11,6 +11,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE RankNTypes #-}
 
 {-# OPTIONS_GHC -Wall #-}
 
@@ -147,7 +148,7 @@ data GPUExp t where
   Sub :: Num a => GPUExp a -> GPUExp a -> GPUExp a
   Mul :: Num a => GPUExp a -> GPUExp a -> GPUExp a
 
-  Twice :: GPUExp (a -> a) -> GPUExp a -> GPUExp a
+  -- Twice :: GPUExp (a -> a) -> GPUExp a -> GPUExp a
 
   FromEnum :: Enum a => GPUExp a -> GPUExp Int
   FromIntegral :: (Integral a, Num b) => GPUExp a -> GPUExp b
@@ -176,6 +177,49 @@ data GPUExp t where
 
   Construct :: a -> GPUExp a
   ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
+
+transformE :: (forall r. GPUExp r -> GPUExp r) -> GPUExp a -> GPUExp a
+transformE tr0 = tr
+  where
+    tr :: forall s. GPUExp s -> GPUExp s
+    tr = go . tr0
+
+    go :: forall s. GPUExp s -> GPUExp s
+    go (CaseExp x f) = CaseExp (tr x) (tr f)
+    go (SumMatchExp x y) = SumMatchExp (tr x) (tr y)
+    go (ProdMatchExp f) = ProdMatchExp (tr f)
+    go (NullaryMatch x) = NullaryMatch (tr x)
+    go (OneSumMatch p) = OneSumMatch (tr p)
+    go (OneProdMatch f) = OneProdMatch (tr f)
+    go EmptyMatch = EmptyMatch
+    go FalseExp = FalseExp
+    go TrueExp = TrueExp
+    go e@(Repped _) = e
+    go (Lam n x) = Lam n (tr x)
+    go e@(Var _) = e
+    go e@(Lit _) = e
+    go (Add x y) = Add (tr x) (tr y)
+    go (Sub x y) = Sub (tr x) (tr y)
+    go (Mul x y) = Mul (tr x) (tr y)
+    -- go (Twice f x) = Twice
+    go (FromEnum x) = FromEnum (tr x)
+    go (FromIntegral x) = FromIntegral (tr x)
+    go (Sqrt x) = Sqrt (tr x)
+    go (Equal x y) = Equal (tr x) (tr y)
+    go (Lte x y) = Lte (tr x) (tr y)
+    go (Gt x y) = Gt (tr x) (tr y)
+    go (Not x) = Not (tr x)
+    go (LeftExp x) = LeftExp (tr x)
+    go (RightExp y) = RightExp (tr y)
+    go (PairExp x y) = PairExp (tr x) (tr y)
+    go (FstExp x) = FstExp (tr x)
+    go (SndExp x) = SndExp (tr x)
+    go (StepExp x) = StepExp (tr x)
+    go (DoneExp y) = DoneExp (tr y)
+    go (IfThenElse x y z) = IfThenElse (tr x) (tr y) (tr z)
+    go (TailRec f) = TailRec (tr f)
+    go e@(Construct _) = e
+    go (ConstructAp f x) = ConstructAp (tr f) (tr x)
 
 -- -- Used for intermediate transformations
 -- unLam :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
@@ -486,55 +530,17 @@ gpuAbsEnv env (SndExp x) = snd (gpuAbsEnv env x)
 
 gpuAbsEnv env (Lam (name :: Name a) (body :: GPUExp b)) = \(arg :: a) ->
 
-    let go :: forall x. GPUExp x -> GPUExp x
-        go expr@(Var name2 :: GPUExp t') =
+    let go0 :: forall x. GPUExp x -> GPUExp x
+        go0 expr@(Var name2 :: GPUExp t') =
           case namesEq name name2 of
             Just Refl -> rep arg
             _ ->
               case envLookup env name2 of
                 Just v  -> v
                 Nothing -> expr
+        go0 expr = expr
 
-        go (CaseExp x f) = CaseExp (go x) (go f)
-
-        go (Add x y) = Add (go x) (go y)
-        go (Sub x y) = Sub (go x) (go y)
-        go (Mul x y) = Mul (go x) (go y)
-        go (FromEnum x) = FromEnum (go x)
-        go (FromIntegral x) = FromIntegral (go x)
-        go (Sqrt x) = Sqrt (go x)
-        go (Equal x y) = Equal (go x) (go y)
-        go (Lte x y) = Lte (go x) (go y)
-        go (Gt x y) = Gt (go x) (go y)
-        go (Not x) = Not (go x)
-        go (LeftExp x) = LeftExp (go x)
-        go (RightExp y) = RightExp (go y)
-        go (PairExp x y) = PairExp (go x) (go y)
-
-        go (StepExp x) = StepExp (go x)
-        go (DoneExp y) = DoneExp (go y)
-        go (TailRec f) = TailRec  (go f)
-
-        go (IfThenElse cond t f) = IfThenElse (go cond) (go t) (go f)
-
-        go (Construct x) = Construct x
-        go (ConstructAp f x) = ConstructAp f x
-
-        go (SumMatchExp f g) = SumMatchExp (go f) (go g)
-        go (OneSumMatch f) = OneSumMatch (go f)
-        go EmptyMatch = EmptyMatch
-        go (ProdMatchExp f) = ProdMatchExp (go f)
-        go (OneProdMatch x) = OneProdMatch (go x)
-        go (NullaryMatch x) = NullaryMatch (go x)
-
-        go (Lam name2 body2) = Lam name2 (go body2) -- Names should be unique, so this should be ok
-
-        go FalseExp = FalseExp
-        go TrueExp = TrueExp
-        go (Repped x) = Repped x
-        go (Lit x) = Lit x
-        go (FstExp x) = FstExp (go x)
-        go (SndExp x) = SndExp (go x)
+        go = transformE go0
     in
 
     gpuAbsEnv (extendEnv env (name :=> rep arg)) $ go body
