@@ -774,7 +774,7 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \begin{align*}
   D&\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
       &:= \begin{cases}
-        \ttt{f = internalize $C^{*}\expr{\ttt{externalize (runIter ($\lambda \ttt{x} \rarr \ttt{case s of $T_{\ttt{f}}\expr{\ttt{\{ ... \}}}$}$))}}$} & \text{if \ttt{f} occurs in \ttt{\{ ... \}}}\\
+        \ttt{f = internalize $C^{*}\expr{\ttt{externalize (runIter ($\lambda \ttt{x} \rarr \ttt{case s of $T_{\ttt{f}}\expr{\ttt{\{ ... \}}}$}$))}}$} & \text{if \ttt{f} occurs free in \ttt{\{ ... \}}}\\
         \ttt{f x = internalize $C^{*}\expr{\ttt{externalize (case s of \{ ... \})}}$} & \text{otherwise}
       \end{cases}
 \end{align*}
@@ -783,13 +783,13 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
   T_{\ttt{f}}&\expr{\ttt{\{ K x0 ... xN $\rarr$ case s of \{ ...$_A$ \}; ...$_B$ \}}}\\
     &:= % \ttt{\{ K x0 ... xN $\rarr$ case s of \{ ...$_A$ \} \}}\\
       \begin{cases}
-        \ttt{\{ K x0 ... xN $\rarr$ case s of $T_{\ttt{f}}\expr{\ttt{\{ ...$_A$ \}}}$; $T_{\ttt{f}}\expr{\ttt{\{ ...$_B$ \}}}$\}} & \text{if \ttt{f} occurs in \ttt{\{ ...$_A$ \}}}\\
+        \ttt{\{ K x0 ... xN $\rarr$ case s of $T_{\ttt{f}}\expr{\ttt{\{ ...$_A$ \}}}$; $T_{\ttt{f}}\expr{\ttt{\{ ...$_B$ \}}}$\}} & \text{if \ttt{f} occurs free in \ttt{\{ ...$_A$ \}}}\\
         \ttt{\{ K x0 ... xN $\rarr$ Done (case s of \{ ...$_A$ \}); $T_{\ttt{f}}\expr{\ttt{\{ ...$_B$ \}}}\}$} & \text{otherwise}
       \end{cases}\\
   T_{\ttt{f}}&\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}}\\
     &:=
       \begin{cases}
-        \ttt{\{ K x0 ... xN $\rarr$ body}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T_{\ttt{f}}\expr{\ttt{\{ ... \}}}\ttt{ \}} & \text{if \ttt{f} occurs in \ttt{body}}\\
+        \ttt{\{ K x0 ... xN $\rarr$ body}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T_{\ttt{f}}\expr{\ttt{\{ ... \}}}\ttt{ \}} & \text{if \ttt{f} occurs free in \ttt{body}}\\
         \ttt{\{ K x0 ... xN $\rarr$ Done body; ... \}} & \text{otherwise}
       \end{cases}\\
   T_{\ttt{f}}&\expr{\ttt{\{ \}}} := \ttt{\{ \}}\\
