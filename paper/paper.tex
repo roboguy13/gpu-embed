@@ -294,6 +294,105 @@ given by \ttt{ERepTy T}. \ttt{ERepTy} is an type family associated to
 the type class \ttt{ERep}. This type will be called the \textit{canonical type}
 of \ttt{T}.
 
+Only the "outermost" type will be deconstructed into these fundamental building
+blocks, and further deconstruction can take place on these pieces later on. For
+example, consider this type:
+
+\begin{lstlisting}
+data ComplexPair where
+  ComplexPair :: Complex Double
+                 -> Complex Double
+                 -> ComplexPair
+  deriving (Generic, Eq, Show)
+
+instance ERep ComplexPair
+\end{lstlisting}
+
+Note that the instance definition is automatically generated from the
+\ttt{Generic} instance.
+
+Given this code, \ttt{ERep ComplexPair \typeeq (Complex Double, Complex Double)}. Here
+is an example that demonstrates why this is more useful than if it *fully* deconstructed
+each type into \ttt{Either}s and \ttt{(,)}:
+
+\begin{lstlisting}
+sumComplexPair ::
+  ComplexPair -> Complex Double
+sumComplexPair p =
+  internalize (externalize
+    (case p of
+      ComplexPair a b -> a + b))
+\end{lstlisting}
+
+If \ttt{ERep ComplexPair} was fully deconstructed into
+\ttt{((Double, Double), (Double, Double))}, we would need a \ttt{Num}
+instance for \ttt{(Double, Double)}.
+What we really want is to use the \ttt{Num} instance that already
+exists for \ttt{Complex Double}, and this is what preserving this type
+information allows us to do.
+
+It is important to note that we are still able to further deconstruct this type
+with further pattern matches, since \ttt{ERep (Complex Double) \typeeq (Double, Double)}:
+
+\begin{lstlisting}
+realSum :: ComplexPair -> Double
+realSum p =
+  internalize (externalize
+    (case p of
+      ComplexPair a b ->
+        case a of
+          a_real :+ _ ->
+            case b of
+              b_real :+ _ ->
+                a_real + b_real))
+\end{lstlisting}
+
+\begin{tcolorbox}
+  \textbf{TODO}: Should we use a single nested pattern match in the above block? Both
+  are functional (and equivalent) from a technical perspective.
+\end{tcolorbox}
+
+An additional benefit of this is that recursive types require no special handling. For
+example, consider:
+
+\begin{lstlisting}
+data IntList = Nil | Cons Int IntList
+  deriving (Generic, Show)
+
+instance ERep IntList
+\end{lstlisting}
+
+Note that \ttt{ERepTy IntList \typeeq Either () (Int, IntList)}. If \ttt{ERepTy}
+attempted to "fully deconstruct" \ttt{IntList}, it would send the compiler
+into an infinite loop.
+
+This allows us to implement functions on such recursive types:
+
+\begin{lstlisting}
+isEmpty :: IntList -> Bool
+isEmpty t =
+  internalize (externalize
+    (case t of
+      Nil -> True
+      Cons x xs -> False))
+
+intListSum_helper :: (Int, IntList) -> Int
+intListSum_helper p =
+  internalize (externalize
+    (case p of
+       (acc, t) ->
+         case t of
+           Nil -> acc
+           Cons x xs ->
+             intListSum_helper (x+acc, xs)))
+
+intListSum :: IntList -> Int
+intListSum t =
+  internalize (externalize
+    (intListSum_helper (0, t)))
+\end{lstlisting}
+
+
 \subsection{GHC Generics \ttt{Rep}}
 
 [Remove metadata from Generic representation and turn tree-like structure into a (nested) list-like structure]
@@ -327,7 +426,7 @@ data E t where
 \end{lstlisting}
 
 \ttt{ERep} and \ttt{ERepTy} provide an interface for transferring values between the EDSL
-world and the Haskell world:
+expression language and the source Haskell language:
 
 \begin{lstlisting}
 class ERep t where
