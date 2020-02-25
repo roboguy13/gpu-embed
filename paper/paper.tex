@@ -44,6 +44,7 @@
 \newcommand{\expr}[1]{(#1)} % Expression quasiquote
 \newcommand{\rarr}{\rightarrow}
 \newcommand{\Rarr}{\Rightarrow}
+\newcommand{\rewrites}{\Longrightarrow}
 
 \newcommand{\typeeq}{\raise.17ex\hbox{$\scriptstyle\mathtt{\sim}$}\,}
 
@@ -776,7 +777,7 @@ In the following flowchart, the names in parentheses in a node refers to the nam
 
 \begin{align*}
   D&\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
-      &:= \begin{cases}
+      &\rewrites \begin{cases}
         \ttt{f = internalize $C^{*}\expr{\ttt{externalize (runIter ($\lambda \ttt{x} \rarr \ttt{case s of $T'_{\ttt{f}}\expr{\ttt{\{ ... \}}}$}$))}}$} & \text{if \ttt{f} occurs free in \ttt{\{ ... \}}}\\
         \ttt{f x = internalize $C^{*}\expr{\ttt{externalize (case s of \{ ... \})}}$} & \text{otherwise}
       \end{cases}
@@ -784,48 +785,48 @@ In the following flowchart, the names in parentheses in a node refers to the nam
 
 \begin{align*}
   T'_{\ttt{f}}&\expr{\ttt{\{ K x0 ... xN $\rarr$ case s of \{ ...$_A$ \}; ...$_B$ \}}}\\
-    &:=
+    &\rewrites
         \ttt{\{ K x0 ... xN $\rarr$ $T_{\ttt{f}}\expr{\ttt{case s of \{ ...$_A$ \}}}$; $T'_{\ttt{f}}\expr{\ttt{\{ ...$_B$ \}}}$\}}\\
   T'_{\ttt{f}}&\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}}\\
-    &:=
+    &\rewrites
       \begin{cases}
         \ttt{\{ K x0 ... xN $\rarr$ body}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T'_{\ttt{f}}\expr{\ttt{\{ ... \}}}\ttt{ \}} & \text{if \ttt{f} occurs free in \ttt{body}}\\
         \ttt{\{ K x0 ... xN $\rarr$ Done body; ... \}} & \text{otherwise}
       \end{cases}\\
-  T'_{\ttt{f}}&\expr{\ttt{\{ \}}} := \ttt{\{ \}}\\
+  T'_{\ttt{f}}&\expr{\ttt{\{ \}}} \rewrites \ttt{\{ \}}\\
   T_{\ttt{f}}&\expr{\ttt{case s of \{ ... \}}}\\
-    &:=
+    &\rewrites
       \begin{cases}
         \ttt{case s of $T'_{\ttt{f}}\expr{\ttt{\{ ... \}}}$} & \text{if \ttt{f} occurs free in \ttt{\{ ... \}}}\\
         \ttt{Done (case s of \{ ... \})} & \text{otherwise}
       \end{cases}
 \end{align*}
 \begin{align*}
-  &C^{*}\expr{\ttt{x}} :=
+  &C^{*}\expr{\ttt{x}} \rewrites
     \begin{cases}
       \ttt{x} & \text{if \ttt{x} has no subexpressions marked with \ttt{externalize}}\\
       C^{*}\expr{C\expr{\ttt{y}}} & \text{if \ttt{externalize y} is the first marked subexpression of \ttt{x}}\\
     \end{cases}\\
 \end{align*}
 \begin{align*}
-  &C\expr{\ttt{runIter x}} := \ttt{TailRec $M\expr{\ttt{x}}$}\\
-  &C\expr{\ttt{x + y}} := \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
-  &C\expr{\ttt{case scrutinee of \{ ... \}}} := \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{\{ ... \}}}\\
-  &C\expr{\ttt{($\lambda$x $\rarr$ body)}} := A\expr{\lambda \ttt{x} \rarr \ttt{body}}\\
-  &C\expr{\ttt{(f x)}} := \ttt{ConstructAp $M\expr{\ttt{f}}$ $M\expr{\ttt{x}}$}\;\;\;\;\text{(Where \ttt{f} is not a primitive or an application of a primitive)}\\
-  &C\expr{\ttt{x}} := \ttt{Construct x}\;\;\;\;\text{(Where \ttt{x} is a variable which is not a primitive)}\\
+  &C\expr{\ttt{runIter x}} \rewrites \ttt{TailRec $M\expr{\ttt{x}}$}\\
+  &C\expr{\ttt{x + y}} \rewrites \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
+  &C\expr{\ttt{case scrutinee of \{ ... \}}} \rewrites \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{\{ ... \}}}\\
+  &C\expr{\ttt{($\lambda$x $\rarr$ body)}} \rewrites A\expr{\lambda \ttt{x} \rarr \ttt{body}}\\
+  &C\expr{\ttt{(f x)}} \rewrites \ttt{ConstructAp $M\expr{\ttt{f}}$ $M\expr{\ttt{x}}$}\;\;\;\;\text{(Where \ttt{f} is not a primitive or an application of a primitive)}\\
+  &C\expr{\ttt{x}} \rewrites \ttt{Construct x}\;\;\;\;\text{(Where \ttt{x} is a variable which is not a primitive)}\\
   &\\
-  &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}} := \ttt{SumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body0}}\; B\expr{\ttt{\{ ... \}}}\\
-  &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body \}}} := \ttt{OneSumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body}}\\
-  &B\expr{\ttt{\{ \}}} := \ttt{EmptyMatch}\\
+  &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}} \rewrites \ttt{SumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body0}}\; B\expr{\ttt{\{ ... \}}}\\
+  &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body \}}} \rewrites \ttt{OneSumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body}}\\
+  &B\expr{\ttt{\{ \}}} \rewrites \ttt{EmptyMatch}\\
   &\\
-  &P\expr{\ttt{x0 x1 ... $\rarr$ body}} := \ttt{ProdMatchExp }A\expr{\ttt{$\lambda$ x0 $\rarr$ $P\expr{\ttt{x1 ... $\rarr$ body}}$}}\\
-  &P\expr{\ttt{x $\rarr$ body}} := \ttt{OneProdMatchExp }A\expr{\ttt{$\lambda$ x $\rarr$ body}}\\
-  &P\expr{\ttt{ $\rarr$ body}} := \ttt{NullaryMatch $M\expr{\ttt{body}}$}\\
+  &P\expr{\ttt{x0 x1 ... $\rarr$ body}} \rewrites \ttt{ProdMatchExp }A\expr{\ttt{$\lambda$ x0 $\rarr$ $P\expr{\ttt{x1 ... $\rarr$ body}}$}}\\
+  &P\expr{\ttt{x $\rarr$ body}} \rewrites \ttt{OneProdMatchExp }A\expr{\ttt{$\lambda$ x $\rarr$ body}}\\
+  &P\expr{\ttt{ $\rarr$ body}} \rewrites \ttt{NullaryMatch $M\expr{\ttt{body}}$}\\
   &\\
-  &A\expr{\ttt{$\lambda$(x :: a) $\rarr$ body}} := \ttt{Lam (Name @a uniq) $M\expr{\ttt{body$[\ttt{x} \mapsto \ttt{Var uniq}]$}}$}\text{\;\;\;\;\;(where \ttt{uniq} is a globally unique identifier)}\\
+  &A\expr{\ttt{$\lambda$(x :: a) $\rarr$ body}} \rewrites \ttt{Lam (Name @a uniq) $M\expr{\ttt{body$[\ttt{x} \mapsto \ttt{Var uniq}]$}}$}\text{\;\;\;\;\;(where \ttt{uniq} is a globally unique identifier)}\\
   &\\
-  &M\expr{\ttt{(x :: a)}} :=
+  &M\expr{\ttt{(x :: a)}} \rewrites
     \begin{cases}
       \ttt{externalize x} & \text{if}\; \nexists t, a\; \typeeq E\; t\\
       \ttt{x} & \text{if}\; \exists t, a\; \typeeq E\; t
