@@ -216,12 +216,28 @@ intListLength_helper p =
           Cons _ xs -> intListLength_helper (acc+1, xs)))
 
 intListLength :: IntList -> Int
-intListLength t = intListLength_helper (0, t)
+intListLength t = internalize (externalize (intListLength_helper (0, t)))
+
+intListSum_helper :: (Int, IntList) -> Int
+intListSum_helper p =
+  internalize (externalize
+    (case p of
+       (acc, t) ->
+         case t of
+           Nil -> acc
+           Cons x xs -> intListSum_helper (x+acc, xs)))
+
+intListSum :: IntList -> Int
+intListSum t =
+  internalize (externalize (intListSum_helper (0, t)))
 
 main :: IO ()
 main =
+  let intList = Cons 10 (Cons 100 (Cons 1000 (Cons 10000 Nil)))
+  in
   print (isEmpty Nil, isEmpty (Cons 1 Nil)
-        ,intListLength (Cons 10 (Cons 100 (Cons 1000 (Cons 10000 Nil))))
+        ,intListLength intList
+        ,intListSum intList
         )
   -- print $ realSum (ComplexPair (2 :+ 100) (3 :+ 10000))
   -- putStrLn mandelbrotTestAscii
