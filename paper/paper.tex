@@ -770,11 +770,10 @@ In the following flowchart, the names in parentheses in a node refers to the nam
 
 \clearpage
 \subsection{Syntactic Transformations of the Core Plugin}
-
-% \begin{tcolorbox}
-%   \textbf{TODO}: Does this subsection use Oxford brackets in an appropriate way?
-% \end{tcolorbox}
-
+\begin{tcolorbox}
+  \textbf{TODO}: Should we use Oxford brackets here? Maybe a bit unusual, but we are operating syntactically and mapping from \ttt{a} to \ttt{E a} (could \ttt{E a} be considered an "intermediary" semantic domain?).
+\end{tcolorbox}
+\vspace*{-0.6cm}
 \begin{align*}
   D&\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
       &\rewrites \begin{cases}
