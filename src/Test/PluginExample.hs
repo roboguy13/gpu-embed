@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE GADTs #-}
 
 {-# OPTIONS_GHC -ddump-simpl -O0 -dcore-lint -dsuppress-all -dcmm-lint -dstg-lint -fcatch-bottoms -fplugin=Plugin.MatchPlugin #-}
 
@@ -147,6 +148,27 @@ example7_ x = IntPair 1 2
 --       False -> 3 * 2
 --       True -> 3 * 3))
 
+data ComplexPair where
+  ComplexPair :: Complex Double
+                 -> Complex Double
+                 -> ComplexPair
+  deriving (Generic, Eq, Show)
+
+instance GPURep ComplexPair
+
+sumComplexPair :: ComplexPair -> Complex Double
+sumComplexPair t =
+  internalize (externalize
+    (case t of
+      ComplexPair a b -> a + b))
+
+realSum :: ComplexPair -> Double
+realSum p =
+  internalize (externalize
+    (case p of
+      ComplexPair (a :+ _) (b :+ _) ->
+        a + b))
+
 mandelbrot_nextZ :: (Complex Double, Complex Double) -> Complex Double
 mandelbrot_nextZ t =
   internalize (externalize
@@ -172,9 +194,37 @@ mandelbrot_point c =
   internalize (externalize
     (mandelbrot_helper (0, c, 0)))
 
+data IntList = Nil | Cons Int IntList
+  deriving (Generic, Show)
+
+instance GPURep IntList
+
+isEmpty :: IntList -> Bool
+isEmpty t =
+  internalize (externalize
+    (case t of
+      Nil -> True
+      Cons x xs -> False))
+
+intListLength_helper :: (Int, IntList) -> Int
+intListLength_helper p =
+  internalize (externalize
+    (case p of
+      (acc, t) ->
+        case t of
+          Nil -> acc
+          Cons _ xs -> intListLength_helper (acc+1, xs)))
+
+intListLength :: IntList -> Int
+intListLength t = intListLength_helper (0, t)
+
 main :: IO ()
 main =
-  putStrLn mandelbrotTestAscii
+  print (isEmpty Nil, isEmpty (Cons 1 Nil)
+        ,intListLength (Cons 10 (Cons 100 (Cons 1000 (Cons 10000 Nil))))
+        )
+  -- print $ realSum (ComplexPair (2 :+ 100) (3 :+ 10000))
+  -- putStrLn mandelbrotTestAscii
 
 
 
@@ -197,7 +247,7 @@ mandelbrotTestAscii =
       case mandelbrot_point (mandelbrot_toCoord x y) of
         Just _ -> ' '
         Nothing -> '*'
-    
+
 
 mandelbrot_toCoord :: Int -> Int -> Complex Double
 mandelbrot_toCoord x0 y0 =
