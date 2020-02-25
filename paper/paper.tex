@@ -134,6 +134,7 @@
 %% the author to define a more concise list
 %% of authors' names for this purpose.
 % \renewcommand{\shortauthors}{Trovato and Tobin, et al.}
+\renewcommand{\shortauthors}{Young and Gill}
 
 %%
 %% The abstract is a short summary of the work to be presented in the
@@ -213,10 +214,10 @@ well-suited to EDSLs due to its lazy evaluation, first-class functions and
 lexical closures.
 
 Despite these advantages Haskell provides for creating EDSLs, there are a few
-constructs which have often proved illusive to embed in an EDSL. One prominent
-example is that of a \ttt{case} expression. Pattern matching is a convenient way
-to implement control flow structures and to view components of data structures,
-so it is frequently a desirable feature for many EDSLs.
+constructs for which representations have proven illusive. One prominent example
+is that of a \ttt{case} expression. Pattern matching is a convenient way to
+implement control flow structures and to view components of data structures, so
+it is frequently a desirable feature for many EDSLs.
 
 Additionally, lambdas can also be difficult to implement in EDSLs. A major reason
 for this is that control flow constructs which are typically \textit{outside} the EDSL,
@@ -261,6 +262,7 @@ import Data.Char (ord)
 
 x :: Either Char Int
 x = Left 'a'
+
 example :: Int
 example =
   internalize (externalize
@@ -273,10 +275,12 @@ example' =
   abs (CaseExp
         (rep x)
         (SumMatchExp (OneProdMatch
-                       (Lam 1 (Ord (Var 1))))
+                       (Lam 1
+                         (Ord (Var 1))))
                      (OneSumMatch
                        (OneProdMatch
-                         (Lam 2 (Var 2)))))
+                         (Lam 2
+                           (Var 2)))))
 \end{lstlisting}
 
 [\ldots]
@@ -519,7 +523,7 @@ Likewise for \ttt{ProdMatch a b} values.
 
 \section{Representing tail recursion}
 \begin{tcolorbox}
-  \textbf{TODO}: Expand this section
+  \textbf{TODO}: Expand the explanation in this section
 \end{tcolorbox}
 
 \begin{lstlisting}
@@ -571,7 +575,7 @@ The \ttt{Typeable} constraints are necessary to lookup correctly typed
 values in the variable binding environment later on.
 
 The \ttt{Name t} type represents a lambda variable identifier together with its
-type \ttt{t}:
+type \ttt{t} (Note that the \ttt{ScopedTypeVariables} extension is enabled.):
 
 \begin{lstlisting}
 newtype Name a = Name Int
@@ -587,8 +591,6 @@ namesEq (Name n) (Name n') =
       | otherwise -> Nothing
     Nothing   -> Nothing
 \end{lstlisting}
-
-(Note that the \ttt{ScopedTypeVariables} extension is enabled.)
 
 In the Core transformation, each lambda is given a \ttt{Name} with a globally
 unique \ttt{Int}, sidestepping any name capture issues.
