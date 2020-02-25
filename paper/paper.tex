@@ -206,11 +206,35 @@
 
 \section{Introduction}
 
-Embedded domain specific languages (EDSLs) have long been a useful and effective
-technique for constructing reusable tools for writing programs for a variety of
+Embedded domain specific languages (EDSLs) have long been an effective
+technique for constructing reusable tools for working in a variety of
 different problem domains. Haskell is a language which is particularly
 well-suited to EDSLs due to its lazy evaluation, first-class functions and
 lexical closures.
+
+Despite these advantages Haskell provides for creating EDSLs, there are a few
+constructs which have often proved illusive to embed in an EDSL. One prominent
+example is that of a \ttt{case} expression. Pattern matching is a convenient way
+to implement control flow structures and to view components of data structures,
+so it is frequently a desirable feature for many EDSLs.
+
+Additionally, lambdas can also be difficult to implement in EDSLs. A major reason
+for this is that control flow constructs which are typically \textit{outside} the EDSL,
+such as pattern matching and tail recursion, can make it challenging to "look inside"
+the lambda.
+
+The following contributions are made by this paper:
+
+\begin{itemize}
+\item A representation of pattern matching in a Haskell EDSL (Section 3)
+\item Representations of tail recursion (Section 4) and lambdas (Section 5) in
+  the EDSL. We will see that lambdas become easier to implement once pattern
+  matching and tail recursion already have EDSL representations.
+\item A GHC Core plugin which transforms a subset of standard Haskell code
+  into this EDSL for pattern matching, extended with tail recursion,
+  lambdas and primitive operations (Section 7)
+\item An implementation of a interpreter for the "standard" semantics of the EDSL (Section 6).
+\end{itemize}
 
 \subsection{Overview}
 
@@ -226,23 +250,7 @@ abs :: E a -> a
 In this paper, the data constructors of the \ttt{E} type will be described
 incrementally as they are needed.
 
-\subsection{Structure of the Paper}
-
-\begin{itemize}
-  \item In section 3, an EDSL representation of pattern matching will be
-    introduced.
-  \item Sections 4 and 5 will discuss techniques for representing tail recursion
-    and lambdas (respectively) in an EDSL. The tail recursion transformation
-    does not depend on the rest of the EDSL and can be used separately from it.
-  \item Section 6 provides an implementation of \ttt{abs} which interprets an EDSL
-    expression under the "standard" semantics (that is, applying this implementation
-    to the result of the Core transformation will result in a program that behaves exactly
-    the same as the original, untransformed, program).
-  \item Section 7 describes the general control flow and specific syntactic
-    transformations of the Core plugin.
-\end{itemize}
-
-\subsection{Translation Example} % TODO: 
+\subsection{Translation Example}
 \begin{tcolorbox}
   \textbf{TODO}: Does it make sense for this to be a subsection of the intro?
 \end{tcolorbox}
@@ -496,6 +504,12 @@ Now consider at the type of \ttt{abs} when it is specialized to take
 
 \begin{lstlisting}
 abs :: E (SumMatch a b) -> SumMatch a b
+\end{lstlisting}
+
+If we postcompose with \ttt{runSumMatch}, we get:
+
+\begin{lstlisting}
+runSumMatch . abs :: E (SumMatch a b) -> (a -> b)
 \end{lstlisting}
 
 The \ttt{SumMatch a b} value which \ttt{abs} returns is exactly the function
@@ -836,7 +850,7 @@ In the following flowchart, the names in parentheses in a node refers to the nam
 
 Note that:
 \begin{itemize}
-  \item The tail recursion transformation given by $D$ and $T_{\ttt{f}}$ is completely independent of the \ttt{E} type and the transformations associated to the \ttt{E} type. As a result, the tail recursion transformation can be used on its own.
+  \item The tail recursion transformation given by $D$, $T'_{\ttt{f}}$ and $T_{\ttt{f}}$ is completely independent of the \ttt{E} type and the transformations associated to the \ttt{E} type. As a result, the tail recursion transformation can be used on its own.
 
   \item The total number of marks introduced is upper bounded by the number of
 subexpressions in the original Core given to the transformation by GHC and each
