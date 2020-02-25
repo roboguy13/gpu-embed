@@ -41,7 +41,7 @@
 
 \lstset{language=haskell, deletekeywords={abs},basicstyle=\ttfamily}
 
-\newcommand{\expr}[1]{\llbracket#1\rrbracket} % Oxford brackets
+\newcommand{\expr}[1]{(#1)} % Expression quasiquote
 \newcommand{\rarr}{\rightarrow}
 \newcommand{\Rarr}{\Rightarrow}
 
@@ -770,9 +770,9 @@ In the following flowchart, the names in parentheses in a node refers to the nam
 \clearpage
 \subsection{Syntactic Transformations of the Core Plugin}
 
-\begin{tcolorbox}
-  \textbf{TODO}: Does this subsection use Oxford brackets in an appropriate way?
-\end{tcolorbox}
+% \begin{tcolorbox}
+%   \textbf{TODO}: Does this subsection use Oxford brackets in an appropriate way?
+% \end{tcolorbox}
 
 \begin{align*}
   D&\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
