@@ -705,21 +705,23 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \clearpage
 \subsection{Overall Control Flow of the Core Plugin}
 
+In the following flowchart, the names in parentheses in a node refers to the names of transformations from the following section (Section 7.2).
+
 \begin{tikzpicture}[node distance=2cm]
 \node (start) [startstop] {Core from GHC};
-  \node (tailrec) [process, below of=start]{Transform tail recursion of definitions that have a mark (when applicable)};
-  \node (findmark) [process, below of=tailrec]{Find marked expression and erase mark};
-    \node (handlecase) [process, below of=findmark]{Mark scrutinee};
-    \node (handleprim) [process, right of=handlecase, xshift=1.6cm]{Encode as EDSL primitive};
-    \node (handleapp) [process, right of=handleprim, xshift=1.6cm]{Wrap with \ttt{Construct} and \ttt{ConstructAp}};
+  \node (tailrec) [process, below of=start, yshift=-0.5cm]{($D, T, T'$) Transform tail recursion of definitions that have a mark (when applicable)};
+  \node (findmark) [process, below of=tailrec, yshift=-0.5cm]{($C^*$) Find marked expression and erase mark};
+    \node (handlecase) [process, below of=findmark]{($C$) Mark scrutinee};
+    \node (handleprim) [process, right of=handlecase, xshift=1.6cm]{($C$) Encode as EDSL primitive};
+    \node (handleapp) [process, right of=handleprim, xshift=1.6cm]{($C$) Wrap with \ttt{Construct} and \ttt{ConstructAp}};
 
-    \node (marksubs1) [process, below of=handleprim]{Mark sub-expressions};
-    \node (marksubs2) [process, below of=handleapp]{Mark sub-expressions};
+    \node (marksubs1) [process, below of=handleprim]{($C$) Mark sub-expressions};
+    \node (marksubs2) [process, below of=handleapp]{($C$) Mark sub-expressions};
 
-    \node (onebranch) [process, below of=handlecase]{Transform one branch};
-    \node (prodmatch) [process, below of=onebranch]{Transform one field in product match of current branch};
-    \node (abstractvar) [process, below of=prodmatch]{Abstract the pattern variable of the field with \ttt{Lam} and \ttt{Var}};
-    \node (markbody) [process, below of=abstractvar]{Mark branch body};
+    \node (onebranch) [process, below of=handlecase]{($B$) Transform one branch};
+    \node (prodmatch) [process, below of=onebranch]{($P$) Transform one field in product match of current branch};
+    \node (abstractvar) [process, below of=prodmatch]{($P$) Abstract the pattern variable of the field with \ttt{Lam} and \ttt{Var}};
+    \node (markbody) [process, below of=abstractvar]{($P$) Mark branch body};
     \node (endstep) [process, below of=markbody, right of=markbody, xshift=1.6cm]{End of one transformation step};
 
   \draw [arrow] (start) -- (tailrec);
@@ -802,16 +804,16 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
   &C^{*}\expr{\ttt{x}} :=
     \begin{cases}
       \ttt{x} & \text{if \ttt{x} has no subexpressions marked with \ttt{externalize}}\\
-      C^{*}\expr{C\expr{\ttt{externalize y}}} & \text{if \ttt{externalize y} is the first marked subexpression of \ttt{x}}\\
+      C^{*}\expr{C\expr{\ttt{y}}} & \text{if \ttt{externalize y} is the first marked subexpression of \ttt{x}}\\
     \end{cases}\\
 \end{align*}
 \begin{align*}
-  &C\expr{\ttt{externalize (runIter x)}} := \ttt{TailRec $M\expr{\ttt{x}}$}\\
-  &C\expr{\ttt{externalize (x + y)}} := \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
-  &C\expr{\ttt{externalize (case scrutinee of \{ ... \})}} := \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{\{ ... \}}}\\
-  &C\expr{\ttt{externalize ($\lambda$x $\rarr$ body)}} := A\expr{\lambda \ttt{x} \rarr \ttt{body}}\\
-  &C\expr{\ttt{externalize (f x)}} := \ttt{ConstructAp $M\expr{\ttt{f}}$ $M\expr{\ttt{x}}$}\;\;\;\;\text{(Where \ttt{f} is not a primitive or an application of a primitive)}\\
-  &C\expr{\ttt{externalize x}} := \ttt{Construct x}\;\;\;\;\text{(Where \ttt{x} is a variable which is not a primitive)}\\
+  &C\expr{\ttt{runIter x}} := \ttt{TailRec $M\expr{\ttt{x}}$}\\
+  &C\expr{\ttt{x + y}} := \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
+  &C\expr{\ttt{case scrutinee of \{ ... \}}} := \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{\{ ... \}}}\\
+  &C\expr{\ttt{($\lambda$x $\rarr$ body)}} := A\expr{\lambda \ttt{x} \rarr \ttt{body}}\\
+  &C\expr{\ttt{(f x)}} := \ttt{ConstructAp $M\expr{\ttt{f}}$ $M\expr{\ttt{x}}$}\;\;\;\;\text{(Where \ttt{f} is not a primitive or an application of a primitive)}\\
+  &C\expr{\ttt{x}} := \ttt{Construct x}\;\;\;\;\text{(Where \ttt{x} is a variable which is not a primitive)}\\
   &\\
   &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}} := \ttt{SumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body0}}\; B\expr{\ttt{\{ ... \}}}\\
   &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body \}}} := \ttt{OneSumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body}}\\
