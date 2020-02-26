@@ -913,8 +913,8 @@ In the following flowchart, the names in parentheses in a node refers to the nam
   T'_{\ttt{f}}&\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}}\\
     &\rewrites
       \begin{cases}
-        \ttt{\{ K x0 ... xN $\rarr$ body}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T'_{\ttt{f}}\expr{\ttt{\{ ... \}}}\ttt{ \}} & \text{if \ttt{f} occurs free in \ttt{body}}\\
-        \ttt{\{ K x0 ... xN $\rarr$ Done body; ... \}} & \text{otherwise}
+        \ttt{\{ K x0 ... xN $\rarr$ body0}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T'_{\ttt{f}}\expr{\ttt{\{ ... \}}}\ttt{ \}} & \text{if \ttt{f} occurs free in \ttt{body}}\\
+        \ttt{\{ K x0 ... xN $\rarr$ Done body0; ... \}} & \text{otherwise}
       \end{cases}\\
   T'_{\ttt{f}}&\expr{\ttt{\{ \}}} \rewrites \ttt{\{ \}}\\
   T_{\ttt{f}}&\expr{\ttt{case s of \{ ... \}}}\\
