@@ -316,7 +316,7 @@ instance ERep ComplexPair
 Note that the instance definition is automatically generated from the
 \ttt{Generic} instance.
 
-Given this code, \ttt{ERep ComplexPair \typeeq (Complex Double, Complex Double)}. Here
+Given this code, \ttt{ERepTy ComplexPair \typeeq (Complex Double, Complex Double)}. Here
 is an example that demonstrates why this is more useful than if it \textit{fully} deconstructed
 each type into \ttt{Either}, \ttt{(,)} and \ttt{()}:
 
@@ -329,14 +329,14 @@ sumComplexPair p =
       ComplexPair a b -> a + b))
 \end{lstlisting}
 
-If \ttt{ERep ComplexPair} were fully deconstructed into \ttt{((Double, Double),
+If \ttt{ERepTy ComplexPair} were fully deconstructed into \ttt{((Double, Double),
 (Double, Double))}, we would need a \ttt{Num} instance for \ttt{(Double,
 Double)}.  What we really want is to use the fact that a \ttt{Num} instance
 already exists for \ttt{Complex Double}. This is exactly what preserving this
 type information allows us to do.
 
 It is important to note that we are still able to further deconstruct this type
-with further pattern matches, since \ttt{ERep (Complex Double) \typeeq (Double, Double)}:
+with further pattern matches, since \ttt{ERepTy (Complex Double) \typeeq (Double, Double)}:
 
 \begin{lstlisting}
 realSum :: ComplexPair -> Double
