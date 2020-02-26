@@ -223,8 +223,8 @@ lexical closures.
 Despite these advantages Haskell provides for creating EDSLs, there are a few
 constructs for which representations have proven illusive. One prominent example
 is that of a \ttt{case} expression. Pattern matching is a convenient way to
-implement control flow structures and to view components of data structures, so
-it is frequently a desirable feature for many EDSLs.
+implement control flow structures and to inspect data structures, so it is
+frequently a desirable feature for many EDSLs.
 
 Additionally, lambdas can also be difficult to implement in EDSLs. A major reason
 for this is that control flow constructs which are typically \textit{outside} the EDSL,
@@ -246,9 +246,10 @@ The following contributions are made by this paper:
 
 \subsection{Overview}
 
-In this EDSL, the type representing values in the expression language is \ttt{E t}
-and there are two basic functions which translate values to and from this
-expression language with the following type signatures:
+In this EDSL, the type representing values in the expression language is \ttt{E
+t} and there are two basic functions which translate values to and from this
+expression language with the following type signatures (omitting type class
+constraints for the moment):
 
 \begin{lstlisting}
 rep :: a -> E a
@@ -289,8 +290,6 @@ example' =
                          (Lam 2
                            (Var 2)))))
 \end{lstlisting}
-
-[\ldots]
 
 \section{Representing Algebraic Datatypes}
 
@@ -621,7 +620,8 @@ abs :: E (SumMatch a b) -> SumMatch a b
 If we postcompose with \ttt{runSumMatch}, we get:
 
 \begin{lstlisting}
-runSumMatch . abs :: E (SumMatch a b) -> (a -> b)
+runSumMatch . abs
+  :: E (SumMatch a b) -> (a -> b)
 \end{lstlisting}
 
 The \ttt{SumMatch a b} value which \ttt{abs} returns is exactly the function
