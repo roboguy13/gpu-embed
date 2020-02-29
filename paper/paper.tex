@@ -46,6 +46,11 @@
 \newcommand{\Rarr}{\Rightarrow}
 \newcommand{\rewrites}{\Longrightarrow}
 
+% TODO: Use these:
+\newcommand{\exprt}[1]{\expr{\ttt{#1}}}
+\newcommand{\tdots}{\ttt{...}}
+\newcommand{\exprdots}{\expr{\tdots}}
+
 \newcommand{\typeeq}{\raise.17ex\hbox{$\scriptstyle\mathtt{\sim}$}\,\;}
 
 \newcommand{\ttt}{\texttt}
@@ -901,26 +906,26 @@ In the following flowchart, the names in parentheses in a node refers to the nam
 \begin{align*}
   D&\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
       &\rewrites \begin{cases}
-        \ttt{f = internalize $C^{*}\expr{\ttt{externalize (runIter ($\lambda \ttt{x} \rarr \ttt{case s of $T'_{\ttt{f}}\expr{\ttt{\{ ... \}}}$}$))}}$} & \text{if \ttt{f} occurs free in \ttt{\{ ... \}}}\\
+        \ttt{f = internalize $C^{*}\expr{\ttt{externalize (runIter ($\lambda \ttt{x} \rarr \ttt{case s of \{ $T'_{\ttt{f}}\exprdots$}$ \}))}}$} & \text{if \ttt{f} occurs free in \ttt{\{ ... \}}}\\
         \ttt{f x = internalize $C^{*}\expr{\ttt{externalize (case s of \{ ... \})}}$} & \text{otherwise}
       \end{cases}
 \end{align*}
 
 \begin{align*}
-  T'_{\ttt{f}}&\expr{\ttt{\{ K x0 ... xN $\rarr$ case s of \{ ...$_A$ \}; ...$_B$ \}}}\\
+  T'_{\ttt{f}}&\expr{\ttt{K x0 ... xN $\rarr$ case s of \{ ...$_A$ \}; ...$_B$}}\\
     &\rewrites
-        \ttt{\{ K x0 ... xN $\rarr$ $T_{\ttt{f}}\expr{\ttt{case s of \{ ...$_A$ \}}}$; $T'_{\ttt{f}}\expr{\ttt{\{ ...$_B$ \}}}$\}}\\
-  T'_{\ttt{f}}&\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}}\\
+        \ttt{K x0 ... xN $\rarr$ $T_{\ttt{f}}\expr{\ttt{case s of \{ ...$_A$ \}}}$; $T'_{\ttt{f}}\expr{\ttt{ ...$_B$ }}$}\\
+  T'_{\ttt{f}}&\expr{\ttt{K x0 ... xN $\rarr$ body0; ... }}\\
     &\rewrites
       \begin{cases}
-        \ttt{\{ K x0 ... xN $\rarr$ body0}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T'_{\ttt{f}}\expr{\ttt{\{ ... \}}}\ttt{ \}} & \text{if \ttt{f} occurs free in \ttt{body0}}\\
-        \ttt{\{ K x0 ... xN $\rarr$ Done body0; $T'_{\ttt{f}}\expr{\ttt{\{ ... \}}} \}$} & \text{otherwise}
+        \ttt{K x0 ... xN $\rarr$ body0}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T'_{\ttt{f}}\expr{\ttt{ ... }} & \text{if \ttt{f} occurs free in \ttt{body0}}\\
+        \ttt{K x0 ... xN $\rarr$ Done body0; $T'_{\ttt{f}}\expr{\ttt{ ... }}$} & \text{otherwise}
       \end{cases}\\
-  T'_{\ttt{f}}&\expr{\ttt{\{ \}}} \rewrites \ttt{\{ \}}\\
+  T'_{\ttt{f}}&\expr{\varepsilon} \rewrites \varepsilon\;\;\; \text{(Note: $\varepsilon$ represents the empty string)}\\
   T_{\ttt{f}}&\expr{\ttt{case s of \{ ... \}}}\\
     &\rewrites
       \begin{cases}
-        \ttt{case s of $T'_{\ttt{f}}\expr{\ttt{\{ ... \}}}$} & \text{if \ttt{f} occurs free in \ttt{\{ ... \}}}\\
+        \ttt{case s of \{ $T'_{\ttt{f}}\expr{\ttt{ ... }}$ \}} & \text{if \ttt{f} occurs free in \ttt{\{ ... \}}}\\
         \ttt{Done (case s of \{ ... \})} & \text{otherwise}
       \end{cases}
 \end{align*}
@@ -935,8 +940,8 @@ In the following flowchart, the names in parentheses in a node refers to the nam
   &C\expr{\ttt{runIter x}} \rewrites \ttt{TailRec $M\expr{\ttt{x}}$}\\
   &C\expr{\ttt{x + y}} \rewrites \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
   &C\expr{\ttt{case scrutinee of \{ ... \}}} \rewrites \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{\{ ... \}}}\\
-  &C\expr{\ttt{($\lambda$x $\rarr$ body)}} \rewrites A\expr{\lambda \ttt{x} \rarr \ttt{body}}\\
-  &C\expr{\ttt{(f x)}} \rewrites \ttt{ConstructAp $M\expr{\ttt{f}}$ $M\expr{\ttt{x}}$}\;\;\;\;\text{(Where \ttt{f} is not a primitive or an application of a primitive)}\\
+  &C\expr{\ttt{$\lambda$x $\rarr$ body}} \rewrites A\expr{\lambda \ttt{x} \rarr \ttt{body}}\\
+  &C\expr{\ttt{f x}} \rewrites \ttt{ConstructAp $M\expr{\ttt{f}}$ $M\expr{\ttt{x}}$}\;\;\;\;\text{(Where \ttt{f} is not a primitive or an application of a primitive)}\\
   &C\expr{\ttt{x}} \rewrites \ttt{Construct x}\;\;\;\;\text{(Where \ttt{x} is a variable which is not a primitive)}\\
   &\\
   &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}} \rewrites \ttt{SumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body0}}\; B\expr{\ttt{\{ ... \}}}\\
@@ -949,7 +954,7 @@ In the following flowchart, the names in parentheses in a node refers to the nam
   &\\
   &A\expr{\ttt{$\lambda$(x :: a) $\rarr$ body}} \rewrites \ttt{Lam (Name @a uniq) $M\expr{\ttt{body$[\ttt{x} \mapsto \ttt{Var uniq}]$}}$}\text{\;\;\;\;\;(where \ttt{uniq} is a globally unique identifier)}\\
   &\\
-  &M\expr{\ttt{(x :: a)}} \rewrites
+  &M\expr{\ttt{x :: a}} \rewrites
     \begin{cases}
       \ttt{externalize x} & \text{if}\; \nexists t, a\; \typeeq E\; t\\
       \ttt{x} & \text{if}\; \exists t, a\; \typeeq E\; t
