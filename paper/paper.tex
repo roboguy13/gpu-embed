@@ -121,7 +121,8 @@
 %%
 %% The "title" command has an optional parameter,
 %% allowing the author to define a "short title" to be used in page headers.
-\title{Title Goes Here}
+\title{Title Goes Here\\
+\large{Not For Redistribution}}
 
 %%
 %% The "author" command and its associated commands are used to define
@@ -857,7 +858,7 @@ In the following flowchart, the names in parentheses in a node refers to the nam
   \draw [arrow] (start) -- (tailrec);
   \draw [arrow] (tailrec) -- (findmark);
   \draw [arrow] (findmark) -- node[anchor=east] {Primitive} (handleprim);
-  \draw [arrow] (findmark) -- node[anchor=west] {Function application/non-prim var} (handleapp);
+  \draw [arrow] (findmark) -- node[anchor=west, yshift=0.1cm] {Function application/non-prim var} (handleapp);
   \draw [arrow] (findmark) -- node[anchor=east] {\ttt{case}} (handlecase);
 
   \draw [arrow] (handleprim) -- (marksubs1);
