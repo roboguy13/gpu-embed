@@ -420,6 +420,11 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
             litId <- lift $ findIdTH guts 'Expr.Lit
             return (Var litId :@ Type floatTy :@ numDict :@ expr)
 
+          | "C#" <- occNameString (occName f) = do
+            charLitId <- lift $ findIdTH guts 'Expr.CharLit
+
+            return (Var charLitId :@ expr)
+
         go expr@(Var f :@ x)
           | not (isTypeArg x) &&
             not (isDerivedOccName (occName f)) && last (occNameString (occName f)) /= '#',
@@ -948,6 +953,7 @@ thNameToGhcName_ thName = do
 primMapTH :: [(TH.Name, TH.Name)]
 primMapTH =
   [('not, 'Not)
+  ,('ord, 'Ord)
   ,('fromEnum, 'FromEnum)
   ,('fromIntegral, 'FromIntegral)
   ,('fromInteger, 'deepFromInteger)

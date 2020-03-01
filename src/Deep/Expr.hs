@@ -12,6 +12,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 {-# OPTIONS_GHC -Wall #-}
 
@@ -24,6 +26,7 @@ import           Data.Constraint (Constraint)
 import           Data.Bifunctor
 
 import           GHC.Generics
+import           Data.Generics.Uniplate.Direct
 -- import           Language.Haskell.TH (Name)
 
 import           Data.Complex
@@ -32,6 +35,8 @@ import           Control.Monad.State
 
 import           Data.Type.Equality
 import           Data.Typeable
+
+import           Data.Char
 
 -- Idea: Represent a pattern match of a particular type as
 --    KnownSymbol name => Proxy name -> MatchType name
@@ -77,7 +82,10 @@ data Iter a b
   | Done a
   deriving (Functor, Generic)
 
-newtype Name a = Name Int deriving (Eq, Show)
+newtype Name a = Name { getNameIdent :: Int } deriving (Eq, Show)
+
+getNameUniq :: Name a -> Int
+getNameUniq = getNameIdent
 
 data EnvMapping where
   (:=>) :: forall a. Typeable a => (Name a) -> GPUExp a -> EnvMapping
@@ -142,7 +150,10 @@ data GPUExp t where
 
   -- Apply :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
+  CharLit :: Char -> GPUExp Char
   Lit :: Num a => a -> GPUExp a
+
+  Ord :: GPUExp Char -> GPUExp Int
 
   Add :: Num a => GPUExp a -> GPUExp a -> GPUExp a
   Sub :: Num a => GPUExp a -> GPUExp a -> GPUExp a
@@ -220,6 +231,71 @@ transformE tr0 = tr
     go (TailRec f) = TailRec (tr f)
     go e@(Construct _) = e
     go (ConstructAp f x) = ConstructAp (tr f) (tr x)
+    go (Ord x) = Ord (tr x)
+    go e@(CharLit _) = e
+
+transformEA :: forall a m. Monad m
+  => (forall r. GPUExp r -> m (GPUExp r)) -> GPUExp a -> m (GPUExp a)
+transformEA tr0 = tr
+  where
+    tr :: forall s. GPUExp s -> m (GPUExp s)
+    tr = go <=< tr0
+
+    go :: forall s. GPUExp s -> m (GPUExp s)
+    go (CaseExp x f) = CaseExp <$> (tr x) <*> (tr f)
+    go (SumMatchExp x y) = SumMatchExp <$> (tr x) <*> (tr y)
+    go (ProdMatchExp f) = ProdMatchExp <$> (tr f)
+    go (NullaryMatch x) = NullaryMatch <$> (tr x)
+    go (OneSumMatch p) = OneSumMatch <$> (tr p)
+    go (OneProdMatch f) = OneProdMatch <$> (tr f)
+    go EmptyMatch = pure EmptyMatch
+    go FalseExp = pure FalseExp
+    go TrueExp = pure TrueExp
+    go e@(Repped _) = pure e
+    go (Lam n x) = Lam n <$> (tr x)
+    go e@(Var _) = pure e
+    go e@(Lit _) = pure e
+    go (Add x y) = Add <$> (tr x) <*> (tr y)
+    go (Sub x y) = Sub <$> (tr x) <*> (tr y)
+    go (Mul x y) = Mul <$> (tr x) <*> (tr y)
+    -- go (Twice f x) = Twice
+    go (FromEnum x) = FromEnum <$> (tr x)
+    go (FromIntegral x) = FromIntegral <$> (tr x)
+    go (Sqrt x) = Sqrt <$> (tr x)
+    go (Equal x y) = Equal <$> (tr x) <*> (tr y)
+    go (Lte x y) = Lte <$> (tr x) <*> (tr y)
+    go (Gt x y) = Gt <$> (tr x) <*> (tr y)
+    go (Not x) = Not <$> (tr x)
+    go (LeftExp x) = LeftExp <$> (tr x)
+    go (RightExp y) = RightExp <$> (tr y)
+    go (PairExp x y) = PairExp <$> (tr x) <*> (tr y)
+    go (FstExp x) = FstExp <$> (tr x)
+    go (SndExp x) = SndExp <$> (tr x)
+    go (StepExp x) = StepExp <$> (tr x)
+    go (DoneExp y) = DoneExp <$> (tr y)
+    go (IfThenElse x y z) = IfThenElse <$> (tr x) <*> (tr y) <*> (tr z)
+    go (TailRec f) = TailRec <$> (tr f)
+    go e@(Construct _) = pure e
+    go (ConstructAp f x) = ConstructAp <$> (tr f) <*> (tr x)
+    go (Ord x) = Ord <$> (tr x)
+    go e@(CharLit _) = pure e
+
+-- foldEM :: forall a b m. Monad m => (forall x. GPUExp x -> b -> m b) -> b -> GPUExp a -> m b
+-- foldEM f z = go
+--   where
+--     go :: forall s. GPUExp s -> m b
+--     go (CaseExp x y) = f x =<< go y
+--     go (SumMatchExp x y) = f x =<< go y
+--     go (ProdMatchExp x) = f x z
+--     go (NullaryMatch x) = f x z
+--     go (OneSumMatch x) = f x z
+--     go (OneProdMatch x) = f x z
+--     go e@EmptyMatch = return z
+--     go e@FalseExp = return z
+--     go e@TrueExp = return z
+--     go e@(Repped _) = return z
+--     go (Lam n x) = f x z
+--     go (Add x y) = f x =<< go y
 
 -- -- Used for intermediate transformations
 -- unLam :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
@@ -302,6 +378,11 @@ instance GPURep Bool where
   rep' = id
   unrep' = id
 
+instance GPURep Char where
+  type GPURepTy Char = Char
+  rep c = CharLit c
+  rep' = id
+  unrep' = id
 
 instance GPURep a => GPURep (Complex a) where
 
@@ -491,7 +572,8 @@ gpuAbsEnv env TrueExp  = True
 gpuAbsEnv env (Repped x) = unrep' x
 -- gpuAbs (Lam f) = gpuAbs . f . rep
 -- gpuAbs (Apply f x) = gpuAbs f (gpuAbs x)
-gpuAbsEnv env (Lit x)  = x
+gpuAbsEnv env (Lit x) = x
+gpuAbsEnv env (Ord x) = ord (gpuAbsEnv env x)
 gpuAbsEnv env (Add x y) = gpuAbsEnv env x + gpuAbsEnv env y
 gpuAbsEnv env (Sub x y) = gpuAbsEnv env x - gpuAbsEnv env y
 gpuAbsEnv env (Mul x y) = gpuAbsEnv env x * gpuAbsEnv env y

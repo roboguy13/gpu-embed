@@ -27,6 +27,8 @@ import           GHC.Real
 
 import           Data.Proxy
 
+import           CodeGen.C
+
 -- import           Debug.Trace
 
 -- deriving instance Generic (Ratio a) -- XXX: This instance should probably be in 'base'
@@ -235,12 +237,25 @@ intListSum :: IntList -> Int
 intListSum t =
   internalize (externalize (intListSum_helper (0, t)))
 
+example_x :: Either Char Int
+example_x = Left 'a'
+{-# INLINE example_x #-}
+
+example :: Int
+example =
+  internalize (externalize
+    (case example_x of
+      Left  c -> ord c
+      Right i -> i))
+{-# NOINLINE example #-}
+
 main :: IO ()
 main = do
   let intList = Cons 10 (Cons 100 (Cons 1000 (Cons 10000 Nil)))
   print (isEmpty Nil, isEmpty (Cons 1 Nil)
         ,intListLength intList
         ,intListSum intList
+        ,example
         )
   print $ realSum (ComplexPair (2 :+ 100) (3 :+ 10000))
   putStrLn mandelbrotTestAscii
