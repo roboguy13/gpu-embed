@@ -912,14 +912,14 @@ In the following flowchart, the names in parentheses in a node refers to the nam
 \end{align*}
 
 \begin{align*}
-  T'_{\ttt{f}}&\expr{\ttt{K x0 ... xN $\rarr$ case s of \{ ...$_A$ \}; ...$_B$}}\\
+  T'_{\ttt{f}}&\expr{\ttt{K x0 ...$_U$ xN $\rarr$ case s of \{ ...$_V$ \}; ...$_W$}}\\
     &\rewrites
-        \ttt{K x0 ... xN $\rarr$ $T_{\ttt{f}}\expr{\ttt{case s of \{ ...$_A$ \}}}$; $T'_{\ttt{f}}\expr{\ttt{ ...$_B$ }}$}\\
-  T'_{\ttt{f}}&\expr{\ttt{K x0 ... xN $\rarr$ body0; ... }}\\
+        \ttt{K x0 ...$_U$ xN $\rarr$ $T_{\ttt{f}}\expr{\ttt{case s of \{ ...$_V$ \}}}$; $T'_{\ttt{f}}\expr{\ttt{ ...$_W$ }}$}\\
+  T'_{\ttt{f}}&\expr{\ttt{K x0 ...$_U$ xN $\rarr$ body0; ...$_V$ }}\\
     &\rewrites
       \begin{cases}
-        \ttt{K x0 ... xN $\rarr$ body0}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T'_{\ttt{f}}\expr{\ttt{ ... }} & \text{if \ttt{f} occurs free in \ttt{body0}}\\
-        \ttt{K x0 ... xN $\rarr$ Done body0; $T'_{\ttt{f}}\expr{\ttt{ ... }}$} & \text{otherwise}
+        \ttt{K x0 ...$_U$ xN $\rarr$ body0}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T'_{\ttt{f}}\expr{\ttt{ ...$_V$ }} & \text{if \ttt{f} occurs free in \ttt{body0}}\\
+        \ttt{K x0 ...$_U$ xN $\rarr$ Done body0; $T'_{\ttt{f}}\expr{\ttt{ ...$_V$ }}$} & \text{otherwise}
       \end{cases}\\
   T'_{\ttt{f}}&\expr{\varepsilon} \rewrites \varepsilon\;\;\; \text{(Note: $\varepsilon$ represents the empty string)}\\
   T_{\ttt{f}}&\expr{\ttt{case s of \{ ... \}}}\\
@@ -939,14 +939,14 @@ In the following flowchart, the names in parentheses in a node refers to the nam
 \begin{align*}
   &C\expr{\ttt{runIter x}} \rewrites \ttt{TailRec $M\expr{\ttt{x}}$}\\
   &C\expr{\ttt{x + y}} \rewrites \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
-  &C\expr{\ttt{case scrutinee of \{ ... \}}} \rewrites \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{\{ ... \}}}\\
+  &C\expr{\ttt{case scrutinee of \{ ... \}}} \rewrites \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{ ... }}\\
   &C\expr{\ttt{$\lambda$x $\rarr$ body}} \rewrites A\expr{\lambda \ttt{x} \rarr \ttt{body}}\\
   &C\expr{\ttt{f x}} \rewrites \ttt{ConstructAp $M\expr{\ttt{f}}$ $M\expr{\ttt{x}}$}\;\;\;\;\text{(Where \ttt{f} is not a primitive or an application of a primitive)}\\
   &C\expr{\ttt{x}} \rewrites \ttt{Construct x}\;\;\;\;\text{(Where \ttt{x} is a variable which is not a primitive)}\\
   &\\
-  &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body0; ... \}}} \rewrites \ttt{SumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body0}}\; B\expr{\ttt{\{ ... \}}}\\
-  &B\expr{\ttt{\{ K x0 ... xN $\rarr$ body \}}} \rewrites \ttt{OneSumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body}}\\
-  &B\expr{\ttt{\{ \}}} \rewrites \ttt{EmptyMatch}\\
+  &B\expr{\ttt{K x0 ...$_U$ xN $\rarr$ body0; ...$_V$}} \rewrites \ttt{SumMatchExp }P\expr{\ttt{x0 ...$_U$ xN $\rarr$ body0}}\; B\expr{\ttt{ ...$_V$ }}\\
+  &B\expr{\ttt{K x0 ... xN $\rarr$ body}} \rewrites \ttt{OneSumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body}}\\
+  &B\expr{\ttt{$\varepsilon$}} \rewrites \ttt{EmptyMatch}\\
   &\\
   &P\expr{\ttt{x0 x1 ... $\rarr$ body}} \rewrites \ttt{ProdMatchExp }A\expr{\ttt{$\lambda$ x0 $\rarr$ $P\expr{\ttt{x1 ... $\rarr$ body}}$}}\\
   &P\expr{\ttt{x $\rarr$ body}} \rewrites \ttt{OneProdMatchExp }A\expr{\ttt{$\lambda$ x $\rarr$ body}}\\
