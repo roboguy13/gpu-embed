@@ -4,6 +4,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module CodeGen.C
   where
@@ -51,6 +52,7 @@ le_fromList = LocalEnv . Map.fromList
 le_initial :: Int -> LocalEnv
 le_initial varCount = LocalEnv $ Map.fromList $ map (\n -> (n, "var[" <> show n <> "]")) [0..varCount]
 
+
 data CodeGenState =
   CodeGenState
     { cg_le :: LocalEnv
@@ -63,6 +65,18 @@ newtype CodeGen a =
   deriving (Functor, Applicative, Monad)
 
 deriving instance MonadState CodeGenState CodeGen
+
+cg_modifyName :: Int -> CName -> CodeGen ()
+cg_modifyName uniq cname =
+  modify (\cg -> cg { cg_le = le_modifyName (cg_le cg) uniq cname })
+
+cg_modifyNames :: [(Int, CName)] -> CodeGen ()
+cg_modifyNames changes =
+  modify (\cg -> cg { cg_le = le_modifyNames (cg_le cg) changes })
+
+cg_lookup :: Int -> CodeGen CName
+cg_lookup uniq =
+  fmap (le_lookup uniq . cg_le) get
 
 withLocalEnv :: LocalEnv -> CodeGen a -> CodeGen a
 withLocalEnv newEnv m = do
@@ -190,9 +204,10 @@ mainCode body =
 
 genExp :: GPUExp a -> CName -> CodeGen CCode
 genExp (Var (Name n)) resultName = do
-  env <- fmap cg_le get
+  nCName <- cg_lookup n
+
   return $
-    resultName <> " = " <> le_lookup n env
+    resultName <> " = " <> nCName
 
 genExp (CaseExp s body) resultName = do
   sResultName <- freshCName
@@ -205,12 +220,73 @@ genExp (CaseExp s body) resultName = do
 -- genExp (ProdMatchExp (Lam (Name n) x)) resultName = _
 
 genCaseExp :: CName -> GPUExp (SumMatch a r) -> CName -> CodeGen CCode
-genCaseExp s (OneSumMatch (OneProdMatch lam@(Lam (Name n) _))) resultName = do
+genCaseExp s (OneSumMatch p) resultName = genProdMatch s p resultName
+genCaseExp s (SumMatchExp x y) resultName = do
+  s' <- freshCName
+
+  thenPart <- genProdMatch s' x resultName
+  elsePart <- genCaseExp s' y resultName
+
+  return $ unlines
+    [ "ASSERT(" <> s <> ".tag == EXPR_EITHER_LEFT || " <> s <> ".tag == EXPR_EITHER_RIGHT);"
+    , "var_t " <> s' <> " = *(var_t*)(" <> s <> ".value)"
+
+    , "if (" <> s <> ".tag == EXPR_EITHER_LEFT) {"
+    , thenPart
+    , "} else if (" <> s <> ".tag == EXPR_EITHER_RIGHT) {"
+    , elsePart
+    , "}"
+    ]
+
+genProdMatch :: CName -> GPUExp (ProdMatch a r) -> CName -> CodeGen CCode
+genProdMatch s p resultName = do
+  (argUniqs0, innerLam) <- getProdMatchLams p
+  let lastArg = last argUniqs0
+      argUniqs = init argUniqs0
+
+  let itemNames = map (\i -> pairCar i s) [0..length argUniqs-2]
+
+  -- TODO: Should the enivronment be saved and restored?
+  cg_modifyNames (zip argUniqs itemNames)
+  buildAndCall innerLam (pairCar (length argUniqs-1) s) resultName
+
+{-
+genProdMatch s (OneProdMatch (Lam (Name n) _)) resultName = do
   le <- fmap cg_le get
-  undefined
+  lam <- lookupLambda n
 
-  -- buildAndCall s resultName n
+  buildAndCall lam s resultName
 
+genProdMatch s (ProdMatchExp (Lam (Name n) restMatch)) resultName = do
+  le <- fmap cg_le get
+  lam <- lookupLambda n
+
+  let s' = "(var_t*)" <> s <> "[0]"
+
+  buildAndCall lam s' resultName
+-}
+
+pairCar :: Int -> CName -> CCode
+pairCar 0 p = "((var_t*)" <> p <> "[0])"
+pairCar depth p =
+  "((var_t*)(" <> (pairCdr (depth-1) p) <> ")[0])"
+
+pairCdr :: Int -> CName -> CCode
+pairCdr 0 p = "((var_t*)" <> p <> "[1])"
+pairCdr depth p =
+  "((var_t*)" <> (pairCdr (depth-1) p) <> "[1])"
+
+-- | Get argument uniques for each lambda and also the innermost lambda
+getProdMatchLams :: GPUExp (ProdMatch a r) -> CodeGen ([Int], SomeLambda)
+getProdMatchLams (OneProdMatch (Lam (Name n) _)) = do
+  lam <- lookupLambda n
+  return ([n], lam)
+
+getProdMatchLams (ProdMatchExp (Lam (Name n) x)) = do
+  (restNs, lam) <- getProdMatchLams x
+  return (n:restNs, lam)
+
+getProdMatchLams (NullaryMatch _) = error "getProdMatchLams"
 
 lambdaCName_byInt :: Int -> CName
 lambdaCName_byInt i = "lam_" <> show i
@@ -224,9 +300,9 @@ genLambda sc@(SomeLambda c) = do
 
   let localEnv =
         le_fromList
-          ((n, "arg"):zip
-                (map (\(SomeName n) -> getNameUniq n) (lambda_fvs c))
-                fvIxes)
+          ((getNameUniq (lambda_name c), "arg")
+            :zip (map (\(SomeName n) -> getNameUniq n) (lambda_fvs c))
+               fvIxes)
 
   body <- withLocalEnv localEnv (genExp (lambda_body c) rName)
 
@@ -258,13 +334,12 @@ genLambdas e = do
           lambdas
     , unlines lambdaCode
     )
-
 buildAndCall :: SomeLambda -> CName -> CName -> CodeGen CCode
 buildAndCall sLam argName resultName = do
   closureVarName <- freshCName
 
   closureCode <- buildClosure sLam closureVarName
-  callCode <- callClosure closureVarName argName resultName
+  callCode <- callClosure sLam closureVarName argName resultName
 
   return $ unlines [ closureCode, callCode ]
 
@@ -286,14 +361,9 @@ buildClosure sc@(SomeLambda c) closureVarName = do
   where
     fvCount = length (lambda_fvs c)
 
-callClosure :: CName -> CName -> CName -> CodeGen CCode
-callClosure closureName argName resultName =
+callClosure :: SomeLambda -> CName -> CName -> CName -> CodeGen CCode
+callClosure (SomeLambda (Lambda { lambda_name })) closureName argName resultName =
+
   return $
     resultName <> " = " <> closureName <> ".fn(" <> argName <> ", &" <> closureName <> ");"
-
--- callLambda :: CName -> CName -> Int -> CCode
--- callLambda argName resultName cl_uniq =
---   unlines
---     [ resultName <> " = " <> lambdaCName_byInt cl_uniq <> "(" <> argName <> ", &closures[" <> show (cl_uniq-1) <> "]);"
---     ]
 
