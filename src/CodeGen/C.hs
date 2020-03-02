@@ -427,27 +427,16 @@ genExp (CaseExp s body) resultName = do
     ]
 
 genExp (Lam (Name n) body) resultName = do
-  closureName <- freshCName
   closurePtrName <- freshCName
 
   sLam@(SomeLambda lam) <- lookupLambda n
-  closureCode <- buildClosure sLam closureName
+  closureCode <- buildClosure sLam ("(*" <> closurePtrName <> ")")
 
   let fvs = lambda_fvs lam
 
-  -- init_fvEnv <- forM (zip [0..] fvs) (\(i, SomeName fv) -> do
-  --                           fvName <- cg_lookup (getNameUniq fv)
-  --                           return (closurePtrName <> "->fv_env[" <> show i <> "] = " <> fvName <> ";"))
-
   return $ unlines
-    [ "closure_t " <> closureName <> ";"
+    [ "closure_t* " <> closurePtrName <> " = malloc(sizeof(closure_t));"
     , closureCode
-    , "closure_t* " <> closurePtrName <> " = malloc(sizeof(closure_t));"
-    , closurePtrName <> "->fn = " <> closureName <> ".fn;"
-    -- , unlines init_fvEnv
-    -- , closurePtrName <> "->fv_env = " <> closureName <> ".fv_env;"
-    , closurePtrName <> "->fv_env = malloc(sizeof(var_t)*" <> show (length fvs) <> ");"
-    , "memcpy(" <> closurePtrName <> "->fv_env, " <> closureName <> ".fv_env, sizeof(var_t)*" <> show (length fvs) <> ");"
     , ""
     , resultName <> ".tag = EXPR_CLOSURE;"
     , resultName <> ".value = (void*)" <> closurePtrName <> ";"
