@@ -11,7 +11,7 @@ module Plugin.MatchPlugin (plugin) where
 
 import           Deep.GHCUtils
 
-import           Deep.Expr hiding (Var, Lit, Lam, (:@), Name)
+import           Deep.Expr hiding (Var, Lit, Lam, (:@), Name, App)
 import qualified Deep.Expr as Expr
 import           Deep.Delineate
 

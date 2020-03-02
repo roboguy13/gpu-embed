@@ -148,6 +148,7 @@ data GPUExp t where
 
   Lam :: forall a b. (GPURep a, Typeable a) => Name a -> GPUExp b -> GPUExp (a -> b)
   Var :: forall a. Typeable a => Name a -> GPUExp a -- Constructed internally
+  App :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
   -- Apply :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
 

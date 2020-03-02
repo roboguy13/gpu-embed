@@ -126,6 +126,7 @@ data Lambda a b
       -- TODO: Should we have a [(SomeName, CName)] (possibly replacing
       -- lambda_fvs?)
     , lambda_body :: GPUExp b
+    , lambda_isTailRec :: Bool
     }
 
 data SomeLambda = forall a b. {- Typeable a => -} SomeLambda (Lambda a b)
@@ -149,6 +150,7 @@ getFVs = (`execState` []) . go
     go (Lam n x) = do
       go x
       modify (deleteBy (\(SomeName n') (SomeName n) -> getNameUniq n' == getNameUniq n) (SomeName n))
+    go (App f x) = go f *> go x
     go (Lit {}) = pure ()
     go (Add x y) = go x *> go y
     go (Sub x y) = go x *> go y
@@ -193,6 +195,7 @@ getVarCount = getMax . execWriter . go
     go TrueExp = pure ()
     go (Repped {}) = pure ()
     go (Lam n x) = go x
+    go (App f x) = go f *> go x
     go (Lit {}) = pure ()
     go (Add x y) = go x *> go y
     go (Sub x y) = go x *> go y
@@ -233,7 +236,9 @@ collectLambdas = execWriter . go
     go FalseExp = pure ()
     go TrueExp = pure ()
     go (Repped {}) = pure ()
-    go (Lam n x) = tell [mkLambda (SomeName n) x] *> go x
+    go (TailRec lamExp@(Lam n body)) = tell [mkLambda True (SomeName n) body] *> go body
+    go (Lam n x) = tell [mkLambda False (SomeName n) x] *> go x
+    go (App f x) = go f *> go x
     go (Lit {}) = pure ()
     go (Add x y) = go x *> go y
     go (Sub x y) = go x *> go y
@@ -259,8 +264,8 @@ collectLambdas = execWriter . go
     go (Ord x) = go x
     go (CharLit {}) = pure ()
 
-mkLambda :: SomeName -> GPUExp a -> SomeLambda
-mkLambda (SomeName argName) body =
+mkLambda :: Bool -> SomeName -> GPUExp a -> SomeLambda
+mkLambda isTailRec (SomeName argName) body =
   SomeLambda $
     Lambda
       { lambda_fvs =
@@ -271,6 +276,7 @@ mkLambda (SomeName argName) body =
             (getFVs body)
       , lambda_name = argName
       , lambda_body = body
+      , lambda_isTailRec = isTailRec
       }
 
 genProgram :: GPUExp a -> CCode
@@ -304,6 +310,7 @@ prelude varCount =
   unlines
     [ "#include <stdio.h>"
     , "#include <stdlib.h>"
+    , "#include <stdbool.h>"
     , "#include <string.h>"
     , "#include <assert.h>"
     , ""
@@ -312,6 +319,7 @@ prelude varCount =
     , ", EXPR_FLOAT"
     , ", EXPR_DOUBLE"
     , ", EXPR_CHAR"
+    , ", EXPR_BOOL"
     , ", EXPR_CLOSURE"
     , ", EXPR_EITHER_LEFT"
     , ", EXPR_EITHER_RIGHT"
@@ -321,6 +329,8 @@ prelude varCount =
     , ", EXPR_DONE"
     , ", EXPR_UNBOXED"
     , "} var_type_tag;"
+    , ""
+    , "struct closure_t;"
     , ""
     , "typedef struct var_t {"
     , "  var_type_tag tag;"
@@ -373,8 +383,13 @@ genExp :: HasCallStack => GPUExp a -> CName -> CodeGen CCode
 genExp (Var (Name n)) resultName = do
   nCName <- cg_lookup n
 
-  return $
-    resultName <> " = " <> nCName <> ";"
+  return $ unlines
+    [ "if (" <> nCName <> ".tag == EXPR_STEP || " <> nCName <> ".tag == EXPR_DONE) {"
+    , resultName <> " = " <> "*(var_t*)(" <> nCName <> ".value);"
+    , "} else {"
+    , resultName <> " = " <> nCName <> ";"
+    , "}"
+    ]
 
 genExp (CaseExp s body) resultName = do
   sResultName <- freshCName
@@ -408,6 +423,7 @@ genExp (Lam (Name n) body) resultName = do
     , closurePtrName <> "->fn = " <> closureName <> ".fn;"
     -- , unlines init_fvEnv
     -- , closurePtrName <> "->fv_env = " <> closureName <> ".fv_env;"
+    , closurePtrName <> "->fv_env = malloc(sizeof(var_t)*" <> show (length fvs) <> ");"
     , "memcpy(" <> closurePtrName <> "->fv_env, " <> closureName <> ".fv_env, sizeof(var_t)*" <> show (length fvs) <> ");"
     , ""
     , resultName <> ".tag = EXPR_CLOSURE;"
@@ -417,6 +433,34 @@ genExp (Lam (Name n) body) resultName = do
 genExp (ProdMatchExp f) resultName = genExp f resultName
 
 genExp (OneProdMatch f) resultName = genExp f resultName
+
+-- TODO: Generalize
+genExp (App lamExp@(Lam (Name n) _) x) resultName = do
+  xName <- freshCName
+  xCode <- genExp x xName
+
+  le <- fmap cg_le get
+
+  closureName <- freshCName
+  closureVarName <- freshCName
+  closureCode <- withLocalEnv (le_modifyName le n xName) $ genExp lamExp closureVarName
+
+  lam <- lookupLambda n
+
+  callCode <- callClosure lam closureName xName resultName
+
+  return $ unlines
+    [ "var_t " <> xName <> ";"
+    , "closure_t " <> closureName <> ";"
+    , "var_t " <> closureVarName <> ";"
+    , ""
+    , xCode
+    , closureCode
+    , "memcpy(&" <> closureName <> ", (closure_t*)(" <> closureVarName <> ".value), sizeof(closure_t));"
+    , callCode
+    ]
+
+genExp (App (TailRec lam) x) resultName = genExp (App lam x) resultName
 
 genExp (Lit x :: GPUExp t) resultName =
   return $ unlines
@@ -437,6 +481,47 @@ genExp (Lit x :: GPUExp t) resultName =
                 Just _ -> ("double", "EXPR_DOUBLE")
                 Nothing -> error "Lit: invalid lit type"
 
+genExp TrueExp resultName =
+  return $ unlines
+    [ resultName <> ".tag = EXPR_BOOL;"
+    , resultName <> ".value = malloc(sizeof(bool));"
+    , "*(bool*)(" <> resultName <> ".value) = true;"
+    ]
+
+genExp FalseExp resultName =
+  return $ unlines
+    [ resultName <> ".tag = EXPR_BOOL;"
+    , resultName <> ".value = malloc(sizeof(bool));"
+    , "*(bool*)(" <> resultName <> ".value) = false;"
+    ]
+
+genExp (DoneExp x) resultName = do
+  xName <- freshCName
+
+  xCode <- genExp x xName
+
+  return $ unlines
+    [ "var_t " <> xName <> ";"
+    , xCode
+    , resultName <> ".tag = EXPR_DONE;"
+    , resultName <> ".value = malloc(sizeof(var_t));"
+    , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
+    -- , "memcpy(" <> resultName <> ".value, " <> xName <> ", sizeof(var_t));"
+    ]
+
+genExp (StepExp x) resultName = do
+  xName <- freshCName
+
+  xCode <- genExp x xName
+
+  return $ unlines
+    [ "var_t " <> xName <> ";"
+    , xCode
+    , resultName <> ".tag = EXPR_STEP;"
+    , resultName <> ".value = malloc(sizeof(var_t));"
+    , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
+    -- , "memcpy(" <> resultName <> ".value, " <> xName <> ", sizeof(var_t));"
+    ]
 genExp (Sub x y) resultName = do
   xName <- freshCName
   yName <- freshCName
@@ -467,7 +552,51 @@ genExp (Mul x y) resultName = do
     , "MATH_OP(*, " <> resultName <> ", " <> xName <> ", " <> yName <> ");"
     ]
 
--- genExp (ProdMatchExp (Lam (Name n) x)) resultName = _
+genExp (Equal x y) resultName = do
+  xName <- freshCName
+  yName <- freshCName
+
+  xCode <- genExp x xName
+  yCode <- genExp y yName
+
+  return $ unlines
+    [ "var_t " <> xName <> ";"
+    , "var_t " <> yName <> ";"
+    , ""
+    , xCode
+    , ""
+    , yCode
+    , ""
+    , resultName <> ".tag = EXPR_BOOL;"
+    , resultName <> ".value = malloc(sizeof(bool));"
+    , "*(bool*)(" <> resultName <> ".value) = *(int*)(" <> xName <> ".value) == *(int*)(" <> yName <> ".value);"
+    ]
+
+genExp (IfThenElse b t f) resultName = do
+  bName <- freshCName
+  tName <- freshCName
+  fName <- freshCName
+
+  bCode <- genExp b bName
+  tCode <- genExp t resultName
+  fCode <- genExp f resultName
+
+  return $ unlines
+    [ "var_t " <> bName <> ";"
+    , "var_t " <> tName <> ";"
+    , "var_t " <> fName <> ";"
+    , ""
+    , bCode
+    , ""
+    , "if (*(bool*)(" <> bName <> ".value)) {"
+    , tCode
+    , "} else {"
+    , fCode
+    , "}"
+    ]
+
+genExp (TailRec lamExp@(Lam (Name n) body)) resultName = do
+  genExp lamExp resultName
 
 genCaseExp :: CName -> GPUExp (SumMatch a r) -> CName -> CodeGen CCode
 genCaseExp s (OneSumMatch p) resultName = genProdMatch s p resultName
@@ -501,21 +630,6 @@ genProdMatch s p resultName = do
   cg_modifyNames (zip argUniqs itemNames)
   buildAndCall innerLam (pairCar (length argUniqs0-1) s) resultName
 
-{-
-genProdMatch s (OneProdMatch (Lam (Name n) _)) resultName = do
-  le <- fmap cg_le get
-  lam <- lookupLambda n
-
-  buildAndCall lam s resultName
-
-genProdMatch s (ProdMatchExp (Lam (Name n) restMatch)) resultName = do
-  le <- fmap cg_le get
-  lam <- lookupLambda n
-
-  let s' = "(var_t*)" <> s <> "[0]"
-
-  buildAndCall lam s' resultName
--}
 
 pairCar :: Int -> CName -> CCode
 pairCar 0 p = "((var_t*)" <> p <> ".value)[0]"
@@ -550,9 +664,6 @@ genLambda :: SomeLambda -> CodeGen CCode
 genLambda sc@(SomeLambda c) = do
   rName <- freshCName
 
-  -- traceM ("// -------> lambda_name = " ++ show (lambda_name c) ++ "\n")
-  -- traceM ("// -------> lambda_fvs  = " ++ show (lambda_fvs c))
-
   currEnv <- fmap cg_le get
 
   let localEnv =
@@ -563,19 +674,27 @@ genLambda sc@(SomeLambda c) = do
                    fvIxes))
 
             (getNameUniq (lambda_name c))
-            "arg"
-
-  -- traceM ("localEnv: " ++ show localEnv)
-
-  -- traceM ("localEnv arg: " ++ show (getNameUniq (lambda_name c), "arg"))
+            rName
 
   body <- withLocalEnv localEnv (genExp (lambda_body c) rName)
+
+  let body'
+        | lambda_isTailRec c =
+            unlines
+              [ rName <> ".tag = EXPR_STEP;"
+              , rName <> ".value = malloc(sizeof(var_t));"
+              , "*(var_t*)(" <> rName <> ".value) = arg;"
+              , "while (" <> rName <> ".tag != EXPR_DONE) {"
+              , body
+              , "}"
+              ]
+        | otherwise = body
 
   return $
     unlines
       [ "var_t " <> lambdaCName sc <> "(var_t arg, struct closure_t* self) {"
       , "  var_t " <> rName <> ";"
-      , body
+      , body'
       , "  return " <> rName <> ";"
       , "}"
       ]
@@ -619,13 +738,6 @@ buildClosure sc@(SomeLambda c) closureVarName = do
       [ closureVarName <> ".fv_env = malloc(sizeof(var_t)*" <> show fvCount <> ");"
       , closureVarName <> ".fn = &" <> lambdaCName sc <> ";"
       , unlines init_fvEnv
-      -- , unlines
-      --     (map (\n ->
-      --             closureVarName <> ".fv_env[" <> show n <> "]"
-      --                 <> " = " <> le_lookup n currEnv <> ";"
-      --          )
-      --       [0..fvCount-1]
-      --     )
       ]
   where
     fvCount = length (lambda_fvs c)
@@ -676,4 +788,16 @@ cTest4 =
           (OneProdMatch
             (Lam (Name 2)
               (Mul (Var (Name 1)) (Lit 11)))))))
+
+(&) :: GPURep a => GPUExp a -> GPUExp (a -> b) -> GPUExp b
+(&) = flip App
+
+cTest5 :: GPUExp Bool
+cTest5 = Lit 6 &
+  TailRec (Lam (Name 0 :: Name Int)
+    (IfThenElse (Equal (Var (Name 0 :: Name Int)) (Lit 0))
+      (DoneExp TrueExp)
+      (IfThenElse (Equal (Var (Name 0 :: Name Int)) (Lit 1))
+        (DoneExp FalseExp)
+        (StepExp (Sub (Var (Name 0 :: Name Int)) (Lit 2))))))
 
