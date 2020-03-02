@@ -281,6 +281,10 @@ genProgram e =
     exprCode <- genExp e resultName
     return $ unlines
       [ prelude varCount
+      , unlines
+          (map (\(SomeLambda lam) -> "var_t " <> lambdaCName_byInt (getNameUniq (lambda_name lam)) <> "(var_t, struct closure_t*);")
+               lambdas)
+      , ""
       , lambdasCode
       , "var_t top_level() {"
       , "  var_t " <> resultName <> ";"
@@ -302,7 +306,7 @@ prelude varCount =
     , ", EXPR_FLOAT"
     , ", EXPR_DOUBLE"
     , ", EXPR_CHAR"
-    , ", EXPR_LAMBDA"
+    , ", EXPR_CLOSURE"
     , ", EXPR_EITHER_LEFT"
     , ", EXPR_EITHER_RIGHT"
     , ", EXPR_PAIR"
@@ -321,6 +325,29 @@ prelude varCount =
     , "} closure_t;"
     , ""
     , "var_t vars[" <> show varCount <> "];"
+    , ""
+    , "#define MATH_OP(op, result, a, b)\\"
+    , "  do {\\"
+    , "    assert((a).tag == (b).tag);\\"
+    , "    (result).tag = (a).tag;\\"
+    , "    switch ((a).tag) {\\"
+    , "      case EXPR_INT:\\"
+    , "        (result).value = malloc(sizeof(int));\\"
+    , "        *((int*)(result).value) = *(int*)((a).value) op *(int*)((b).value);\\"
+    , "        break;\\"
+    , "      case EXPR_FLOAT:\\"
+    , "        (result).value = malloc(sizeof(float));\\"
+    , "        *((float*)(result).value) = *(float*)((a).value) op *(float*)((b).value);\\"
+    , "        break;\\"
+    , "      case EXPR_DOUBLE:\\"
+    , "        (result).value = malloc(sizeof(double));\\"
+    , "        *((double*)(result).value) = *(double*)((a).value) op *(double*)((b).value);\\"
+    , "        break;\\"
+    , "      default:\\"
+    , "       fprintf(stderr, \"type tag = %d\\n\", a.tag);\\"
+    , "       assert(0 && \"Attempting to perform arithmetic on non-numeric types\");\\"
+    , "    }\\"
+    , "  } while (0);"
     ]
 
 mainCode :: [CCode] -> CCode
@@ -354,12 +381,56 @@ genExp (CaseExp s body) resultName = do
     ]
 
 genExp (Lam (Name n) body) resultName = do
+  closureName <- freshCName
+  closurePtrName <- freshCName
+
   lam <- lookupLambda n
-  buildClosure lam resultName
+  closureCode <- buildClosure lam closureName
+
+  return $ unlines
+    [ "closure_t " <> closureName <> ";"
+    , closureCode
+    , "closure_t* " <> closurePtrName <> " = malloc(sizeof(closure_t));"
+    , closurePtrName <> "->fn = " <> closureName <> ".fn;"
+    , closurePtrName <> "->fv_env = " <> closureName <> ".fv_env;"
+    , ""
+    , resultName <> ".tag = EXPR_CLOSURE;"
+    , resultName <> ".value = (void*)" <> closurePtrName <> ";"
+    ]
 
 genExp (ProdMatchExp f) resultName = genExp f resultName
 
 genExp (OneProdMatch f) resultName = genExp f resultName
+
+genExp (Sub x y) resultName = do
+  xName <- freshCName
+  yName <- freshCName
+
+  xCode <- genExp x xName
+  yCode <- genExp y yName
+
+  return $ unlines
+    [ "var_t " <> xName <> ";"
+    , "var_t " <> yName <> ";"
+    , xCode
+    , yCode
+    , "MATH_OP(-, " <> resultName <> ", " <> xName <> ", " <> yName <> ");"
+    ]
+
+genExp (Mul x y) resultName = do
+  xName <- freshCName
+  yName <- freshCName
+
+  xCode <- genExp x xName
+  yCode <- genExp y yName
+
+  return $ unlines
+    [ "var_t " <> xName <> ";"
+    , "var_t " <> yName <> ";"
+    , xCode
+    , yCode
+    , "MATH_OP(*, " <> resultName <> ", " <> xName <> ", " <> yName <> ");"
+    ]
 
 -- genExp (ProdMatchExp (Lam (Name n) x)) resultName = _
 
@@ -541,4 +612,14 @@ cTest2 =
           (OneProdMatch
             (Lam (Name 2)
               (Var (Name 1)))))))
+
+cTest3 :: GPUExp Int
+cTest3 =
+  CaseExp (Var (Name 0) :: GPUExp (Int, Float))
+    (OneSumMatch
+      (ProdMatchExp
+        (Lam (Name 1)
+          (OneProdMatch
+            (Lam (Name 2)
+              (Mul (Var (Name 1)) (Var (Name 1))))))))
 

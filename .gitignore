@@ -10,4 +10,6 @@
 *.pdf
 dist
 dist-newstyle
+a.out.dSYM
+a.out
 *~
