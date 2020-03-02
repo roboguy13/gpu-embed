@@ -381,7 +381,7 @@ prelude varCount =
     , "        *((double*)(result).value) = *(double*)((a).value) op *(double*)((b).value);\\"
     , "        break;\\"
     , "      default:\\"
-    , "       fprintf(stderr, \"type tag = %d\\n\", a.tag);\\"
+    , "       fprintf(stderr, \"type tag = %d\\n\", (a).tag);\\"
     , "       assert(0 && \"Attempting to perform arithmetic on non-numeric types\");\\"
     , "    }\\"
     , "  } while (0);"
@@ -805,7 +805,6 @@ buildClosure sc@(SomeLambda c) closureVarName = do
 
 callClosure :: SomeLambda -> CName -> CName -> CName -> CodeGen CCode
 callClosure (SomeLambda (Lambda { lambda_name })) closureName argName resultName =
-
   return $
     resultName <> " = " <> closureName <> ".fn(" <> argName <> ", &" <> closureName <> ");"
 
