@@ -602,6 +602,22 @@ genExp (IfThenElse b t f) resultName = do
 genExp (TailRec lamExp@(Lam (Name n) body)) resultName = do
   genExp lamExp resultName
 
+genExp (PairExp x y) resultName = do
+  xName <- freshCName
+  yName <- freshCName
+
+  xCode <- genExp x xName
+  yCode <- genExp y yName
+
+  return $ unlines
+    [ "var_t " <> xName <> ";"
+    , "var_t " <> yName <> ";"
+    , resultName <> ".tag = EXP_PAIR;"
+    , resultName <> ".value = malloc(sizeof(var_t)*2);"
+    , "((var_t*)(" <> resultName <> ".value))[0] = " <> xName <> ";"
+    , "((var_t*)(" <> resultName <> ".value))[1] = " <> yName <> ";"
+    ]
+
 genCaseExp :: CName -> GPUExp (SumMatch a r) -> CName -> CodeGen CCode
 genCaseExp s (OneSumMatch p) resultName = genProdMatch s p resultName
 genCaseExp s (SumMatchExp x y) resultName = do
@@ -802,6 +818,7 @@ cTest4 =
 (&) :: GPURep a => GPUExp a -> GPUExp (a -> b) -> GPUExp b
 (&) = flip App
 
+-- | isEven 6
 cTest5 :: GPUExp Bool
 cTest5 = Lit 6 &
   TailRec (Lam (Name 0 :: Name Int)
@@ -810,4 +827,19 @@ cTest5 = Lit 6 &
       (IfThenElse (Equal (Var (Name 0 :: Name Int)) (Lit 1))
         (DoneExp FalseExp)
         (StepExp (Sub (Var (Name 0 :: Name Int)) (Lit 2))))))
+
+-- | factorial 5
+cTest6 :: GPUExp Int
+cTest6 = (PairExp (Lit 5) (Lit 1)) &
+  TailRec (Lam (Name 0 :: Name (Int, Int))
+    (CaseExp (Var (Name 0 :: Name (Int, Int)))
+      (OneSumMatch
+        (ProdMatchExp
+          (Lam (Name 1 :: Name Int)
+            (OneProdMatch
+              (Lam (Name 2 :: Name Int)
+                (IfThenElse (Equal (Var (Name 1)) (Lit 0 :: GPUExp Int))
+                  (DoneExp (Var (Name 2)))
+                  (StepExp (PairExp (Sub (Var (Name 1)) (Lit 1)) (Mul (Var (Name 1)) (Var (Name 2)))))
+                  ))))))))
 
