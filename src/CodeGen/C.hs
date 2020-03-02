@@ -23,6 +23,8 @@ import           Data.List
 import           Data.Map (Map)
 import qualified Data.Map as Map
 
+import qualified Data.Set as Set
+
 import           Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NE
 
@@ -34,10 +36,27 @@ import           Data.Ord
 
 import Debug.Trace
 
+nub' :: Ord a => [a] -> [a]
+nub' = Set.toList . Set.fromList
+
+deleteAll :: Eq a => a -> [a] -> [a]
+deleteAll _ [] = []
+deleteAll x (y:ys)
+  | y == x    =     deleteAll x ys
+  | otherwise = y : deleteAll x ys
+
 type CCode = String
 type CName = String
 
 data SomeName = forall a. Typeable a => SomeName (Name a)
+
+-- | NOTE: This instance will only take the unique value into account, not
+-- the type tag of the 'Name'.
+instance Eq SomeName where
+  (SomeName (Name a)) == (SomeName (Name b)) = a == b
+
+instance Ord SomeName where
+  compare (SomeName (Name a)) (SomeName (Name b)) = compare a b
 
 instance Show SomeName where
   show (SomeName n) = show n
@@ -149,7 +168,7 @@ getFVs = (`execState` []) . go
     go (Repped {}) = pure ()
     go (Lam n x) = do
       go x
-      modify (deleteBy (\(SomeName n') (SomeName n) -> getNameUniq n' == getNameUniq n) (SomeName n))
+      modify (deleteAll (SomeName n))
     go (App f x) = go f *> go x
     go (Lit {}) = pure ()
     go (Add x y) = go x *> go y
@@ -269,9 +288,9 @@ mkLambda isTailRec (SomeName argName) body =
   SomeLambda $
     Lambda
       { lambda_fvs =
+          nub' $
           sortBy (comparing (\(SomeName a) -> getNameUniq a)) $
-          deleteBy
-            (\(SomeName n) (SomeName n') -> getNameUniq n == getNameUniq n')
+          deleteAll
             (SomeName argName)
             (getFVs body)
       , lambda_name = argName
@@ -279,7 +298,7 @@ mkLambda isTailRec (SomeName argName) body =
       , lambda_isTailRec = isTailRec
       }
 
-genProgram :: GPUExp a -> CCode
+genProgram :: HasCallStack => GPUExp a -> CCode
 genProgram e =
   let varCount = getVarCount e
       lambdas = collectLambdas e
@@ -444,6 +463,9 @@ genExp (App lamExp@(Lam (Name n) _) x) resultName = do
   xCode <- genExp x xName
 
   le <- fmap cg_le get
+
+  traceM $ "/////////// le = " ++ show le
+  traceM $ "/////////// le' = " ++ show (le_modifyName le n xName)
 
   closureName <- freshCName
   closureVarName <- freshCName
@@ -612,7 +634,9 @@ genExp (PairExp x y) resultName = do
   return $ unlines
     [ "var_t " <> xName <> ";"
     , "var_t " <> yName <> ";"
-    , resultName <> ".tag = EXP_PAIR;"
+    , xCode
+    , yCode
+    , resultName <> ".tag = EXPR_PAIR;"
     , resultName <> ".value = malloc(sizeof(var_t)*2);"
     , "((var_t*)(" <> resultName <> ".value))[0] = " <> xName <> ";"
     , "((var_t*)(" <> resultName <> ".value))[1] = " <> yName <> ";"
@@ -686,15 +710,25 @@ genLambda sc@(SomeLambda c) = do
 
   currEnv <- fmap cg_le get
 
-  let localEnv =
-        le_modifyName
-            (le_modifyNames
-              currEnv
-                (zip (map (\(SomeName n) -> getNameUniq n) (lambda_fvs c))
-                   fvIxes))
+  let localEnv
+        | lambda_isTailRec c =
+            le_modifyName
+                (le_modifyNames
+                  currEnv
+                    (zip (map (\(SomeName n) -> getNameUniq n) (lambda_fvs c))
+                       fvIxes))
 
-            (getNameUniq (lambda_name c))
-            rName
+                (getNameUniq (lambda_name c))
+                rName
+        | otherwise =
+            le_modifyName
+                (le_modifyNames
+                  currEnv
+                    (zip (map (\(SomeName n) -> getNameUniq n) (lambda_fvs c))
+                       fvIxes))
+
+                (getNameUniq (lambda_name c))
+                "arg"
 
   body <- withLocalEnv localEnv (genExp (lambda_body c) rName)
 
@@ -755,6 +789,7 @@ buildClosure sc@(SomeLambda c) closureVarName = do
 
 
   let fvs = lambda_fvs c
+  traceM $ "////////// fvs = " ++ show fvs
   init_fvEnv <- forM (zip [0..] fvs) (\(i, SomeName fv) -> do
                             fvName <- cg_lookup (getNameUniq fv)
                             return (closureVarName <> ".fv_env[" <> show i <> "] = " <> fvName <> ";"))
