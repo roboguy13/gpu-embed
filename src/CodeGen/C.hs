@@ -26,16 +26,23 @@ import qualified Data.List.NonEmpty as NE
 
 import           Data.Maybe (isNothing)
 
+import           GHC.Stack (HasCallStack)
+
+import Debug.Trace
+
 type CCode = String
 type CName = String
 
 data SomeName = forall a. Typeable a => SomeName (Name a)
 
+instance Show SomeName where
+  show (SomeName n) = show n
+
 newtype LocalEnv = LocalEnv (Map Int CName)
 
 -- Takes a unique from a 'Name a' and gives back the current CName that
 -- references it.
-le_lookup :: Int -> LocalEnv -> CName
+le_lookup :: HasCallStack => Int -> LocalEnv -> CName
 le_lookup uniq (LocalEnv env) =
   case Map.lookup uniq env of
     Nothing -> error $ "le_lookup: Cannot find " ++ show uniq
@@ -52,7 +59,7 @@ le_fromList :: [(Int, CName)] -> LocalEnv
 le_fromList = LocalEnv . Map.fromList
 
 le_initial :: Int -> LocalEnv
-le_initial varCount = LocalEnv $ Map.fromList $ map (\n -> (n, "vars[" <> show (n-1) <> "]")) [1..varCount]
+le_initial varCount = LocalEnv $ Map.fromList $ map (\n -> (n, "vars[" <> show n <> "]")) [0..varCount-1]
 
 
 data CodeGenState =
@@ -76,7 +83,7 @@ cg_modifyNames :: [(Int, CName)] -> CodeGen ()
 cg_modifyNames changes =
   modify (\cg -> cg { cg_le = le_modifyNames (cg_le cg) changes })
 
-cg_lookup :: Int -> CodeGen CName
+cg_lookup :: HasCallStack => Int -> CodeGen CName
 cg_lookup uniq =
   fmap (le_lookup uniq . cg_le) get
 
@@ -327,7 +334,7 @@ mainCode body =
 -- varNamed :: Name a -> CCode
 -- varNamed (Name n) = "vars[" <> show n <> "]"
 
-genExp :: GPUExp a -> CName -> CodeGen CCode
+genExp :: HasCallStack => GPUExp a -> CName -> CodeGen CCode
 genExp (Var (Name n)) resultName = do
   nCName <- cg_lookup n
 
@@ -349,6 +356,10 @@ genExp (CaseExp s body) resultName = do
 genExp (Lam (Name n) body) resultName = do
   lam <- lookupLambda n
   buildClosure lam resultName
+
+genExp (ProdMatchExp f) resultName = genExp f resultName
+
+genExp (OneProdMatch f) resultName = genExp f resultName
 
 -- genExp (ProdMatchExp (Lam (Name n) x)) resultName = _
 
@@ -433,8 +444,14 @@ genLambda :: SomeLambda -> CodeGen CCode
 genLambda sc@(SomeLambda c) = do
   rName <- freshCName
 
+  traceM ("// -------> lambda_name = " ++ show (lambda_name c) ++ "\n")
+  traceM ("// -------> lambda_fvs  = " ++ show (lambda_fvs c))
+
+  currEnv <- fmap cg_le get
+
   let localEnv =
-        le_fromList
+        le_modifyNames
+          currEnv
           ((getNameUniq (lambda_name c), "arg")
             :zip (map (\(SomeName n) -> getNameUniq n) (lambda_fvs c))
                fvIxes)
@@ -480,7 +497,7 @@ buildAndCall sLam argName resultName = do
     , callCode
     ]
 
-buildClosure :: SomeLambda -> CName -> CodeGen CCode
+buildClosure :: HasCallStack => SomeLambda -> CName -> CodeGen CCode
 buildClosure sc@(SomeLambda c) closureVarName = do
   currEnv <- fmap cg_le get
   return $
@@ -492,7 +509,7 @@ buildClosure sc@(SomeLambda c) closureVarName = do
                   closureVarName <> ".fv_env[" <> show n <> "]"
                       <> " = " <> le_lookup n currEnv <> ";"
                )
-            [1..fvCount]
+            [0..fvCount-1]
           )
       ]
   where
@@ -510,8 +527,18 @@ callClosure (SomeLambda (Lambda { lambda_name })) closureName argName resultName
 
 cTest :: GPUExp Int
 cTest =
-  CaseExp (Var (Name 1) :: GPUExp (Either Int Float))
+  CaseExp (Var (Name 0) :: GPUExp (Either Int Float))
     (SumMatchExp
-      (OneProdMatch (Lam (Name 2) (Var (Name 2))))
-      (OneSumMatch (OneProdMatch (Lam (Name 3) (Var (Name 1))))))
+      (OneProdMatch (Lam (Name 1) (Var (Name 1))))
+      (OneSumMatch (OneProdMatch (Lam (Name 2) (Var (Name 0))))))
+
+cTest2 :: GPUExp Int
+cTest2 =
+  CaseExp (Var (Name 0) :: GPUExp (Int, Float))
+    (OneSumMatch
+      (ProdMatchExp
+        (Lam (Name 1)
+          (OneProdMatch
+            (Lam (Name 2)
+              (Var (Name 1)))))))
 
