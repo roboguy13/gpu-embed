@@ -366,6 +366,10 @@ prelude varCount =
     , "       assert(0 && \"Attempting to perform arithmetic on non-numeric types\");\\"
     , "    }\\"
     , "  } while (0);"
+    , ""
+    , "bool isIterTag(var_type_tag tag) {"
+    , "  return tag == EXPR_STEP || tag == EXPR_DONE;"
+    , "}"
     ]
 
 mainCode :: [CCode] -> CCode
@@ -384,7 +388,7 @@ genExp (Var (Name n)) resultName = do
   nCName <- cg_lookup n
 
   return $ unlines
-    [ "if (" <> nCName <> ".tag == EXPR_STEP || " <> nCName <> ".tag == EXPR_DONE) {"
+    [ "if (isIterTag(" <> nCName <> ".tag)) {"
     , resultName <> " = " <> "*(var_t*)(" <> nCName <> ".value);"
     , "} else {"
     , resultName <> " = " <> nCName <> ";"
@@ -678,6 +682,8 @@ genLambda sc@(SomeLambda c) = do
 
   body <- withLocalEnv localEnv (genExp (lambda_body c) rName)
 
+  tempName <- freshCName
+
   let body'
         | lambda_isTailRec c =
             unlines
@@ -687,6 +693,10 @@ genLambda sc@(SomeLambda c) = do
               , "while (" <> rName <> ".tag != EXPR_DONE) {"
               , body
               , "}"
+              , ""
+              , "var_t " <> tempName <> " = *(var_t*)(" <> rName <> ".value);"
+              , rName <> ".tag = " <> tempName <> ".tag;"
+              , rName <> ".value = " <> tempName <> ".value;"
               ]
         | otherwise = body
 

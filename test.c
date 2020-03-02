@@ -57,6 +57,10 @@ var_t vars[0];
     }\
   } while (0);
 
+bool isIterTag(var_type_tag tag) {
+  return tag == EXPR_STEP || tag == EXPR_DONE;
+}
+
 var_t lam_0(var_t, struct closure_t*);
 
 
@@ -73,7 +77,7 @@ var_t x4;
 var_t x5;
 var_t x6;
 
-if (x1.tag == EXPR_STEP || x1.tag == EXPR_DONE) {
+if (isIterTag(x1.tag)) {
 x5 = *(var_t*)(x1.value);
 } else {
 x5 = x1;
@@ -108,7 +112,7 @@ var_t x10;
 var_t x11;
 var_t x12;
 
-if (x1.tag == EXPR_STEP || x1.tag == EXPR_DONE) {
+if (isIterTag(x1.tag)) {
 x11 = *(var_t*)(x1.value);
 } else {
 x11 = x1;
@@ -139,7 +143,7 @@ x1.value = malloc(sizeof(var_t));
 var_t x14;
 var_t x15;
 var_t x16;
-if (x1.tag == EXPR_STEP || x1.tag == EXPR_DONE) {
+if (isIterTag(x1.tag)) {
 x15 = *(var_t*)(x1.value);
 } else {
 x15 = x1;
@@ -161,44 +165,49 @@ x1.value = malloc(sizeof(var_t));
 
 }
 
+var_t x17 = *(var_t*)(x1.value);
+x1.tag = x17.tag;
+x1.value = x17.value;
+
   return x1;
 }
 
 
 var_t top_level() {
   var_t x0;
-var_t x17;
-closure_t x18;
-var_t x19;
+var_t x18;
+closure_t x19;
+var_t x20;
 
-x17.value = malloc(sizeof(int));
-x17.tag = EXPR_INT;
-*(int*)(x17.value) = 6;
+x18.value = malloc(sizeof(int));
+x18.tag = EXPR_INT;
+*(int*)(x18.value) = 6;
 
-closure_t x20;
-x20.fv_env = malloc(sizeof(var_t)*2);
-x20.fn = &lam_0;
-x20.fv_env[0] = x17;
-x20.fv_env[1] = x17;
+closure_t x21;
+x21.fv_env = malloc(sizeof(var_t)*2);
+x21.fn = &lam_0;
+x21.fv_env[0] = x18;
+x21.fv_env[1] = x18;
 
 
-closure_t* x21 = malloc(sizeof(closure_t));
-x21->fn = x20.fn;
-x21->fv_env = malloc(sizeof(var_t)*2);
-memcpy(x21->fv_env, x20.fv_env, sizeof(var_t)*2);
+closure_t* x22 = malloc(sizeof(closure_t));
+x22->fn = x21.fn;
+x22->fv_env = malloc(sizeof(var_t)*2);
+memcpy(x22->fv_env, x21.fv_env, sizeof(var_t)*2);
 
-x19.tag = EXPR_CLOSURE;
-x19.value = (void*)x21;
+x20.tag = EXPR_CLOSURE;
+x20.value = (void*)x22;
 
-memcpy(&x18, (closure_t*)(x19.value), sizeof(closure_t));
-x0 = x18.fn(x17, &x18);
+memcpy(&x19, (closure_t*)(x20.value), sizeof(closure_t));
+x0 = x19.fn(x18, &x19);
 
   return x0;
 }
 
 int main() {
   var_t r = top_level();
-  printf("tag   = %d\n", r.tag);
-  printf("value = %d\n", *(bool*)r.value);
+
+  printf("%d\n", r.tag);
+  printf("%d\n", *(bool*)r.value);
 }
 
