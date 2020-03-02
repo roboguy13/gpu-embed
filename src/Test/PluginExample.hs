@@ -250,7 +250,7 @@ example =
 {-# NOINLINE example #-}
 
 main :: IO ()
-main = putStrLn (genProgram cTest3)
+main = putStrLn (genProgram cTest4)
     --do
   -- let intList = Cons 10 (Cons 100 (Cons 1000 (Cons 10000 Nil)))
   -- print (isEmpty Nil, isEmpty (Cons 1 Nil)

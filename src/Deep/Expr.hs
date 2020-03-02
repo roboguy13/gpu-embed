@@ -152,7 +152,7 @@ data GPUExp t where
   -- Apply :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
   CharLit :: Char -> GPUExp Char
-  Lit :: Num a => a -> GPUExp a
+  Lit :: (Typeable a, Show a, Num a) => a -> GPUExp a -- TODO: Add dictionaries for Typeable and Show in plugin
 
   Ord :: GPUExp Char -> GPUExp Int
 

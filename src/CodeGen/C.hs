@@ -5,6 +5,8 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators #-}
 
 module CodeGen.C
   where
@@ -28,6 +30,8 @@ import           Data.Maybe (isNothing)
 
 import           GHC.Stack (HasCallStack)
 
+import           Data.Ord
+
 import Debug.Trace
 
 type CCode = String
@@ -38,7 +42,7 @@ data SomeName = forall a. Typeable a => SomeName (Name a)
 instance Show SomeName where
   show (SomeName n) = show n
 
-newtype LocalEnv = LocalEnv (Map Int CName)
+newtype LocalEnv = LocalEnv (Map Int CName) deriving Show
 
 -- Takes a unique from a 'Name a' and gives back the current CName that
 -- references it.
@@ -260,6 +264,7 @@ mkLambda (SomeName argName) body =
   SomeLambda $
     Lambda
       { lambda_fvs =
+          sortBy (comparing (\(SomeName a) -> getNameUniq a)) $
           deleteBy
             (\(SomeName n) (SomeName n') -> getNameUniq n == getNameUniq n')
             (SomeName argName)
@@ -299,6 +304,7 @@ prelude varCount =
   unlines
     [ "#include <stdio.h>"
     , "#include <stdlib.h>"
+    , "#include <string.h>"
     , "#include <assert.h>"
     , ""
     , "typedef enum var_type_tag {"
@@ -311,6 +317,8 @@ prelude varCount =
     , ", EXPR_EITHER_RIGHT"
     , ", EXPR_PAIR"
     , ", EXPR_UNIT"
+    , ", EXPR_STEP"
+    , ", EXPR_DONE"
     , ", EXPR_UNBOXED"
     , "} var_type_tag;"
     , ""
@@ -384,15 +392,23 @@ genExp (Lam (Name n) body) resultName = do
   closureName <- freshCName
   closurePtrName <- freshCName
 
-  lam <- lookupLambda n
-  closureCode <- buildClosure lam closureName
+  sLam@(SomeLambda lam) <- lookupLambda n
+  closureCode <- buildClosure sLam closureName
+
+  let fvs = lambda_fvs lam
+
+  -- init_fvEnv <- forM (zip [0..] fvs) (\(i, SomeName fv) -> do
+  --                           fvName <- cg_lookup (getNameUniq fv)
+  --                           return (closurePtrName <> "->fv_env[" <> show i <> "] = " <> fvName <> ";"))
 
   return $ unlines
     [ "closure_t " <> closureName <> ";"
     , closureCode
     , "closure_t* " <> closurePtrName <> " = malloc(sizeof(closure_t));"
     , closurePtrName <> "->fn = " <> closureName <> ".fn;"
-    , closurePtrName <> "->fv_env = " <> closureName <> ".fv_env;"
+    -- , unlines init_fvEnv
+    -- , closurePtrName <> "->fv_env = " <> closureName <> ".fv_env;"
+    , "memcpy(" <> closurePtrName <> "->fv_env, " <> closureName <> ".fv_env, sizeof(var_t)*" <> show (length fvs) <> ");"
     , ""
     , resultName <> ".tag = EXPR_CLOSURE;"
     , resultName <> ".value = (void*)" <> closurePtrName <> ";"
@@ -401,6 +417,25 @@ genExp (Lam (Name n) body) resultName = do
 genExp (ProdMatchExp f) resultName = genExp f resultName
 
 genExp (OneProdMatch f) resultName = genExp f resultName
+
+genExp (Lit x :: GPUExp t) resultName =
+  return $ unlines
+    [ resultName <> ".value = " <> "malloc(sizeof(" <> ty <> "));"
+    , resultName <> ".tag = " <> tag <> ";"
+    , "*(" <> ty <>"*)(" <> resultName <> ".value) = " <> show x <> ";"
+    ]
+
+  where
+    (ty, tag) =
+      case eqT :: Maybe (t :~: Int) of
+        Just _ -> ("int", "EXPR_INT")
+        Nothing ->
+          case eqT :: Maybe (t :~: Float) of
+            Just _ -> ("float", "EXPR_FLOAT")
+            Nothing ->
+              case eqT :: Maybe (t :~: Double) of
+                Just _ -> ("double", "EXPR_DOUBLE")
+                Nothing -> error "Lit: invalid lit type"
 
 genExp (Sub x y) resultName = do
   xName <- freshCName
@@ -515,17 +550,24 @@ genLambda :: SomeLambda -> CodeGen CCode
 genLambda sc@(SomeLambda c) = do
   rName <- freshCName
 
-  traceM ("// -------> lambda_name = " ++ show (lambda_name c) ++ "\n")
-  traceM ("// -------> lambda_fvs  = " ++ show (lambda_fvs c))
+  -- traceM ("// -------> lambda_name = " ++ show (lambda_name c) ++ "\n")
+  -- traceM ("// -------> lambda_fvs  = " ++ show (lambda_fvs c))
 
   currEnv <- fmap cg_le get
 
   let localEnv =
-        le_modifyNames
-          currEnv
-          ((getNameUniq (lambda_name c), "arg")
-            :zip (map (\(SomeName n) -> getNameUniq n) (lambda_fvs c))
-               fvIxes)
+        le_modifyName
+            (le_modifyNames
+              currEnv
+                (zip (map (\(SomeName n) -> getNameUniq n) (lambda_fvs c))
+                   fvIxes))
+
+            (getNameUniq (lambda_name c))
+            "arg"
+
+  -- traceM ("localEnv: " ++ show localEnv)
+
+  -- traceM ("localEnv arg: " ++ show (getNameUniq (lambda_name c), "arg"))
 
   body <- withLocalEnv localEnv (genExp (lambda_body c) rName)
 
@@ -549,12 +591,6 @@ genLambdas e = do
 
   unlines <$> mapM genLambda lambdas
 
-  -- return
-  --   ( map (\sc@(SomeLambda c) -> (getNameIdent (lambda_name c), sc))
-  --         lambdas
-  --   , unlines lambdaCode
-  --   )
-
 buildAndCall :: SomeLambda -> CName -> CName -> CodeGen CCode
 buildAndCall sLam argName resultName = do
   closureVarName <- freshCName
@@ -571,17 +607,25 @@ buildAndCall sLam argName resultName = do
 buildClosure :: HasCallStack => SomeLambda -> CName -> CodeGen CCode
 buildClosure sc@(SomeLambda c) closureVarName = do
   currEnv <- fmap cg_le get
+
+
+  let fvs = lambda_fvs c
+  init_fvEnv <- forM (zip [0..] fvs) (\(i, SomeName fv) -> do
+                            fvName <- cg_lookup (getNameUniq fv)
+                            return (closureVarName <> ".fv_env[" <> show i <> "] = " <> fvName <> ";"))
+
   return $
     unlines
       [ closureVarName <> ".fv_env = malloc(sizeof(var_t)*" <> show fvCount <> ");"
       , closureVarName <> ".fn = &" <> lambdaCName sc <> ";"
-      , unlines
-          (map (\n ->
-                  closureVarName <> ".fv_env[" <> show n <> "]"
-                      <> " = " <> le_lookup n currEnv <> ";"
-               )
-            [0..fvCount-1]
-          )
+      , unlines init_fvEnv
+      -- , unlines
+      --     (map (\n ->
+      --             closureVarName <> ".fv_env[" <> show n <> "]"
+      --                 <> " = " <> le_lookup n currEnv <> ";"
+      --          )
+      --       [0..fvCount-1]
+      --     )
       ]
   where
     fvCount = length (lambda_fvs c)
@@ -622,4 +666,14 @@ cTest3 =
           (OneProdMatch
             (Lam (Name 2)
               (Mul (Var (Name 1)) (Var (Name 1))))))))
+
+cTest4 :: GPUExp Int
+cTest4 =
+  CaseExp (Var (Name 0) :: GPUExp (Int, Float))
+    (OneSumMatch
+      (ProdMatchExp
+        (Lam (Name 1)
+          (OneProdMatch
+            (Lam (Name 2)
+              (Mul (Var (Name 1)) (Lit 11)))))))
 
