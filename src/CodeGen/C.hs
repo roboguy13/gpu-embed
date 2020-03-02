@@ -24,6 +24,8 @@ import qualified Data.Map as Map
 import           Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NE
 
+import           Data.Maybe (isNothing)
+
 type CCode = String
 type CName = String
 
@@ -36,7 +38,7 @@ newtype LocalEnv = LocalEnv (Map Int CName)
 le_lookup :: Int -> LocalEnv -> CName
 le_lookup uniq (LocalEnv env) =
   case Map.lookup uniq env of
-    Nothing -> error "le_lookup"
+    Nothing -> error $ "le_lookup: Cannot find " ++ show uniq
     Just x  -> x
 
 le_modifyName :: LocalEnv -> Int -> CName -> LocalEnv
@@ -50,7 +52,7 @@ le_fromList :: [(Int, CName)] -> LocalEnv
 le_fromList = LocalEnv . Map.fromList
 
 le_initial :: Int -> LocalEnv
-le_initial varCount = LocalEnv $ Map.fromList $ map (\n -> (n, "var[" <> show n <> "]")) [0..varCount]
+le_initial varCount = LocalEnv $ Map.fromList $ map (\n -> (n, "vars[" <> show (n-1) <> "]")) [1..varCount]
 
 
 data CodeGenState =
@@ -115,7 +117,52 @@ data Lambda a b
     , lambda_body :: GPUExp b
     }
 
-data SomeLambda = forall a b. Typeable a => SomeLambda (Lambda a b)
+data SomeLambda = forall a b. {- Typeable a => -} SomeLambda (Lambda a b)
+
+getFVs :: GPUExp a -> [SomeName]
+getFVs = (`execState` []) . go
+  where
+    go :: forall s. GPUExp s -> State [SomeName] ()
+    go (Var n) = modify (SomeName n:)
+
+    go (CaseExp x y) = go x *> go y
+    go (ProdMatchExp x) = go x
+    go (SumMatchExp x y) = go x *> go y
+    go (NullaryMatch x) = go x
+    go (OneSumMatch x) = go x
+    go (OneProdMatch x) = go x
+    go EmptyMatch = pure ()
+    go FalseExp = pure ()
+    go TrueExp = pure ()
+    go (Repped {}) = pure ()
+    go (Lam n x) = do
+      go x
+      modify (deleteBy (\(SomeName n') (SomeName n) -> getNameUniq n' == getNameUniq n) (SomeName n))
+    go (Lit {}) = pure ()
+    go (Add x y) = go x *> go y
+    go (Sub x y) = go x *> go y
+    go (Mul x y) = go x *> go y
+    go (FromEnum x) = go x
+    go (FromIntegral x) = go x
+    go (Sqrt x) = go x
+    go (Equal x y) = go x *> go y
+    go (Lte x y) = go x *> go y
+    go (Gt x y) = go x *> go y
+    go (Not x) = go x
+    go (LeftExp x) = go x
+    go (RightExp x) = go x
+    go (PairExp x y) = go x *> go y
+    go (FstExp x) = go x
+    go (SndExp x) = go x
+    go (StepExp x) = go x
+    go (DoneExp x) = go x
+    go (IfThenElse x y z) = go x *> go y *> go z
+    go (TailRec x) = go x
+    go (Construct {}) = pure ()
+    go (ConstructAp x y) = go x *> go y
+    go (Ord x) = go x
+    go (CharLit {}) = pure ()
+
 
 getVarCount :: GPUExp a -> Int
 getVarCount = getMax . execWriter . go
@@ -160,11 +207,88 @@ getVarCount = getMax . execWriter . go
     go (Ord x) = go x
     go (CharLit {}) = pure ()
 
+collectLambdas :: GPUExp a -> [SomeLambda]
+collectLambdas = execWriter . go
+  where
+    go :: forall s. GPUExp s -> Writer [SomeLambda] ()
+    go (Var {}) = pure ()
+    go (CaseExp x y) = go x *> go y
+    go (ProdMatchExp x) = go x
+    go (SumMatchExp x y) = go x *> go y
+    go (NullaryMatch x) = go x
+    go (OneSumMatch x) = go x
+    go (OneProdMatch x) = go x
+    go EmptyMatch = pure ()
+    go FalseExp = pure ()
+    go TrueExp = pure ()
+    go (Repped {}) = pure ()
+    go (Lam n x) = tell [mkLambda (SomeName n) x] *> go x
+    go (Lit {}) = pure ()
+    go (Add x y) = go x *> go y
+    go (Sub x y) = go x *> go y
+    go (Mul x y) = go x *> go y
+    go (FromEnum x) = go x
+    go (FromIntegral x) = go x
+    go (Sqrt x) = go x
+    go (Equal x y) = go x *> go y
+    go (Lte x y) = go x *> go y
+    go (Gt x y) = go x *> go y
+    go (Not x) = go x
+    go (LeftExp x) = go x
+    go (RightExp x) = go x
+    go (PairExp x y) = go x *> go y
+    go (FstExp x) = go x
+    go (SndExp x) = go x
+    go (StepExp x) = go x
+    go (DoneExp x) = go x
+    go (IfThenElse x y z) = go x *> go y *> go z
+    go (TailRec x) = go x
+    go (Construct {}) = pure ()
+    go (ConstructAp x y) = go x *> go y
+    go (Ord x) = go x
+    go (CharLit {}) = pure ()
+
+mkLambda :: SomeName -> GPUExp a -> SomeLambda
+mkLambda (SomeName argName) body =
+  SomeLambda $
+    Lambda
+      { lambda_fvs =
+          deleteBy
+            (\(SomeName n) (SomeName n') -> getNameUniq n == getNameUniq n')
+            (SomeName argName)
+            (getFVs body)
+      , lambda_name = argName
+      , lambda_body = body
+      }
+
+genProgram :: GPUExp a -> CCode
+genProgram e =
+  let varCount = getVarCount e
+      lambdas = collectLambdas e
+  in
+  runTopLevelCodeGen varCount lambdas $ do
+
+    resultName <- freshCName
+
+    lambdasCode <- genLambdas e
+    exprCode <- genExp e resultName
+    return $ unlines
+      [ prelude varCount
+      , lambdasCode
+      , "var_t top_level() {"
+      , "  var_t " <> resultName <> ";"
+      , exprCode
+      , "  return " <> resultName <> ";"
+      , "}"
+      ]
+
 
 prelude :: Int -> CCode
 prelude varCount =
   unlines
     [ "#include <stdio.h>"
+    , "#include <stdlib.h>"
+    , "#include <assert.h>"
     , ""
     , "typedef enum var_type_tag {"
     , "  EXPR_INT"
@@ -176,6 +300,7 @@ prelude varCount =
     , ", EXPR_EITHER_RIGHT"
     , ", EXPR_PAIR"
     , ", EXPR_UNIT"
+    , ", EXPR_UNBOXED"
     , "} var_type_tag;"
     , ""
     , "typedef struct var_t {"
@@ -185,7 +310,7 @@ prelude varCount =
     , ""
     , "typedef struct closure_t {"
     , "  var_t* fv_env;"
-    , "  var_t (*fn)(struct closure_t*);"
+    , "  var_t (*fn)(var_t, struct closure_t*);"
     , "} closure_t;"
     , ""
     , "var_t vars[" <> show varCount <> "];"
@@ -207,15 +332,23 @@ genExp (Var (Name n)) resultName = do
   nCName <- cg_lookup n
 
   return $
-    resultName <> " = " <> nCName
+    resultName <> " = " <> nCName <> ";"
 
 genExp (CaseExp s body) resultName = do
   sResultName <- freshCName
-
   computeS <- genExp s sResultName
 
-  genCaseExp sResultName body resultName
+  caseCode <- genCaseExp sResultName body resultName
 
+  return $ unlines
+    [ "var_t " <> sResultName <> ";"
+    , computeS
+    , caseCode
+    ]
+
+genExp (Lam (Name n) body) resultName = do
+  lam <- lookupLambda n
+  buildClosure lam resultName
 
 -- genExp (ProdMatchExp (Lam (Name n) x)) resultName = _
 
@@ -228,8 +361,8 @@ genCaseExp s (SumMatchExp x y) resultName = do
   elsePart <- genCaseExp s' y resultName
 
   return $ unlines
-    [ "ASSERT(" <> s <> ".tag == EXPR_EITHER_LEFT || " <> s <> ".tag == EXPR_EITHER_RIGHT);"
-    , "var_t " <> s' <> " = *(var_t*)(" <> s <> ".value)"
+    [ "assert(" <> s <> ".tag == EXPR_EITHER_LEFT || " <> s <> ".tag == EXPR_EITHER_RIGHT);"
+    , "var_t " <> s' <> " = *(var_t*)(" <> s <> ".value);"
 
     , "if (" <> s <> ".tag == EXPR_EITHER_LEFT) {"
     , thenPart
@@ -238,17 +371,18 @@ genCaseExp s (SumMatchExp x y) resultName = do
     , "}"
     ]
 
+-- TODO: Implement with multiple actual function calls?
 genProdMatch :: CName -> GPUExp (ProdMatch a r) -> CName -> CodeGen CCode
 genProdMatch s p resultName = do
   (argUniqs0, innerLam) <- getProdMatchLams p
   let lastArg = last argUniqs0
       argUniqs = init argUniqs0
 
-  let itemNames = map (\i -> pairCar i s) [0..length argUniqs-2]
+  let itemNames = map (\i -> pairCar i s) [0..length argUniqs0-1]
 
   -- TODO: Should the enivronment be saved and restored?
   cg_modifyNames (zip argUniqs itemNames)
-  buildAndCall innerLam (pairCar (length argUniqs-1) s) resultName
+  buildAndCall innerLam (pairCar (length argUniqs0-1) s) resultName
 
 {-
 genProdMatch s (OneProdMatch (Lam (Name n) _)) resultName = do
@@ -267,14 +401,15 @@ genProdMatch s (ProdMatchExp (Lam (Name n) restMatch)) resultName = do
 -}
 
 pairCar :: Int -> CName -> CCode
-pairCar 0 p = "((var_t*)" <> p <> "[0])"
+pairCar 0 p = "((var_t*)" <> p <> ".value)[0]"
+pairCar 1 p = "((var_t*)" <> p <> ".value)[1]"
 pairCar depth p =
-  "((var_t*)(" <> (pairCdr (depth-1) p) <> ")[0])"
+  "((var_t*)(" <> (pairCdr (depth-2) p) <> ").value)[1]"
 
 pairCdr :: Int -> CName -> CCode
-pairCdr 0 p = "((var_t*)" <> p <> "[1])"
+pairCdr 0 p = "((var_t*)" <> p <> ".value)[1]"
 pairCdr depth p =
-  "((var_t*)" <> (pairCdr (depth-1) p) <> "[1])"
+  "((var_t*)" <> (pairCdr (depth-1) p) <> ".value)[1]"
 
 -- | Get argument uniques for each lambda and also the innermost lambda
 getProdMatchLams :: GPUExp (ProdMatch a r) -> CodeGen ([Int], SomeLambda)
@@ -320,20 +455,18 @@ genLambda sc@(SomeLambda c) = do
     fvIxes =
       map (\n -> "self->fv_env[" <> show n <> "]") [0..length (lambda_fvs c)-1]
 
-collectLambdas :: GPUExp a -> [SomeLambda]
-collectLambdas = undefined
-
-genLambdas :: GPUExp a -> CodeGen ([(Int, SomeLambda)], CCode)
+genLambdas :: GPUExp a -> CodeGen CCode
 genLambdas e = do
   let lambdas = collectLambdas e
 
-  lambdaCode <- mapM genLambda lambdas
+  unlines <$> mapM genLambda lambdas
 
-  return
-    ( map (\sc@(SomeLambda c) -> (getNameIdent (lambda_name c), sc))
-          lambdas
-    , unlines lambdaCode
-    )
+  -- return
+  --   ( map (\sc@(SomeLambda c) -> (getNameIdent (lambda_name c), sc))
+  --         lambdas
+  --   , unlines lambdaCode
+  --   )
+
 buildAndCall :: SomeLambda -> CName -> CName -> CodeGen CCode
 buildAndCall sLam argName resultName = do
   closureVarName <- freshCName
@@ -341,21 +474,25 @@ buildAndCall sLam argName resultName = do
   closureCode <- buildClosure sLam closureVarName
   callCode <- callClosure sLam closureVarName argName resultName
 
-  return $ unlines [ closureCode, callCode ]
+  return $ unlines
+    [ "closure_t " <> closureVarName <> ";"
+    , closureCode
+    , callCode
+    ]
 
 buildClosure :: SomeLambda -> CName -> CodeGen CCode
 buildClosure sc@(SomeLambda c) closureVarName = do
   currEnv <- fmap cg_le get
   return $
     unlines
-      [ lambdaCName sc <> ".fv_env = malloc(sizeof(var_t)*" <> show fvCount <> ";"
+      [ closureVarName <> ".fv_env = malloc(sizeof(var_t)*" <> show fvCount <> ");"
       , closureVarName <> ".fn = &" <> lambdaCName sc <> ";"
       , unlines
           (map (\n ->
                   closureVarName <> ".fv_env[" <> show n <> "]"
                       <> " = " <> le_lookup n currEnv <> ";"
                )
-            [0..fvCount-1]
+            [1..fvCount]
           )
       ]
   where
@@ -366,4 +503,15 @@ callClosure (SomeLambda (Lambda { lambda_name })) closureName argName resultName
 
   return $
     resultName <> " = " <> closureName <> ".fn(" <> argName <> ", &" <> closureName <> ");"
+
+
+
+
+
+cTest :: GPUExp Int
+cTest =
+  CaseExp (Var (Name 1) :: GPUExp (Either Int Float))
+    (SumMatchExp
+      (OneProdMatch (Lam (Name 2) (Var (Name 2))))
+      (OneSumMatch (OneProdMatch (Lam (Name 3) (Var (Name 1))))))
 

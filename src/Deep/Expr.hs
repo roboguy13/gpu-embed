@@ -82,6 +82,7 @@ data Iter a b
   | Done a
   deriving (Functor, Generic)
 
+-- | NOTE: The unique identifiers start at 1
 newtype Name a = Name { getNameIdent :: Int } deriving (Eq, Show)
 
 getNameUniq :: Name a -> Int
