@@ -311,6 +311,23 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
     go0 isLam = go
       where
 
+        mkLit :: TH.Name -> Expr Var -> MatchM (Expr Var)
+        mkLit tyName expr = do
+            litTy <- lift $ findTypeTH guts tyName
+            typeType <- lift $ findTypeTH guts ''Kind.Type
+
+            typeableTyCon <- lift $ findTyConTH guts ''Typeable
+            showTyCon <- lift $ findTyConTH guts ''Show
+            numTyCon <- lift $ findTyConTH guts ''Num
+            intTy <- lift $ findTypeTH guts ''Int
+
+            typeableDict <- lift $ buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, litTy])
+            showDict <- lift $ buildDictionaryT guts (mkTyConApp showTyCon [litTy])
+            numDict <- lift $ buildDictionaryT guts (mkTyConApp numTyCon [litTy])
+
+            litId <- lift $ findIdTH guts 'Expr.Lit
+            return (Var litId :@ Type litTy :@ typeableDict :@ showDict :@ numDict :@ expr)
+
         go :: Expr Var -> MatchM (Expr Var)
         go (Case scrutinee wild ty alts) = do
           dflags <- getDynFlags
@@ -394,31 +411,11 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
 
         -- TODO: Handle other literals
         go expr@(Var f :@ x)
-          | "I#" <- occNameString (occName f) = do
-            numTyCon <- lift $ findTyConTH guts ''Num
-            intTy <- lift $ findTypeTH guts ''Int
-            numDict <- lift $ buildDictionaryT guts (mkTyConApp numTyCon [intTy])
+          | "I#" <- occNameString (occName f) = mkLit ''Int expr
 
-            litId <- lift $ findIdTH guts 'Expr.Lit
-            return (Var litId :@ Type intTy :@ numDict :@ expr)
+          | "D#" <- occNameString (occName f) = mkLit ''Double expr
 
-          | "D#" <- occNameString (occName f) = do
-            numTyCon <- lift $ findTyConTH guts ''Num
-            doubleTy <- lift $ findTypeTH guts ''Double
-            numDict <- lift $ buildDictionaryT guts (mkTyConApp numTyCon [doubleTy])
-
-            litId <- lift $ findIdTH guts 'Expr.Lit
-            return (Var litId :@ Type doubleTy :@ numDict :@ expr)
-
-          | "F#" <- occNameString (occName f) = do
-            numTyCon <- lift $ findTyConTH guts ''Num
-            floatTyCon <- lift $ findTyConTH guts ''Float
-            dflags <- lift $ getDynFlags
-            let floatTy = mkTyConApp floatTyCon []
-            numDict <- lift $ buildDictionaryT guts (mkTyConApp numTyCon [floatTy])
-
-            litId <- lift $ findIdTH guts 'Expr.Lit
-            return (Var litId :@ Type floatTy :@ numDict :@ expr)
+          | "F#" <- occNameString (occName f) = mkLit ''Float expr
 
           | "C#" <- occNameString (occName f) = do
             charLitId <- lift $ findIdTH guts 'Expr.CharLit
