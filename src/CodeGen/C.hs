@@ -195,8 +195,14 @@ getFVs = (`execState` []) . go
     go (ConstructAp x y) = go x *> go y
     go (Ord x) = go x
     go (CharLit {}) = pure ()
+    go UnitExp = pure ()
 
 
+-- | Precondition: The maximum unique of all the variables must be
+-- equal to the number of variables.
+--
+-- TODO: Eliminate this precondition.
+--
 getVarCount :: GPUExp a -> Int
 getVarCount = getMax . execWriter . go
   where
@@ -240,6 +246,7 @@ getVarCount = getMax . execWriter . go
     go (ConstructAp x y) = go x *> go y
     go (Ord x) = go x
     go (CharLit {}) = pure ()
+    go UnitExp = pure ()
 
 collectLambdas :: GPUExp a -> [SomeLambda]
 collectLambdas = execWriter . go
@@ -283,6 +290,7 @@ collectLambdas = execWriter . go
     go (ConstructAp x y) = go x *> go y
     go (Ord x) = go x
     go (CharLit {}) = pure ()
+    go UnitExp = pure ()
 
 mkLambda :: Bool -> SomeName -> GPUExp a -> SomeLambda
 mkLambda isTailRec (SomeName argName) body =
@@ -400,9 +408,6 @@ mainCode body =
     , "}"
     ]
 
--- varNamed :: Name a -> CCode
--- varNamed (Name n) = "vars[" <> show n <> "]"
-
 genExp :: HasCallStack => GPUExp a -> CName -> CodeGen CCode
 genExp (Var (Name n)) resultName = do
   nCName <- cg_lookup n
@@ -486,6 +491,8 @@ genExp (Lit x :: GPUExp t) resultName =
     ]
 
   where
+    -- TODO: Determine if the warning this gives is a sign of a problem (it
+    -- is likely to be, at least, a minor bug in GHC):
     (ty, tag) =
       case eqT :: Maybe (t :~: Int) of
         Just _ -> ("int", "EXPR_INT")
@@ -629,6 +636,40 @@ genExp (PairExp x y) resultName = do
     , resultName <> ".value = malloc(sizeof(var_t)*2);"
     , "((var_t*)(" <> resultName <> ".value))[0] = " <> xName <> ";"
     , "((var_t*)(" <> resultName <> ".value))[1] = " <> yName <> ";"
+    ]
+
+genExp e@(Repped {}) resultName = genExp (construct e) resultName
+
+genExp (LeftExp x) resultName = do
+  xName <- freshCName
+
+  xCode <- genExp x xName
+
+  return $ unlines
+    [ "var_t " <> xName <> ";"
+    , xCode
+    , resultName <> ".tag = EXPR_EITHER_LEFT;"
+    , resultName <> ".value = malloc(sizeof(var_t));"
+    , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
+    ]
+
+genExp (RightExp x) resultName = do
+  xName <- freshCName
+
+  xCode <- genExp x xName
+
+  return $ unlines
+    [ "var_t " <> xName <> ";"
+    , xCode
+    , resultName <> ".tag = EXPR_EITHER_RIGHT;"
+    , resultName <> ".value = malloc(sizeof(var_t));"
+    , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
+    ]
+
+genExp UnitExp resultName =
+  return $ unlines
+    [ resultName <> ".tag = EXPR_UNIT;"
+    , resultName <> ".value = 0;"
     ]
 
 genCaseExp :: CName -> GPUExp (SumMatch a r) -> CName -> CodeGen CCode
@@ -797,77 +838,6 @@ callClosure (SomeLambda (Lambda { lambda_name })) closureName argName resultName
   return $
     resultName <> " = " <> closureName <> ".fn(" <> argName <> ", &" <> closureName <> ");"
 
-
--- | Data types which are encodable in C
-class CEncode a where
-  cEncode :: GPUExp a -> CName -> CodeGen CCode
-
-  default cEncode :: (GPURep a, GPURep (GPURepTy a), CEncode (GPURepTy a)) => GPUExp a -> CName -> CodeGen CCode
-  cEncode e = cEncode (construct e)
-
-instance CEncode () where
-  cEncode _ resultName =
-    return $ unlines
-      [ resultName <> ".tag = EXPR_UNIT;"
-      , resultName <> ".value = 0;"
-      ]
-
-instance CEncode Int where
-  cEncode = genExp
-instance CEncode Float where
-  cEncode = genExp
-instance CEncode Double where
-  cEncode = genExp
-instance CEncode Char where
-  cEncode = genExp
-instance CEncode Bool where
-  cEncode = genExp
-
-instance (CEncode a, CEncode b) => CEncode (a, b) where
-  cEncode (PairExp x y) resultName = do
-    xName <- freshCName
-    yName <- freshCName
-
-    xCode <- cEncode x xName
-    yCode <- cEncode y yName
-
-    return $ unlines
-      [ "var_t " <> xName <> ";"
-      , "var_t " <> yName <> ";"
-      , xCode
-      , yCode
-      , resultName <> ".tag = EXPR_PAIR;"
-      , resultName <> ".value = malloc(sizeof(var_t)*2);"
-      , "((var_t*)(" <> resultName <> ".value))[0] = " <> xName <> ";"
-      , "((var_t*)(" <> resultName <> ".value))[1] = " <> yName <> ";"
-      ]
-
-instance (CEncode a, CEncode b) => CEncode (Either a b) where
-  cEncode (LeftExp x) resultName = do
-    xName <- freshCName
-
-    xCode <- cEncode x xName
-
-    return $ unlines
-      [ "var_t " <> xName <> ";"
-      , xCode
-      , resultName <> ".tag = EXPR_EITHER_LEFT;"
-      , resultName <> ".value = malloc(sizeof(var_t));"
-      , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
-      ]
-
-  cEncode (RightExp x) resultName = do
-    xName <- freshCName
-
-    xCode <- cEncode x xName
-
-    return $ unlines
-      [ "var_t " <> xName <> ";"
-      , xCode
-      , resultName <> ".tag = EXPR_EITHER_RIGHT;"
-      , resultName <> ".value = malloc(sizeof(var_t));"
-      , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
-      ]
 
 -- Tests and examples --
 cTest :: GPUExp Int

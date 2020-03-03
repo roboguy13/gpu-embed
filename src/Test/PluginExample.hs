@@ -51,7 +51,6 @@ example1 =
 data Example' = N' Int | B' Bool deriving (Show, Generic)
 
 instance GPURep Example'
-instance CEncode Example'
 
 -- example2_ :: Int -> Example'
 -- example2_ x = B' False
@@ -203,7 +202,6 @@ data IntList = Nil | Cons Int IntList
   deriving (Generic, Show)
 
 instance GPURep IntList
-instance CEncode IntList
 
 isEmpty :: IntList -> Bool
 isEmpty t =

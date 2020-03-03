@@ -144,7 +144,7 @@ data GPUExp t where
   FalseExp :: GPUExp Bool
   TrueExp :: GPUExp Bool
 
-  Repped :: GPURep a => GPURepTy a -> GPUExp a
+  Repped :: (GPURep a, GPURep (GPURepTy a)) => GPURepTy a -> GPUExp a
 
   Lam :: forall a b. (GPURep a, Typeable a) => Name a -> GPUExp b -> GPUExp (a -> b)
   Var :: forall a. Typeable a => Name a -> GPUExp a -- Constructed internally
@@ -183,6 +183,8 @@ data GPUExp t where
 
   StepExp :: forall a b. GPUExp b -> GPUExp (Iter a b)
   DoneExp :: forall a b. GPUExp a -> GPUExp (Iter a b)
+
+  UnitExp :: GPUExp ()
 
   IfThenElse :: GPUExp Bool -> GPUExp a -> GPUExp a -> GPUExp a
 
@@ -235,6 +237,7 @@ transformE tr0 = tr
     go (ConstructAp f x) = ConstructAp (tr f) (tr x)
     go (Ord x) = Ord (tr x)
     go e@(CharLit _) = e
+    go e@UnitExp = e
 
 transformEA :: forall a m. Monad m
   => (forall r. GPUExp r -> m (GPUExp r)) -> GPUExp a -> m (GPUExp a)
@@ -281,6 +284,7 @@ transformEA tr0 = tr
     go (ConstructAp f x) = ConstructAp <$> (tr f) <*> (tr x)
     go (Ord x) = Ord <$> (tr x)
     go e@(CharLit _) = pure e
+    go e@UnitExp = pure e
 
 -- foldEM :: forall a b m. Monad m => (forall x. GPUExp x -> b -> m b) -> b -> GPUExp a -> m b
 -- foldEM f z = go
@@ -336,6 +340,8 @@ class GPURep t where
   -- | This should be unapplied type (without type arguments)
 
   rep :: t -> GPUExp t
+
+  default rep :: (GPURep (GPURepTy t)) => t -> GPUExp t
   rep = Repped . rep'
 
   rep' :: t -> GPURepTy t
@@ -407,15 +413,6 @@ instance (GPURep a, GPURep b) => GPURep (Either a b) where
   rep' = id
   unrep' = id
 
-  -- rep (Left x) = LeftExp (rep x)
-  -- rep (Right y) = RightExp (rep y)
-
-  -- rep' (Left x) = Left $ rep' x
-  -- rep' (Right y) = Right $ rep' y
-
-  -- unrep' (Left x) = Left $ unrep' x
-  -- unrep' (Right y) = Right $ unrep' y
-
 instance (GPURep a, GPURep b) => GPURep (a, b) where
   -- type GPURepTy (a, b) =  (GPURepTy a, GPURepTy b)
   type GPURepTy (a, b) =  (a, b)
@@ -423,10 +420,6 @@ instance (GPURep a, GPURep b) => GPURep (a, b) where
   rep (x, y) = PairExp (rep x) (rep y) --uncurry PairExp
   rep' = id
   unrep' = id
-
-  -- rep (x, y) = PairExp (rep x) (rep y)
-  -- rep' (x, y) = (rep' x, rep' y)
-  -- unrep' (x, y) = (unrep' x, unrep' y)
 
 instance (GPURep a, GPURep b, GPURep c) => GPURep (a, b, c) where
 instance (GPURep a, GPURep b, GPURep c, GPURep d) => GPURep (a, b, c, d) where
@@ -443,14 +436,14 @@ instance (GPURep a, GPURep b) => GPURep (a -> b) where
   unrep' = undefined
 
 -- Generics instances
-instance GPURep (f p) => GPURep (M1 i c f p) where
+instance (GPURep (f p), GPURep (GPURepTy (f p))) => GPURep (M1 i c f p) where
   type GPURepTy (M1 i c f p) = GPURepTy (f p)
 
   rep = Repped . rep'
   rep' (M1 x) = rep' x
   unrep' = M1 . unrep'
 
-instance (GPURep (p x), GPURep (q x)) => GPURep ((p :+: q) x) where
+instance (GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy (q x))) => GPURep ((p :+: q) x) where
   type GPURepTy ((p :+: q) x) =  Either (GPURepTy (p x)) (GPURepTy (q x))
 
   rep = Repped . rep'
@@ -461,13 +454,11 @@ instance (GPURep (p x), GPURep (q x)) => GPURep ((p :+: q) x) where
   unrep' (Left x) = L1 (unrep' x)
   unrep' (Right y) = R1 (unrep' y)
 
-instance (GPURep (p x), GPURep (q x)) => GPURep ((p :*: q) x) where
+instance (GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy (q x))) => GPURep ((p :*: q) x) where
   type GPURepTy ((p :*: q) x) =  (GPURepTy (p x), GPURepTy (q x))
 
   rep' (x :*: y) = (rep' x, rep' y)
   unrep' (x, y) = (unrep' x :*: unrep' y)
-
--- instance GPURep c => GPURep (K1 R c p)
 
 instance GPURep c => GPURep (K1 i c p) where
   type GPURepTy (K1 i c p) = c --GPURepTy c
@@ -486,6 +477,8 @@ instance GPURep (U1 p) where
 
 instance GPURep () where
   type GPURepTy () = ()
+
+  rep () = UnitExp
 
   rep' = id
   unrep' = id
@@ -558,6 +551,7 @@ gpuAbsEnv env (Var v) =
 gpuAbsEnv env (CaseExp x f) = sumMatchAbs env f (gpuAbsEnv env x)
 gpuAbsEnv env FalseExp = False
 gpuAbsEnv env TrueExp  = True
+gpuAbsEnv env UnitExp  = ()
 gpuAbsEnv env (Repped x) = unrep' x
 -- gpuAbs (Lam f) = gpuAbs . f . rep
 -- gpuAbs (Apply f x) = gpuAbs f (gpuAbs x)
