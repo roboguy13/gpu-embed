@@ -153,7 +153,7 @@ data GPUExp t where
   -- Apply :: GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
   CharLit :: Char -> GPUExp Char
-  Lit :: (Typeable a, Show a, Num a) => a -> GPUExp a -- TODO: Add dictionaries for Typeable and Show in plugin
+  Lit :: (Typeable a, Show a, Num a) => a -> GPUExp a
 
   Ord :: GPUExp Char -> GPUExp Int
 
@@ -351,6 +351,12 @@ class GPURep t where
     => GPURepTy t -> t
   unrep' = (to :: Rep t Void -> t) . genericUnrep'
 
+-- TODO: Does this work for what we need (dealing with constructors for
+-- user defined types)?
+construct :: (GPURep a, GPURep (GPURepTy a)) => GPUExp a -> GPUExp (GPURepTy a)
+construct (Repped e) = rep e
+construct _ = error "construct: Given non-Repped argument"
+
 
 instance GPURep Int where
   type GPURepTy Int = Int
@@ -518,25 +524,6 @@ the = id
 
 the_repr :: GPUExp a -> GPUExp a
 the_repr = id
-
-type family LiftedFn t where
-  LiftedFn (a -> b) = GPUExp a -> LiftedFn b
-  LiftedFn b = GPUExp b
-
-construct :: forall t. (ConstructC t)
-  => t -> LiftedFn t
-construct = construct' . Construct
-
-class ConstructC t where
-    construct' :: GPUExp t -> LiftedFn t
-
-instance (GPURep a, ConstructC b) => ConstructC (a -> b) where
-    construct' :: GPUExp (a -> b) -> GPUExp a -> LiftedFn b
-    construct' c = construct' . ConstructAp c
-
-instance {-# INCOHERENT #-} (LiftedFn b ~ GPUExp b) => ConstructC b where
-    construct' :: GPUExp b -> GPUExp b
-    construct' = id
 
 -- Should this just produce an error?
 sumMatchAbs :: forall s t. (GPURepTy (GPURepTy s) ~ GPURepTy s, GPURep s) => Env -> GPUExp (SumMatch (GPURepTy s) t) -> s -> t

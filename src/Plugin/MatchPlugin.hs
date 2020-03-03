@@ -288,6 +288,14 @@ mark0 guts x = do
 
           return (Var externalizeName :@ Type xTy :@ dict :@ x)
 
+isConstructor :: Var -> Bool
+isConstructor v
+  | isId v =
+    case idDetails v of
+      DataConWorkId {} -> True
+      DataConWrapId {} -> True
+      _ -> False
+
 -- 'exprVars' are already of GPUExp type and do not need to be modified
 transformPrims0 :: ModGuts -> Maybe Var -> [(Id, CoreExpr)] -> [Expr Var] -> Expr Var -> MatchM (Expr Var)
 transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=< -} do

@@ -7,6 +7,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DefaultSignatures #-}
 
 module CodeGen.C
   where
@@ -521,7 +522,6 @@ genExp (DoneExp x) resultName = do
     , resultName <> ".tag = EXPR_DONE;"
     , resultName <> ".value = malloc(sizeof(var_t));"
     , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
-    -- , "memcpy(" <> resultName <> ".value, " <> xName <> ", sizeof(var_t));"
     ]
 
 genExp (StepExp x) resultName = do
@@ -535,8 +535,8 @@ genExp (StepExp x) resultName = do
     , resultName <> ".tag = EXPR_STEP;"
     , resultName <> ".value = malloc(sizeof(var_t));"
     , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
-    -- , "memcpy(" <> resultName <> ".value, " <> xName <> ", sizeof(var_t));"
     ]
+
 genExp (Sub x y) resultName = do
   xName <- freshCName
   yName <- freshCName
@@ -798,9 +798,78 @@ callClosure (SomeLambda (Lambda { lambda_name })) closureName argName resultName
     resultName <> " = " <> closureName <> ".fn(" <> argName <> ", &" <> closureName <> ");"
 
 
+-- | Data types which are encodable in C
+class CEncode a where
+  cEncode :: GPUExp a -> CName -> CodeGen CCode
 
+  default cEncode :: (GPURep a, GPURep (GPURepTy a), CEncode (GPURepTy a)) => GPUExp a -> CName -> CodeGen CCode
+  cEncode e = cEncode (construct e)
 
+instance CEncode () where
+  cEncode _ resultName =
+    return $ unlines
+      [ resultName <> ".tag = EXPR_UNIT;"
+      , resultName <> ".value = 0;"
+      ]
 
+instance CEncode Int where
+  cEncode = genExp
+instance CEncode Float where
+  cEncode = genExp
+instance CEncode Double where
+  cEncode = genExp
+instance CEncode Char where
+  cEncode = genExp
+instance CEncode Bool where
+  cEncode = genExp
+
+instance (CEncode a, CEncode b) => CEncode (a, b) where
+  cEncode (PairExp x y) resultName = do
+    xName <- freshCName
+    yName <- freshCName
+
+    xCode <- cEncode x xName
+    yCode <- cEncode y yName
+
+    return $ unlines
+      [ "var_t " <> xName <> ";"
+      , "var_t " <> yName <> ";"
+      , xCode
+      , yCode
+      , resultName <> ".tag = EXPR_PAIR;"
+      , resultName <> ".value = malloc(sizeof(var_t)*2);"
+      , "((var_t*)(" <> resultName <> ".value))[0] = " <> xName <> ";"
+      , "((var_t*)(" <> resultName <> ".value))[1] = " <> yName <> ";"
+      ]
+
+instance (CEncode a, CEncode b) => CEncode (Either a b) where
+  cEncode (LeftExp x) resultName = do
+    xName <- freshCName
+
+    xCode <- cEncode x xName
+
+    return $ unlines
+      [ "var_t " <> xName <> ";"
+      , xCode
+      , resultName <> ".tag = EXPR_EITHER_LEFT;"
+      , resultName <> ".value = malloc(sizeof(var_t));"
+      , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
+      ]
+
+  cEncode (RightExp x) resultName = do
+    xName <- freshCName
+
+    xCode <- cEncode x xName
+
+    return $ unlines
+      [ "var_t " <> xName <> ";"
+      , xCode
+      , resultName <> ".tag = EXPR_EITHER_RIGHT;"
+      , resultName <> ".value = malloc(sizeof(var_t));"
+      , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
+      ]
+
+-- Tests and examples --
 cTest :: GPUExp Int
 cTest =
   CaseExp (Var (Name 0) :: GPUExp (Either Int Float))
