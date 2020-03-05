@@ -356,6 +356,7 @@ prelude varCount =
     , ", EXPR_STEP"
     , ", EXPR_DONE"
     , ", EXPR_UNBOXED"
+    , ", EXPR_COMPLEX     // Complex numbers"
     , "} var_type_tag;"
     , ""
     , "struct closure_t;"
@@ -638,7 +639,7 @@ genExp (PairExp x y) resultName = do
     , "((var_t*)(" <> resultName <> ".value))[1] = " <> yName <> ";"
     ]
 
-genExp e@(Repped {}) resultName = genExp (construct e) resultName
+genExp (Repped x) resultName = genExp (rep x) resultName
 
 genExp (LeftExp x) resultName = do
   xName <- freshCName

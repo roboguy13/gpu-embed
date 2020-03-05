@@ -2,7 +2,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 
--- {-# OPTIONS_GHC -ddump-simpl -O0 -dcore-lint -dsuppress-all -dcmm-lint -dstg-lint -fcatch-bottoms -fplugin=Plugin.MatchPlugin #-}
+{-# OPTIONS_GHC -ddump-simpl -O0 -dcore-lint -dsuppress-all -dcmm-lint -dstg-lint -fcatch-bottoms -fplugin=Plugin.MatchPlugin #-}
 
 module Test.PluginExample where
 
@@ -258,8 +258,8 @@ main = --putStrLn (genProgram cTest6)
         ,intListSum intList
         ,example
         )
-  print $ realSum (ComplexPair (2 :+ 100) (3 :+ 10000))
-  putStrLn mandelbrotTestAscii
+  -- print $ realSum (ComplexPair (2 :+ 100) (3 :+ 10000))
+  -- putStrLn mandelbrotTestAscii
 
 
 

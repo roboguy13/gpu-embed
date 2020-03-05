@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MagicHash #-}
@@ -31,6 +32,8 @@ import           FamInstEnv
 
 import           TcSMonad
 
+import           CoreUnfold
+
 import           TyCon
 
 import           Inst
@@ -42,6 +45,8 @@ import qualified Data.Kind as Kind
 import           Control.Monad
 import           Control.Monad.Writer hiding (pass, Alt)
 import           Control.Monad.State
+
+import           Data.Maybe
 
 import           Control.Arrow ((&&&), (***), first, second)
 
@@ -130,7 +135,7 @@ pass guts = do
   dflags <- getDynFlags
 
 
-  runUniqueSupply $ bindsOnlyPass_match (mapM (transformBind guts (mg_inst_env guts) primMap)) guts
+  runUniqueSupply $ bindsOnlyPass_match (transformBinds guts (mg_inst_env guts) primMap) guts
 
 -- TODO: Figure out what, specifically, this is a workaround for and
 -- actually fix the underlying problem.
@@ -149,22 +154,95 @@ hasExternalize guts e = do
         else return expr
     go expr = return expr
 
-transformBind :: ModGuts -> InstEnv -> [(Id, CoreExpr)] -> CoreBind -> MatchM CoreBind
-transformBind guts instEnv primMap (NonRec name e) =
-  fmap (NonRec name) (transformExpr guts Nothing primMap e)
-transformBind guts instEnv primMap (Rec bnds) = Rec <$> mapM go bnds
-  where
-    go :: (Var, Expr Var) -> MatchM (Var, Expr Var)
-    go (name, e) = do
-      hasEx <- hasExternalize guts e
-      if hasEx
-        then do
-          dflags <- lift getDynFlags
-          e' <- transformTailRec guts name e
-          (name,) <$> transformExpr guts (Just name) primMap e'
-        else return (name, e)
+-- changeAssoc :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
+-- changeAssoc x y [] = [(x, y)]
+-- changeAssoc x y ((n, e):rest)
+--   | n == x    = (x, y) : rest
+--   | otherwise = (n, e) : changeAssoc x y rest
 
--- TODO: Add support for recursive functions
+-- lookupBind :: Var -> CoreBind -> Maybe CoreBind
+-- lookupBind name b@(NonRec v e)
+--   | v == name = Just b
+-- lookupBind name 
+
+changeBind :: [CoreBind] -> CoreBind -> CoreBind
+changeBind newBinds b@(NonRec n e) =
+  let x = find (\case
+                  NonRec n' e'
+                    | n' == n -> True
+                  _ -> False) newBinds
+  in
+  case x of
+    Just r -> r
+    Nothing -> b
+
+changeBind newBinds b@(Rec rs) = Rec (map go rs)
+  where
+    go (n, e) =
+      let x = mapMaybe (\case
+                      Rec rs' ->
+                        case lookup n rs' of
+                          Just b' -> Just (n, b')
+                          _ -> Nothing
+                      _ -> Nothing) newBinds
+      in
+      case x of
+        (r:_) -> r
+        [] -> (n, e)
+
+
+
+transformBinds :: ModGuts -> InstEnv -> [(Id, CoreExpr)] -> [CoreBind] -> MatchM [CoreBind]
+transformBinds guts instEnv primMap binds = do
+  (binds2, changedBinds) <- runWriterT $ mapM go0 binds
+
+  let new_mg_binds = map (changeBind changedBinds) (mg_binds guts)
+
+  mapM (go1 new_mg_binds) binds2
+  where
+    go0 :: CoreBind -> WriterT [CoreBind] MatchM CoreBind
+    go0 b@(NonRec {}) = pure b
+    go0 (Rec r) = do
+      (x, bs) <- lift $ runWriterT
+                  $ forM r
+                  $ \ (name, e) -> do
+                      hasEx <- lift $ hasExternalize guts e
+                      if hasEx
+                        then do
+                          r <- (name,) <$> lift (transformTailRec guts name e)
+                          tell [r]
+                          return r
+                        else return (name, e)
+
+      tell [Rec bs]
+      return (Rec x)
+
+    go1 new_mg_binds (NonRec name e) =
+      fmap (NonRec name) (transformExpr (guts {mg_binds = new_mg_binds}) name Nothing primMap e)
+
+    go1 new_mg_binds (Rec r) = fmap Rec $
+      forM r $ \ (name, e) -> do
+        hasEx <- hasExternalize guts e
+        if hasEx
+          then do
+            dflags <- lift getDynFlags
+            (name,) <$> transformExpr (guts {mg_binds = new_mg_binds}) name (Just name) primMap e
+          else return (name, e)
+
+-- transformBind :: ModGuts -> InstEnv -> [(Id, CoreExpr)] -> CoreBind -> MatchM CoreBind
+-- transformBind guts instEnv primMap (NonRec name e) =
+--   fmap (NonRec name) (transformExpr guts name Nothing primMap e)
+-- transformBind guts instEnv primMap (Rec bnds) = Rec <$> mapM go bnds
+--   where
+--     go :: (Var, Expr Var) -> MatchM (Var, Expr Var)
+--     go (name, e) = do
+--       hasEx <- hasExternalize guts e
+--       if hasEx
+--         then do
+--           dflags <- lift getDynFlags
+--           e' <- transformTailRec guts name e
+--           (name,) <$> transformExpr guts name (Just name) primMap e'
+--         else return (name, e)
 
 changed :: Monad m => WriterT Any m ()
 changed = tell (Any True)
@@ -175,8 +253,8 @@ returnChanged x = do
   return x
 
 -- | 'Nothing' indicates that no changes were made
-transformExprMaybe :: ModGuts -> Maybe Var -> [(Id, CoreExpr)] -> Expr Var -> MatchM (Maybe (Expr Var))
-transformExprMaybe guts  recName primMap e = do
+transformExprMaybe :: ModGuts -> Var -> Maybe Var -> [(Id, CoreExpr)] -> Expr Var -> MatchM (Maybe (Expr Var))
+transformExprMaybe guts currName recName primMap e = do
   (r, progress) <- runWriterT (Data.transformM go e)
   case progress of
     Any False -> return Nothing
@@ -191,7 +269,7 @@ transformExprMaybe guts  recName primMap e = do
       if f == externalizeId
         then do
           changed
-          lift $ transformPrims guts recName primMap x
+          lift $ transformPrims guts currName recName primMap x
         else return expr
     go expr = return expr
 
@@ -204,9 +282,9 @@ untilNothingM f = go
         Just r  -> go r
         Nothing -> return x
 
-transformExpr :: ModGuts -> Maybe Var -> [(Id, CoreExpr)] -> Expr Var -> MatchM (Expr Var)
-transformExpr guts recNameM primMap =
-  untilNothingM (transformExprMaybe guts recNameM primMap)
+transformExpr :: ModGuts -> Var -> Maybe Var -> [(Id, CoreExpr)] -> Expr Var -> MatchM (Expr Var)
+transformExpr guts currName recNameM primMap =
+  transformApps guts <=< untilNothingM (transformExprMaybe guts currName recNameM primMap)
 
 constructExpr :: ModGuts -> Id -> MatchM CoreExpr
 constructExpr guts fId = do
@@ -221,16 +299,16 @@ constructExpr guts fId = do
 -- | Transform primitives and constructor/function calls. Skips the
 -- function call transformation on the given 'recName' argument (if
 -- a 'Just').
-transformPrims :: ModGuts -> Maybe Var -> [(Id, CoreExpr)] -> Expr Var -> MatchM (Expr Var)
-transformPrims guts recName primMap = tr
+transformPrims :: ModGuts -> Var -> Maybe Var -> [(Id, CoreExpr)] -> Expr Var -> MatchM (Expr Var)
+transformPrims guts currName recName primMap = tr
   where
-    tr = transformPrims0 guts recName primMap []
+    tr = transformPrims0 guts currName recName primMap []
 
 isDictVar :: Var -> Bool
 isDictVar v =
   let str = occNameString (occName v)
   in
-  take 2 str == "$f" || take 2 str == "$d"
+  length str >= 2 && (take 2 str == "$f" || take 2 str == "$d" || take 2 str == "C:")
 
 isDict :: CoreExpr -> Bool
 isDict (Var v) = isDictVar v
@@ -252,12 +330,12 @@ isExprTy expTyCon ty =
     Nothing -> False
     Just (t, _) -> t == expTyCon
 
-whenNotExprTyped :: ModGuts -> CoreExpr -> MatchM CoreExpr -> MatchM CoreExpr
-whenNotExprTyped guts e m = do
-  eType <- hasExprType guts e
-  if eType
-    then return e
-    else m
+-- whenNotExprTyped :: ModGuts -> CoreExpr -> MatchM CoreExpr -> MatchM CoreExpr
+-- whenNotExprTyped guts e m = do
+--   eType <- hasExprType guts e
+--   if eType
+--     then return e
+--     else m
 
 isVar :: Expr a -> Bool
 isVar (Var _) = True
@@ -266,27 +344,31 @@ isVar _ = False
 -- Mark for further transformation
 mark0 :: ModGuts -> Expr Var -> MatchM (Expr Var)
 mark0 guts x = do
+  dflags <- getDynFlags
   eType <- hasExprType guts x
   if eType
+    then return x
+    else do
+      markAny guts x
+
+-- | Mark anything that isn't a dictionary
+markAny :: ModGuts -> Expr Var -> MatchM (Expr Var)
+markAny guts x = do
+  dflags <- getDynFlags
+  if isDict x
     then return x
     else do
       varId <- lift $ findIdTH guts 'Expr.Var
 
       let xTy = exprType x
 
-      case x of
-        -- Var v :@ Type {} :@ _dict :@ _n
-        --   | v == varId -> return x
-        _ -> do
+      externalizeName <- lift $ findIdTH guts 'externalize
 
-          externalizeName <- lift $ findIdTH guts 'externalize
+      repTyCon <- lift $ findTyConTH guts ''GPURep
 
-          repTyCon <- lift $ findTyConTH guts ''GPURep
-          dflags <- getDynFlags
+      dict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [xTy])
 
-          dict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [xTy])
-
-          return (Var externalizeName :@ Type xTy :@ dict :@ x)
+      return (Var externalizeName :@ Type xTy :@ dict :@ x)
 
 isConstructor :: Var -> Bool
 isConstructor v
@@ -296,11 +378,135 @@ isConstructor v
       DataConWrapId {} -> True
       _ -> False
 
+builtinConstructor :: Var -> Bool
+builtinConstructor v =
+    "I#" == occNameString (occName v)
+    || "D#" == occNameString (occName v)
+    || "F#" == occNameString (occName v)
+    || "C#" == occNameString (occName v)
+
+getConstructorApp_maybe ::
+  Expr Var
+    -> Maybe
+        ( [Expr Var]  -- Type arguments
+        , [Expr Var]  -- Dictionary arguments
+        , Var         -- Constructor name
+        , [Expr Var]) -- Constructor arguments
+getConstructorApp_maybe e = 
+  case go e of
+    Just (_, _, _, []) -> Nothing
+    (Just (_, _, constr, _))
+      | builtinConstructor constr -> Nothing
+    r -> r
+  where
+    go (Var v)
+      | isConstructor v = Just ([], [], v, [])
+    go (App f x)
+      | isTypeArg x = do
+          (tys, dicts, constr, args) <- go f
+          return (x:tys, dicts, constr, args)
+
+      | isCoArg x || isDict x = do
+          (tys, dicts, constr, args) <- go f
+          return (tys, x:dicts, constr, args)
+
+      | otherwise             = do
+          (tys, dicts, constr, args) <- go f
+          return (tys, dicts, constr, x:args)
+
+    go _ = Nothing
+
+isType :: Expr a -> Bool
+isType (Type _) = True
+isType _ = False
+
+finalResultType :: Type -> Type
+finalResultType ty =
+  case splitFunTy_maybe ty of
+    Nothing -> ty
+    Just (_, ty') -> finalResultType ty'
+
+-- | GPUExp (a -> b)  ===>   Just (a, b)
+getEmbeddedFnType0 :: TyCon -> ModGuts -> Type -> Maybe (Type, Type)
+getEmbeddedFnType0 expTyCon guts t =
+    let t' = dropForAlls t
+        (_, resultTy0) = splitForAllTys t'
+        resultTy = finalResultType resultTy0
+    in
+    case splitTyConApp_maybe resultTy of
+      Just (ex, [fn])
+        | ex == expTyCon && isFunTy fn -> Just (splitFunTy fn)
+      _ -> Nothing
+
+getEmbeddedFnType :: ModGuts -> Type -> MatchM (Maybe (Type, Type))
+getEmbeddedFnType guts t = do
+    expTyCon <- lift $ findTyConTH guts ''GPUExp
+    return $ getEmbeddedFnType0 expTyCon guts t
+
+isEmbeddedFnType :: ModGuts -> Type -> MatchM Bool
+isEmbeddedFnType guts t =
+  fmap isJust (getEmbeddedFnType guts t)
+
+-- | Transform 'f x' to 'App f x' when f has a type of the form
+-- 'GPUExp (a -> b)'. Performs this transformation recursively.
+transformApps :: ModGuts -> Expr Var -> MatchM (Expr Var)
+transformApps guts = Data.descendM go
+  where
+    mark = mark0 guts
+
+    go expr@(lhs :@ rhs)
+      | (f, args) <- collectArgs expr = do
+        expTyCon <- lift $ findTyConTH guts ''GPUExp
+
+
+        case  getEmbeddedFnType0 expTyCon guts (exprType f) of
+          Nothing -> return expr
+          Just (aTy, bTy) -> do
+            let (tyArgs, restArgs0) = span isType args
+                (dictArgs, restArgs1) = span isDict restArgs0
+
+            dflags <- getDynFlags
+            liftIO $ putStrLn $ "!!!!!!!!!! attempting: " ++ showPpr dflags f
+            liftIO $ putStrLn $ "!!!!!!!!!! with rhs = " ++ showPpr dflags rhs
+            liftIO $ putStrLn $ "%%%%%%%%%% With type:  " ++ showPpr dflags (exprType (mkApps f (tyArgs ++ dictArgs)))
+            liftIO $ putStrLn ""
+
+            if isFunTy (exprType (mkApps f (tyArgs ++ dictArgs)))
+              then return expr -- Nothing to do here, already typical function application
+              else do
+
+
+                if null restArgs1
+                  then return expr
+                  else do
+                    liftIO $ putStrLn $ "~~~~~~~~~~~~ App transform: " ++ showPpr dflags expr
+                    liftIO $ putStrLn $ "~~~~~~~~~~~~ restArgs1 = " ++ showPpr dflags restArgs1
+
+                    -- case restArgs1 of
+                    --   [] -> return expr
+                    --   (arg:nextArgs) ->
+
+                    dflags <- getDynFlags
+                    -- liftIO $ putStrLn $ "App transform: " ++  showPpr dflags expr
+                    appId <- lift $ findIdTH guts 'App
+
+                    repTyCon <- lift $ findTyConTH guts ''GPURep
+                    repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [aTy])
+
+                    markedLhs <- mark lhs
+                    markedRhs <- mark rhs
+
+                    return (Var appId :@ Type aTy :@ Type bTy :@ repDict :@ markedLhs :@ markedRhs)
+
+    go expr = return expr
+
 -- 'exprVars' are already of GPUExp type and do not need to be modified
-transformPrims0 :: ModGuts -> Maybe Var -> [(Id, CoreExpr)] -> [Expr Var] -> Expr Var -> MatchM (Expr Var)
-transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=< -} do
+transformPrims0 :: ModGuts -> Var -> Maybe Var -> [(Id, CoreExpr)] -> [Expr Var] -> Expr Var -> MatchM (Expr Var)
+transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts mark <=< -} do
   lamId <- lift $ findIdTH guts 'Expr.Lam
-  go0 (== lamId) e
+  expTyCon <- lift $ findTyConTH guts ''GPUExp
+
+  go0 expTyCon (== lamId) e
   where
     mark = mark0 guts
 
@@ -316,8 +522,9 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
 
     replaceVarType v ty = Data.transform (replaceVarType0 v ty)
 
-    go0 isLam = go
+    go0 expTyCon isLam = go
       where
+        hasExprTy = hasExprTy' expTyCon
 
         mkLit :: TH.Name -> Expr Var -> MatchM (Expr Var)
         mkLit tyName expr = do
@@ -387,35 +594,90 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
         go expr@(Lam v e) = abstractOver guts v e
 
         go expr@(Var v)
-          | False <- isFunTy (varType v) = whenNotExprTyped guts expr $ do
+          | not (isFunTy (varType v))
+          , not (hasExprTy expr) = do
               constructId <- lift $ findIdTH guts 'Construct
               return (Var constructId :@ Type (varType v) :@ expr)
 
+--         go expr@(lhs :@ rhs)
+--           | (f, args) <- collectArgs expr
+--           , Just (aTy, bTy) <- getEmbeddedFnType0 expTyCon guts (exprType f) = do
+
+          
+--           let (tyArgs, restArgs0) = span isType args
+--               (dictArgs, restArgs1) = span isDict restArgs0
+
+--           dflags <- getDynFlags
+
+--           liftIO $ putStrLn $ "!!!!!!!!!! attempting: " ++ showPpr dflags expr
+
+--           if null restArgs1
+--             then return expr
+--             else do
+--               liftIO $ putStrLn $ "~~~~~~~~~~~~ App transform: " ++ showPpr dflags expr
+--               liftIO $ putStrLn $ "~~~~~~~~~~~~ restArgs1 = " ++ showPpr dflags restArgs1
+
+--               -- case restArgs1 of
+--               --   [] -> return expr
+--               --   (arg:nextArgs) ->
+
+--               dflags <- getDynFlags
+--               -- liftIO $ putStrLn $ "App transform: " ++  showPpr dflags expr
+--               appId <- lift $ findIdTH guts 'App
+
+--               repTyCon <- lift $ findTyConTH guts ''GPURep
+--               repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [aTy])
+
+--               markedLhs <- mark lhs
+--               markedRhs <- mark rhs
+
+--               return (Var appId :@ Type aTy :@ Type bTy :@ repDict :@ markedLhs :@ markedRhs)
+
+        -- Handle builtins
         go expr@(Var f :@ tyA@(Type{}) :@ tyB@(Type{}) :@ dictA :@ dictB :@ x)
           | Just b <- builtin f,
             True <- isDict dictA,
-            True <- isDict dictB = whenNotExprTyped guts expr $ do
+            True <- isDict dictB,
+            not (hasExprTy expr) = do
 
               markedX <- mark x
               return (b :@ tyA :@ tyB :@ dictA :@ dictB :@ markedX)
 
         go expr@(Var f :@ ty@(Type{}) :@ dict :@ x)
           | Just b <- builtin f,
-            True <- isDict dict = whenNotExprTyped guts expr $ do
+            True <- isDict dict,
+            not (hasExprTy expr) = do
               markedX <- mark x
               return (b :@ ty :@ dict :@ markedX)
 
         go expr@(Var f :@ ty@(Type{}) :@ dict :@ x :@ y)
           | Just b <- builtin f,
-            True <- isDict dict = whenNotExprTyped guts expr $ do
+            True <- isDict dict,
+            not (hasExprTy expr) = do
               markedX <- mark x
               markedY <- mark y
               return (b :@ ty :@ dict :@ markedX :@ markedY)
 
+        go expr@(Var f :@ tyA@(Type{}) :@ tyB@(Type{}) :@ x :@ y)
+          | Just b <- builtin f,
+            not (hasExprTy expr) = do
+              markedX <- mark x
+              markedY <- mark y
+              return (b :@ tyA :@ tyB :@ markedX :@ markedY)
+
         go expr@(Var f :@ tyA@(Type{}) :@ tyB@(Type{}) :@ x)
-          | Just b <- builtin f = whenNotExprTyped guts expr $ do
+          | Just b <- builtin f,
+            not (hasExprTy expr) = do
               markedX <- mark x
               return (b :@ tyA :@ tyB :@ markedX)
+
+        go expr@(Var f :@ x)
+          | Just b <- builtin f
+          , not (isDict x)
+          , not (isType x)
+          , not (hasExprTy expr) = do
+              markedX <- mark x
+              return (b :@ markedX)
 
         -- TODO: Handle other literals
         go expr@(Var f :@ x)
@@ -430,42 +692,211 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
 
             return (Var charLitId :@ expr)
 
-        go expr@(Var f :@ x)
-          | not (isTypeArg x) &&
-            not (isDerivedOccName (occName f)) && last (occNameString (occName f)) /= '#',
-            Just (aTy, bTy) <- splitFunTy_maybe (varType f) =
-              whenNotExprTyped guts expr $ do
+        go expr@(_ :@ _)
+          | Just (tys, dicts, constr, args) <- getConstructorApp_maybe expr,
+            True <- any (not . (hasExprTy' expTyCon)) args,
+            Nothing <- builtin constr,
+            not (hasExprTy expr) = do
+              dflags <- getDynFlags
+              -- liftIO $ putStrLn $ "[0] Handling: " ++ showPpr dflags expr
+              markedArgs <- mapM mark args
+              let constr' = mkApps (Var constr) (tys ++ dicts)
+              return (mkApps constr' markedArgs)
+
+        -- Handle constructors that are not builtins
+        go expr@(_ :@ _)
+          | Just (tys, dicts, constr, args) <- getConstructorApp_maybe expr,
+            Nothing <- builtin constr,
+            not (hasExprTy expr) = do
+
+            dflags <- getDynFlags
+
+            -- liftIO $ putStrLn $ "Handling constructor: " ++ showPpr dflags expr
 
             repTyCon <- lift $ findTyConTH guts ''GPURep
-
+            repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
 
             dflags <- lift $ getDynFlags
 
-            repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [aTy])
+            repDictExpr <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [exprType expr])
+            repDictRepTy <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [mkTyConApp repTyTyCon [exprType expr]])
+            repId <- lift $ findIdTH guts 'rep
+            constructFnId <- lift $ findIdTH guts 'construct
 
-            constructAp <- lift $ findIdTH guts 'ConstructAp
+            let constr' = mkApps (Var constr) (tys ++ dicts)
+            let constr'Type = exprType constr'
 
-            f' <- constructExpr guts f
+            -- markedConstr' <- mark constr'
+            -- markedArgs <- mapM mark args
 
-            markedX <- mark x
+            let expr2 =
+                  Var constructFnId
+                    :@ Type (exprType expr)
+                    :@ repDictExpr
+                    :@ repDictRepTy
+                    :@ (mkApps constr' args)
 
-            return  (Var constructAp :@ Type aTy :@ Type bTy :@ repDict :@ f' :@ markedX)
 
-        go expr@(lhs :@ arg)
-          | not (isVar lhs) && not (isDict lhs) && not (isDict arg),
-            Just (aTy, bTy) <- splitFunTy_maybe (exprType lhs) = whenNotExprTyped guts expr $ do
-              constructAp <- lift $ findIdTH guts 'ConstructAp
+            let Just expr2'
+                  = callSiteInline
+                      dflags
+                      constructFnId
+                      True
+                      False
+                      [TrivArg, TrivArg, TrivArg, TrivArg]
+                      BoringCtxt
 
-              repTyCon <- lift $ findTyConTH guts ''GPURep
+            let expr2'' = Data.transform letNonRecSubst
+                              (fst (betaReduceAll
+                                      expr2'
+                                      [ Type (exprType expr)
+                                      , repDictExpr
+                                      , repDictRepTy
+                                      , (mkApps constr' args)
+                                      ]))
 
-              dflags <- lift $ getDynFlags
+            let repUnfolding = getUnfolding guts dflags repId
 
-              repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [aTy])
+            -- liftIO $ putStrLn $ "repUnfolding = " ++ showPpr dflags repUnfolding
 
-              markedLhs <- mark lhs
-              markedArg <- mark arg
+            -- let Just expr2''Inlined
+            --       = callSiteInline
+            --           dflags
+            --           repId
+            --           True
+            --           False
+            --           [TrivArg, TrivArg, TrivArg]
+            --           BoringCtxt
 
-              return (Var constructAp :@ Type aTy :@ Type bTy :@ repDict :@ markedLhs :@ markedArg)
+            -- () <- expr2''Inlined `seq` return ()
+
+            let (_, expr2''Args) = collectArgs expr2''
+
+            let expr2''' = Data.transform letNonRecSubst
+                              (fst (betaReduceAll
+                                      repUnfolding
+                                      expr2''Args))
+
+            -- let (Var scFn, _) = collectArgs sc
+            --     scFnUnfolding = getUnfolding scFn
+
+            -- liftIO $ putStrLn $ "dictionary var name = " ++ showPpr dflags scFn
+            -- liftIO $ putStrLn $ "dictionary unfolding = " ++ showPpr dflags scFnUnfolding
+            -- liftIO $ putStrLn $ "dictionary expr unfolded = " ++ showPpr dflags (unfoldAndReduceDict sc)
+
+            -- let expr2'''Subst = substCoreExpr scFn scFnUnfolding (Var scFn) --expr2'''
+            let expr2'''Subst = onScrutinee (unfoldAndReduceDict guts dflags) expr2'''
+
+            expr2'''Subst2 <-
+              lift . simpleOptExpr' =<< (fmap (\f -> mkApps f args) $ fmap (unfoldAndReduceDict guts dflags) $ fmap letNonRecSubst $ lift $ simpleOptExpr' expr2'''Subst)
+
+            liftIO $ putStrLn $ "beta reduced expr2'' with subst = "
+                                                ++ showPpr dflags expr2'''Subst2
+            liftIO $ putStrLn $ "args = " ++ showPpr dflags args
+
+            return expr2
+            -- let newExpr =
+            --       (Var repId :@ constr'Type :@ markedConstr')
+            -- mark newExpr
+
+        go expr@(_ :@ _)
+          | Nothing <- getConstructorApp_maybe expr
+          , (Var f, args) <- collectArgs expr
+          , not (isConstructor f)
+          , Nothing <- builtin f
+          , not (hasExprTy expr) = do
+
+            internalizeId <- lift $ findIdTH guts 'internalize
+
+            dflags <- getDynFlags
+
+            if f == internalizeId
+              then do
+                -- liftIO $ putStrLn $ "matching interalize: " ++ showPpr dflags args
+                case args of
+                  [_, _, x] ->
+                    mark x
+              else do
+
+                -- liftIO $ putStrLn $ "transforming: " ++ showPpr dflags expr
+
+                when (f == currName) (error "Improper form of recursion (mutual recursion or non-tail recursion")
+
+                let unfoldingF = getUnfolding guts dflags f
+
+                -- markedF <- mark unfoldingF
+                markedArgs <- mapM mark args
+
+                let (newF, newArgs) = betaReduceAll unfoldingF markedArgs
+
+                markedNewF <- mark newF
+
+                return (mkApps markedNewF newArgs)
+
+
+        -- go expr@(Var f :@ x)
+        --   | not (isTypeArg x) &&
+        --     not (isDerivedOccName (occName f)) && last (occNameString (occName f)) /= '#',
+        --     Nothing <- getConstructorApp_maybe expr,
+        --     Just (aTy, bTy) <- splitFunTy_maybe (varType f) =
+        --       whenNotExprTyped guts expr $ do
+
+        --     repTyCon <- lift $ findTyConTH guts ''GPURep
+
+
+        --     dflags <- lift $ getDynFlags
+
+        --     repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [aTy])
+
+        --     constructAp <- lift $ findIdTH guts 'ConstructAp
+
+        --     f' <- constructExpr guts f
+
+        --     markedX <- mark x
+
+        --     return  (Var constructAp :@ Type aTy :@ Type bTy :@ repDict :@ f' :@ markedX)
+
+        -- go expr@(lhs :@ arg)
+        --   | not (isVar lhs) && not (isDict lhs) && not (isDict arg),
+        --     Nothing <- getConstructorApp_maybe expr,
+        --     Just (aTy, bTy) <- splitFunTy_maybe (exprType lhs) = whenNotExprTyped guts expr $ do
+        --       constructAp <- lift $ findIdTH guts 'ConstructAp
+
+        --       repTyCon <- lift $ findTyConTH guts ''GPURep
+
+        --       dflags <- lift $ getDynFlags
+
+        --       repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [aTy])
+
+        --       markedLhs <- mark lhs
+        --       markedArg <- mark arg
+
+        --       return (Var constructAp :@ Type aTy :@ Type bTy :@ repDict :@ markedLhs :@ markedArg)
+
+        -- go expr@(lhs :@ arg)
+        --   | not (isDict lhs) && not (isDict arg) && not (isTyCoArg arg),
+        --     Nothing <- getConstructorApp_maybe expr = whenNotExprTyped guts expr $ do
+
+        --       markedLhs <- mark lhs
+        --       markedArg <- mark arg
+
+        --       return (markedLhs :@ markedArg)
+
+        -- go expr@(lhs :@ arg)
+        --   | not (isVar lhs) && not (isDict lhs) && not (isDict arg),
+        --     Just (aTy, bTy) <- splitFunTy_maybe (exprType lhs) = whenNotExprTyped guts expr $ do
+        --       constructAp <- lift $ findIdTH guts 'ConstructAp
+
+        --       repTyCon <- lift $ findTyConTH guts ''GPURep
+
+        --       dflags <- lift $ getDynFlags
+
+        --       repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [aTy])
+
+        --       markedLhs <- mark lhs
+        --       markedArg <- mark arg
+
+        --       return (Var constructAp :@ Type aTy :@ Type bTy :@ repDict :@ markedLhs :@ markedArg)
 
         -- go expr@(Var f :@ tyA@(Type{}) :@ tyB@(Type{}) :@ dict1 :@ dict2 :@ nval
         --            :@ ((Lam v e) :@ x)) = do
@@ -474,15 +905,15 @@ transformPrims0 guts recName primMap exprVars e = {- transformLams guts mark <=<
   -- return (Var lamId :@ Type origTy :@ Type eTy' :@ repDict :@ typeableDict :@ nameVal
   --           :@ ((Lam v' (Data.transform (go varId newTy) e)) :@ (Var varId :@ Type origTy :@ typeableDict :@ nameVal)))
 
-        go expr
-          | Just (fId, tyArgs, dicts) <- splitTypeApps_maybe expr
-            ,all isDictVar dicts = whenNotExprTyped guts expr $ do
-              constructId <- lift $ findIdTH guts 'Construct
+--         go expr
+--           | Just (fId, tyArgs, dicts) <- splitTypeApps_maybe expr
+--             ,all isDictVar dicts = whenNotExprTyped guts expr $ do
+--               constructId <- lift $ findIdTH guts 'Construct
 
-              let expr' = mkTyApps (Var fId) tyArgs
-                  expr'' = mkApps expr' (map Var dicts)
+--               let expr' = mkTyApps (Var fId) tyArgs
+--                   expr'' = mkApps expr' (map Var dicts)
 
-              return (Var constructId :@ Type (exprType expr'') :@ expr'')
+--               return (Var constructId :@ Type (exprType expr'') :@ expr'')
 
         go expr = return expr
 
@@ -904,8 +1335,12 @@ abstractOver guts v e = do
 
   markedE' <- mark0 guts (Data.transform (go varId newTy) e)
 
+  let markedSubstE' = substCoreExpr v' (Var varId :@ Type origTy :@ typeableDict :@ nameVal) markedE'
+
+  -- liftIO $ putStrLn $ "markedSubstE' = " ++ showPpr dflags markedSubstE'
+
   return (Var lamId :@ Type origTy :@ Type eTy' :@ repDict :@ typeableDict :@ nameVal
-            :@ ((Lam v' markedE') :@ (Var varId :@ Type origTy :@ typeableDict :@ nameVal)))
+            :@ markedSubstE')
   where
     go varId newTy (Var v')
       | varName v' == varName v = Var $ setVarType v' newTy
@@ -977,6 +1412,11 @@ primMapTH =
   ,('runIter, 'TailRec)
   ,('Done, 'DoneExp)
   ,('Step, 'StepExp)
+
+  ,('(), 'UnitExp)
+  ,('Left, 'LeftExp)
+  ,('Right, 'RightExp)
+  ,('(,), 'PairExp)
   ]
 
 getGPUExprNamedsFrom :: [(TH.Name, Named)] -> TH.Name -> Named

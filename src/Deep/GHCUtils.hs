@@ -5,10 +5,11 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Deep.GHCUtils where
 
-import           GhcPlugins
+import           GhcPlugins hiding (freeVarsBind)
 
 import           TcRnTypes
 import           TcSimplify
@@ -26,6 +27,8 @@ import           InstEnv
 import           FamInstEnv
 
 import           Class
+
+import           MkId
 
 import           Packages
 
@@ -48,6 +51,8 @@ import           Bag
 import           VarSet
 
 import           Encoding
+
+import           CoreOpt
 
 import           ErrUtils
 
@@ -647,6 +652,147 @@ lookupRdrNameInModule hsc_env guts mod_name rdr_name = do
 -- | Get the unqualified name from a 'NamedThing'.
 unqualifiedName :: NamedThing nm => nm -> String
 unqualifiedName = getOccString
+
+-- Adapted from getUnfoldingsT in HERMIT:
+getUnfolding :: ModGuts -> DynFlags -> Id -> CoreExpr
+getUnfolding guts dflags i =
+  case lookup i (flattenBinds (mg_binds guts)) of
+    Nothing ->
+      case unfoldingInfo (idInfo i) of
+        CoreUnfolding { uf_tmpl = uft } -> uft
+        dunf@(DFunUnfolding {})         -> dFunExpr dunf
+        _ -> case idDetails i of
+              ClassOpId cls -> do
+                let selectors = zip [ idName s | s <- classAllSelIds cls] [0..]
+                    msg = getOccString i ++ " is not a method of " ++ getOccString cls ++ "."
+                    idx = maybe (error msg) id $ lookup (idName i) selectors
+                mkDictSelRhs cls idx
+              _             -> error $ "Cannot find unfolding for " ++ showPpr dflags i
+    Just e -> e
+  where
+    flattenBinds [] = []
+    flattenBinds (NonRec b e:rest) = (b, e) : flattenBinds rest
+    flattenBinds (Rec bs:rest) = bs ++ flattenBinds rest
+
+-- | Transform scrutinee of a case. If not a 'case', leave it alone.
+onScrutinee :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+onScrutinee f (Case scrutinee wild ty alts) = Case (f scrutinee) wild ty alts
+onScrutinee _ e = e
+
+-- | $fDict x0 x1 ... xN    ==>   [unfolding of $fDict] x0 x1 ... xN
+unfoldAndReduceDict :: ModGuts -> DynFlags -> CoreExpr -> CoreExpr
+unfoldAndReduceDict guts dflags e =
+  case collectArgs e of
+    (Var dictFn, dictArgs) ->
+      let dictFnUnfolding = getUnfolding guts dflags dictFn
+      in
+      case betaReduceAll dictFnUnfolding dictArgs of
+        (fn, args) -> mkApps fn args
+    _ -> error "unfoldDict"
+
+-- | This should, among other things, reduce a case-of-known-constructor
+simpleOptExpr' :: CoreExpr -> CoreM CoreExpr
+simpleOptExpr' e = do
+    dflags <- getDynFlags
+    return $ simpleOptExpr dflags e
+
+--
+-- From HERMIT: --
+--
+
+-- | Build a CoreExpr for a DFunUnfolding
+dFunExpr :: Unfolding -> CoreExpr
+dFunExpr dunf@(DFunUnfolding {}) = mkCoreLams (df_bndrs dunf) $ mkCoreConApps (df_con dunf) (df_args dunf)
+dFunExpr _ = error "dFunExpr: not a DFunUnfolding"
+
+-- | @Let (NonRec v e) body@ ==> @body[e/v]@
+letNonRecSubst :: CoreExpr -> CoreExpr
+letNonRecSubst (Let (NonRec v rhs) body) =
+   substCoreExpr v rhs body
+letNonRecSubst expr = expr
+
+ -- | Substitute all occurrences of a variable with an expression, in an expression.
+substCoreExpr :: Var -> CoreExpr -> (CoreExpr -> CoreExpr)
+substCoreExpr v e expr = substExpr (text "substCoreExpr") (extendSubst emptySub v e) expr
+    where emptySub = mkEmptySubst (mkInScopeSet (localFreeVarsExpr (Let (NonRec v e) expr)))
+
+-- | Substitute all occurrences of a variable with an expression, in a case alternative.
+substCoreAlt :: Var -> CoreExpr -> CoreAlt -> CoreAlt
+substCoreAlt v e alt = let (con, vs, rhs) = alt
+                           inS            = (flip delVarSet v . unionVarSet (localFreeVarsExpr e) . localFreeVarsAlt) alt
+                           subst          = extendSubst (mkEmptySubst (mkInScopeSet inS)) v e
+                           (subst', vs')  = substBndrs subst vs
+                        in (con, vs', substExpr (text "alt-rhs") subst' rhs)
+
+-- | Beta-reduce as many lambda-binders as possible.
+betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])
+betaReduceAll (Lam v body) (a:as) = betaReduceAll (substCoreExpr v a body) as
+betaReduceAll e            as     = (e,as)
+
+-- | Find all locally defined free variables in an expression.
+localFreeVarsExpr :: CoreExpr -> VarSet
+localFreeVarsExpr = filterVarSet isLocalVar . freeVarsExpr
+
+
+-- | Find all free variables in an expression.
+freeVarsExpr :: CoreExpr -> VarSet
+freeVarsExpr (Var v) = extendVarSet (freeVarsVar v) v
+freeVarsExpr (Lit {}) = emptyVarSet
+freeVarsExpr (App e1 e2) = freeVarsExpr e1 `unionVarSet` freeVarsExpr e2
+freeVarsExpr (Lam b e) = delVarSet (freeVarsExpr e) b
+freeVarsExpr (Let b e) = freeVarsBind b `unionVarSet` delVarSetList (freeVarsExpr e) (bindersOf b)
+freeVarsExpr (Case s b ty alts) = let altFVs = delVarSet (unionVarSets $ map freeVarsAlt alts) b
+                                  in unionVarSets [freeVarsExpr s, freeVarsType ty, altFVs]
+freeVarsExpr (Cast e co) = freeVarsExpr e `unionVarSet` freeVarsCoercion co
+freeVarsExpr (Tick t e) = freeVarsTick t `unionVarSet` freeVarsExpr e
+freeVarsExpr (Type ty) = freeVarsType ty
+freeVarsExpr (Coercion co) = freeVarsCoercion co
+
+freeVarsTick :: Tickish Id -> VarSet
+freeVarsTick (Breakpoint _ ids) = mkVarSet ids
+freeVarsTick _ = emptyVarSet
+
+-- | Find all free identifiers in a binding group, which excludes any variables bound in the group.
+freeVarsBind :: CoreBind -> VarSet
+freeVarsBind (NonRec v e) = freeVarsExpr e `unionVarSet` freeVarsVar v
+freeVarsBind (Rec defs)   = let (bs,es) = unzip defs
+                             in delVarSetList (unionVarSets (map freeVarsVar bs ++ map freeVarsExpr es)) bs
+
+-- | Find all free variables on a binder. Equivalent to idFreeVars, but safe to call on type bindings.
+freeVarsVar :: Var -> VarSet
+#if __GLASGOW_HASKELL__ > 710
+freeVarsVar v = varTypeTyCoVars v `unionVarSet` bndrRuleAndUnfoldingVars v
+#else
+freeVarsVar v = varTypeTyVars v `unionVarSet` bndrRuleAndUnfoldingVars v
+#endif
+
+-- | Find all free variables in a case alternative, which excludes any variables bound in the alternative.
+freeVarsAlt :: CoreAlt -> VarSet
+freeVarsAlt (_,bs,e) = delVarSetList (freeVarsExpr e `unionVarSet` unionVarSets (map freeVarsVar bs)) bs
+
+-- | Find all free local variables in a case alternative, which excludes any variables bound in the alternative.
+localFreeVarsAlt :: CoreAlt -> VarSet
+localFreeVarsAlt (_,bs,e) = delVarSetList (localFreeVarsExpr e `unionVarSet` unionVarSets (map freeVarsVar bs)) bs
+
+-- | Find all free variables in a type.
+freeVarsType :: Type -> TyVarSet
+#if __GLASGOW_HASKELL__ > 710
+freeVarsType = tyCoVarsOfType
+#else
+freeVarsType = tyVarsOfType
+#endif
+
+-- | Find all free variables in a coercion.
+freeVarsCoercion :: Coercion -> VarSet
+freeVarsCoercion = tyCoVarsOfCo
+
+-- This function is copied from GHC, which defines but doesn't expose it.
+-- A 'let' can bind a type variable, and idRuleVars assumes
+-- it's seeing an Id. This function tests first.
+bndrRuleAndUnfoldingVars :: Var -> VarSet
+bndrRuleAndUnfoldingVars v | isTyVar v = emptyVarSet
+                           | otherwise = idUnfoldingVars v
+
 
 
 -- From GHC.Runtime.Eval:

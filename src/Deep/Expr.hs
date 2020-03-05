@@ -359,10 +359,14 @@ class GPURep t where
 
 -- TODO: Does this work for what we need (dealing with constructors for
 -- user defined types)?
-construct :: (GPURep a, GPURep (GPURepTy a)) => GPUExp a -> GPUExp (GPURepTy a)
-construct (Repped e) = rep e
-construct _ = error "construct: Given non-Repped argument"
+construct :: (GPURep a, GPURep (GPURepTy a)) => a -> GPUExp (GPURepTy a)
+construct = rep . rep'
+-- construct :: (GPURep a, GPURep (GPURepTy a)) => GPUExp a -> GPUExp (GPURepTy a)
+-- construct (Repped e) = rep e
+-- construct _ = error "construct: Given non-Repped argument"
 
+-- constructAp' :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
+-- constructAp' f x = _
 
 instance GPURep Int where
   type GPURepTy Int = Int
