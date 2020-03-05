@@ -174,8 +174,8 @@ data GPUExp t where
 
   Not :: GPUExp Bool -> GPUExp Bool
 
-  LeftExp :: GPUExp a -> GPUExp (Either a b)
-  RightExp :: GPUExp b -> GPUExp (Either a b)
+  LeftExp :: forall a b. GPUExp a -> GPUExp (Either a b)
+  RightExp :: forall a b. GPUExp b -> GPUExp (Either a b)
 
   PairExp :: GPUExp a -> GPUExp b -> GPUExp (a, b)
   FstExp :: GPUExp (a, b) -> GPUExp a
