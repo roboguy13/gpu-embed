@@ -193,6 +193,9 @@ data GPUExp t where
   Construct :: a -> GPUExp a
   ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
+tailRecApp :: forall a b. (GPURep a, GPURep b) => GPUExp (b -> Iter a b) -> GPUExp b -> GPUExp a
+tailRecApp body = App (TailRec body)
+
 transformE :: (forall r. GPUExp r -> GPUExp r) -> GPUExp a -> GPUExp a
 transformE tr0 = tr
   where

@@ -46,6 +46,8 @@ import           Control.Monad
 import           Control.Monad.Writer hiding (pass, Alt)
 import           Control.Monad.State
 
+import           Data.Foldable
+
 import           Data.Maybe
 
 import           Control.Arrow ((&&&), (***), first, second)
@@ -284,7 +286,7 @@ untilNothingM f = go
 
 transformExpr :: ModGuts -> Var -> Maybe Var -> [(Id, CoreExpr)] -> Expr Var -> MatchM (Expr Var)
 transformExpr guts currName recNameM primMap =
-  transformApps guts <=< untilNothingM (transformExprMaybe guts currName recNameM primMap)
+  {- transformApps guts <=< -} untilNothingM (transformExprMaybe guts currName recNameM primMap)
 
 constructExpr :: ModGuts -> Id -> MatchM CoreExpr
 constructExpr guts fId = do
@@ -342,17 +344,23 @@ isVar (Var _) = True
 isVar _ = False
 
 -- Mark for further transformation
-mark0 :: ModGuts -> Expr Var -> MatchM (Expr Var)
+mark0 :: HasCallStack => ModGuts -> Expr Var -> MatchM (Expr Var)
 mark0 guts x = do
   dflags <- getDynFlags
+  expTyCon <- lift $ findTyConTH guts ''GPUExp
+
   eType <- hasExprType guts x
+  -- liftIO $ putStrLn $ "mark0 exprType = " ++ showPpr dflags (exprType x)
   if eType
     then return x
-    else do
-      markAny guts x
+    else
+      case splitFunTy_maybe (exprType x) of
+        Just (a, b)
+          | isExprTy expTyCon a && isExprTy expTyCon b -> return x
+        _ -> markAny guts x
 
 -- | Mark anything that isn't a dictionary
-markAny :: ModGuts -> Expr Var -> MatchM (Expr Var)
+markAny :: HasCallStack => ModGuts -> Expr Var -> MatchM (Expr Var)
 markAny guts x = do
   dflags <- getDynFlags
   if isDict x
@@ -449,56 +457,85 @@ isEmbeddedFnType guts t =
 
 -- | Transform 'f x' to 'App f x' when f has a type of the form
 -- 'GPUExp (a -> b)'. Performs this transformation recursively.
-transformApps :: ModGuts -> Expr Var -> MatchM (Expr Var)
-transformApps guts = Data.descendM go
+-- transformApps :: ModGuts -> Expr Var -> MatchM (Expr Var)
+-- transformApps guts = Data.descendM go
+--   where
+--     mark = mark0 guts
+
+--     go expr@(lhs :@ rhs) = do
+--         -- let (f, args) = collectArgs expr
+--         expTyCon <- lift $ findTyConTH guts ''GPUExp
+--         dflags <- getDynFlags
+
+--         when (not (isFunTy (exprType lhs))) $ do
+--           liftIO $ putStrLn $ "========= " ++ showPpr dflags (exprType lhs)
+--           liftIO $ putStrLn ""
+
+--         case getEmbeddedFnType0 expTyCon guts (exprType lhs) of
+--           Nothing -> return expr
+--           Just (aTy, bTy) -> do
+--             -- let (tyArgs, restArgs0) = span isType args
+--             --     (dictArgs, restArgs1) = span isDict restArgs0
+
+--             -- dflags <- getDynFlags
+--             -- liftIO $ putStrLn $ "!!!!!!!!!! attempting: " ++ showPpr dflags f
+--             -- liftIO $ putStrLn $ "!!!!!!!!!! with rhs = " ++ showPpr dflags rhs
+--             -- liftIO $ putStrLn $ "%%%%%%%%%% With type:  " ++ showPpr dflags (exprType (mkApps f (tyArgs ++ dictArgs)))
+--             -- liftIO $ putStrLn ""
+
+--             if isFunTy (exprType lhs)
+--               then return expr -- Nothing to do here, already typical function application
+--               else do
+
+
+--                     -- liftIO $ putStrLn $ "~~~~~~~~~~~~ App transform: " ++ showPpr dflags expr
+--                     -- liftIO $ putStrLn $ "~~~~~~~~~~~~ restArgs1 = " ++ showPpr dflags restArgs1
+
+--                     -- case restArgs1 of
+--                     --   [] -> return expr
+--                     --   (arg:nextArgs) ->
+
+--                     dflags <- getDynFlags
+--                     -- liftIO $ putStrLn $ "App transform: " ++  showPpr dflags expr
+--                     appId <- lift $ findIdTH guts 'App
+
+--                     repTyCon <- lift $ findTyConTH guts ''GPURep
+--                     repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [aTy])
+
+--                     -- markedLhs <- mark lhs
+--                     -- markedRhs <- mark rhs
+
+--                     return (Var appId :@ Type aTy :@ Type bTy :@ repDict :@ lhs :@ rhs)
+
+--     go expr = return expr
+
+
+-- | mkExprApps f [x, y, z]  =  App (App (App f x') y') z'
+-- where x', y', z' are marked versions of x, y and z
+mkExprApps :: ModGuts -> CoreExpr -> [CoreExpr] -> MatchM CoreExpr
+mkExprApps guts fn0 args0 =
+    foldlM go fn0 args0
   where
-    mark = mark0 guts
+    go f x = do
+      dflags <- getDynFlags
+      liftIO $ putStrLn $ "+++++++++ x = " ++ showPpr dflags x
+      liftIO $ putStrLn ""
+      appId <- lift $ findIdTH guts 'Expr.App
 
-    go expr@(lhs :@ rhs)
-      | (f, args) <- collectArgs expr = do
-        expTyCon <- lift $ findTyConTH guts ''GPUExp
+      repTyCon <- lift $ findTyConTH guts ''GPURep
 
+      tyM <- getEmbeddedFnType guts (exprType f)
 
-        case  getEmbeddedFnType0 expTyCon guts (exprType f) of
-          Nothing -> return expr
-          Just (aTy, bTy) -> do
-            let (tyArgs, restArgs0) = span isType args
-                (dictArgs, restArgs1) = span isDict restArgs0
+      case tyM of
+        Nothing -> error "mkExprApps"
+        Just (tyA, tyB) -> do
+          liftIO $ putStrLn $ "(tyA, tyB) = " ++ showPpr dflags (tyA, tyB)
+          dictA <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [tyA])
 
-            dflags <- getDynFlags
-            liftIO $ putStrLn $ "!!!!!!!!!! attempting: " ++ showPpr dflags f
-            liftIO $ putStrLn $ "!!!!!!!!!! with rhs = " ++ showPpr dflags rhs
-            liftIO $ putStrLn $ "%%%%%%%%%% With type:  " ++ showPpr dflags (exprType (mkApps f (tyArgs ++ dictArgs)))
-            liftIO $ putStrLn ""
+          markedX <- mark0 guts x
 
-            if isFunTy (exprType (mkApps f (tyArgs ++ dictArgs)))
-              then return expr -- Nothing to do here, already typical function application
-              else do
+          return (Var appId :@ Type tyA :@ Type tyB :@ dictA :@ f :@ markedX)
 
-
-                if null restArgs1
-                  then return expr
-                  else do
-                    liftIO $ putStrLn $ "~~~~~~~~~~~~ App transform: " ++ showPpr dflags expr
-                    liftIO $ putStrLn $ "~~~~~~~~~~~~ restArgs1 = " ++ showPpr dflags restArgs1
-
-                    -- case restArgs1 of
-                    --   [] -> return expr
-                    --   (arg:nextArgs) ->
-
-                    dflags <- getDynFlags
-                    -- liftIO $ putStrLn $ "App transform: " ++  showPpr dflags expr
-                    appId <- lift $ findIdTH guts 'App
-
-                    repTyCon <- lift $ findTyConTH guts ''GPURep
-                    repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [aTy])
-
-                    markedLhs <- mark lhs
-                    markedRhs <- mark rhs
-
-                    return (Var appId :@ Type aTy :@ Type bTy :@ repDict :@ markedLhs :@ markedRhs)
-
-    go expr = return expr
 
 -- 'exprVars' are already of GPUExp type and do not need to be modified
 transformPrims0 :: ModGuts -> Var -> Maybe Var -> [(Id, CoreExpr)] -> [Expr Var] -> Expr Var -> MatchM (Expr Var)
@@ -634,6 +671,33 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 --               return (Var appId :@ Type aTy :@ Type bTy :@ repDict :@ markedLhs :@ markedRhs)
 
         -- Handle builtins
+        go expr@(Var f :@ tyA@(Type{}) :@ tyB@(Type{}) :@ dictA :@ dictB :@ x :@ y)
+          | Just b <- builtin f,
+            -- True <- isDict dictA,
+            -- True <- isDict dictB,
+            not (hasExprTy expr) = do
+
+              -- TODO: Is the problem that it is ending up as
+              -- 'mark (f x) y'? If so, how do we fix it? It is probably
+              -- coming in through the inlining.
+
+              runIterId <- lift $ findIdTH guts 'runIter
+
+              tailRecAppId <- lift $ findIdTH guts 'tailRecApp
+
+              markedX <- mark x
+              markedY <- mark y
+
+              liftIO $ putStrLn "--------------- Might fire"
+
+              if f == runIterId
+                then do
+                  liftIO $ putStrLn "+++++++++++++++++++ tailRecApp fired"
+                  return (Var tailRecAppId :@ tyA :@ tyB :@ dictA :@ dictB :@ markedX :@ markedY)
+                else
+                  return (b :@ tyA :@ tyB :@ dictA :@ dictB :@ markedX :@ markedY)
+
+
         go expr@(Var f :@ tyA@(Type{}) :@ tyB@(Type{}) :@ dictA :@ dictB :@ x)
           | Just b <- builtin f,
             True <- isDict dictA,
@@ -827,11 +891,13 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- markedF <- mark unfoldingF
                 markedArgs <- mapM mark args
 
-                let (newF, newArgs) = betaReduceAll unfoldingF markedArgs
+                let (newF, newArgs) = betaReduceAll unfoldingF args --markedArgs
 
                 markedNewF <- mark newF
 
-                return (mkApps markedNewF newArgs)
+                liftIO $ putStrLn $ "newArgs = " ++ showPpr dflags newArgs
+
+                mkExprApps guts markedNewF newArgs
 
 
         -- go expr@(Var f :@ x)

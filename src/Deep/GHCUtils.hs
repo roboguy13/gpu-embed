@@ -73,7 +73,7 @@ import           Data.Generics.Uniplate.Operations
 import qualified Data.Generics.Uniplate.DataOnly as Data
 
 -- | Build a dictionary for the given
-buildDictionary :: ModGuts -> Id -> CoreM (Id, [CoreBind])
+buildDictionary :: HasCallStack => ModGuts -> Id -> CoreM (Id, [CoreBind])
 buildDictionary guts evar = do
     dflags <- getDynFlags
     hsc_env <- getHscEnv
@@ -108,7 +108,7 @@ buildDictionary guts evar = do
     return (i,bnds)
 
 
-buildDictionaryT :: ModGuts -> Type -> CoreM CoreExpr
+buildDictionaryT :: HasCallStack => ModGuts -> Type -> CoreM CoreExpr
 buildDictionaryT guts = \ ty0 -> do
 
     dflags <- getDynFlags
@@ -188,7 +188,7 @@ tryToFillCoHoles guts bind =
       --   return expr
     go expr = return expr
 
-runTcM :: ModGuts -> TcM a -> CoreM a
+runTcM :: HasCallStack => ModGuts -> TcM a -> CoreM a
 runTcM guts m = do
     env <- getHscEnv
     dflags <- getDynFlags
