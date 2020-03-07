@@ -446,6 +446,8 @@ instance (GPURep a, GPURep b) => GPURep (Either a b) where
   -- type GPURepTy (Either a b) = Either (GPURepTy a) (GPURepTy b)
   type GPURepTy (Either a b) = Either a b
 
+  construct = rep
+
   rep (Left x) = LeftExp (rep x)
   rep (Right y) = RightExp (rep y)
 
@@ -455,6 +457,8 @@ instance (GPURep a, GPURep b) => GPURep (Either a b) where
 instance (GPURep a, GPURep b) => GPURep (a, b) where
   -- type GPURepTy (a, b) =  (GPURepTy a, GPURepTy b)
   type GPURepTy (a, b) =  (a, b)
+
+  construct = rep
 
   rep (x, y) = PairExp (rep x) (rep y) --uncurry PairExp
   rep' = id
