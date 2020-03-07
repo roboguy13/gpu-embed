@@ -694,6 +694,14 @@ onScrutinee :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
 onScrutinee f (Case scrutinee wild ty alts) = Case (f scrutinee) wild ty alts
 onScrutinee _ e = e
 
+-- | Transform the function position of a collection of Apps:
+-- f :@ x0 :@ x1 :@ ... :@ xN    ==>    (t f) :@ x0 :@ x1 :@ ... :@ xN
+onAppFun :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+onAppFun t e@(App _ _) =
+  let (f, args) = collectArgs e
+  in mkApps (t f) args
+onAppFun t e = e
+
 isDictVar :: Var -> Bool
 isDictVar v =
   let str = occNameString (occName v)
@@ -726,6 +734,7 @@ applyWhen p f x
 unfoldAndReduceDict_either :: ModGuts -> DynFlags -> CoreExpr -> Either String CoreExpr
 unfoldAndReduceDict_either guts dflags e =
   case collectArgs e of
+    -- (_, []) -> Left "unfoldAndReduceDict_either: empty args"
     (fnE@(Var dictFn), dictArgs) ->
       if isDictNotClass dflags fnE
         then
@@ -908,7 +917,7 @@ caseInline0 dflags subst expr = go expr
         | not (varUnique b `elemVarSetByKey` altFvs)
         , Just (con, _tys, es) <- exprIsConApp_maybe in_scope_env e'
         , Just (altcon, bs, rhs) <- findAlt (DataAlt con) as
-        = trace "!!!!!!!!!!!!!!!!!!!Case" $ case altcon of
+        = case altcon of
             DEFAULT -> go rhs
             _       -> foldr substInto (caseInline0 dflags env' rhs) mb_prs
               where

@@ -827,7 +827,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                                        repUnfolding
                                          [ Type (exprType expr)
                                          , repDictExpr
-                                         , (mkApps constr' args)
+                                         -- , (mkApps constr' args)
                                          ]
 
                 let expr2' = Data.transform letNonRecSubst fn
@@ -844,16 +844,25 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- let Case scrutinee _ _ _ = expr2'
                 -- scrutinee' <- lift $ simpleOptExpr' scrutinee
 
-                let e' = onScrutinee (Data.transform (tryUnfoldAndReduceDict guts dflags))
+                let e' =
+                         onScrutinee (Data.transform (tryUnfoldAndReduceDict guts dflags))
                              $ Data.transform letNonRecSubst fn
 
-                let simplE' = caseInlineT dflags e'
+                -- let e' = Data.transform letNonRecSubst $ Data.transform (tryUnfoldAndReduceDict guts dflags) fn
 
-                let e'Subst = Data.transform letNonRecSubst simplE'
-                    e'Dict  = Data.transform (tryUnfoldAndReduceDict guts dflags) e'Subst
+                let simplE' =  Data.transform letNonRecSubst $ Data.transform betaReduce $
+                      onAppFun (tryUnfoldAndReduceDict guts dflags) $
+                      onScrutinee (Data.transform (tryUnfoldAndReduceDict guts dflags)) $
+                      Data.transform (caseInlineT dflags) $ onScrutinee (Data.transform betaReduce) e'
+
+                -- let e'Subst = Data.transform letNonRecSubst simplE'
+                --     e'Dict  = Data.transform (tryUnfoldAndReduceDict guts dflags) e'Subst
 
                 let fnE = Data.transform letNonRecSubst
-                               $ e'Dict
+                               $ simplE' --e'Dict
+
+                liftIO $ putStrLn $ "==== e' ====>   " ++ showPpr dflags e'
+                liftIO $ putStrLn $ "simplE'   ==>   " ++ showPpr dflags simplE'
 
                 -- liftIO $ putStrLn $ "=====> restArgs = " ++ showPpr dflags restArgs
 
@@ -862,8 +871,13 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 let (newExpr, remainingArgs) = betaReduceAll fnE [mkApps constr' unreppedArgs]
                 let newExpr' = (Data.transform betaReduce . Data.transform letNonRecSubst)
                               $ caseInlineT dflags (mkApps newExpr remainingArgs)
-                newExpr''0 <- fmap (Data.transform (tryUnfoldAndReduceDict guts dflags)) $ Data.transformM (elimRepUnrep guts) (Data.transform letNonRecSubst (caseInlineT dflags newExpr'))
-                let newExpr'' = newExpr' --Data.transform betaReduce newExpr''0
+                -- newExpr''0 <- fmap (Data.transform (tryUnfoldAndReduceDict guts dflags)) $ Data.transformM (elimRepUnrep guts) (Data.transform (caseInlineT dflags) newExpr')
+                let newExpr''0 = onAppFun (tryUnfoldAndReduceDict guts dflags) $ Data.transform (caseInlineT dflags) newExpr' --Data.transform betaReduce newExpr''0
+                -- newExpr'' <- lift $ simpleOptExpr' newExpr''0
+
+                newExpr'' <- Data.transformM (elimRepUnrep guts) newExpr''0
+
+                liftIO $ putStrLn $ "remainingArgs = " ++ showPpr dflags remainingArgs
 
                 -- liftIO $ putStrLn $ "e'          = " ++ showPpr dflags e'
                 -- liftIO $ putStrLn $ "simpleE'    = " ++ showPpr dflags simplE'
