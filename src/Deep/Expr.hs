@@ -190,7 +190,7 @@ data GPUExp t where
 
   TailRec :: forall a b. (GPURep a, GPURep b) => GPUExp (b -> Iter a b) -> GPUExp (b -> a)
 
-  ConstructRep :: GPUExp (GPURepTy a) -> GPUExp a
+  ConstructRep :: GPURep a => GPUExp (GPURepTy a) -> GPUExp a
 
   Construct :: a -> GPUExp a
   ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
@@ -243,6 +243,7 @@ transformE tr0 = tr
     go (Ord x) = Ord (tr x)
     go e@(CharLit _) = e
     go e@UnitExp = e
+    go e@(ConstructRep _) = e
 
 transformEA :: forall a m. Monad m
   => (forall r. GPUExp r -> m (GPUExp r)) -> GPUExp a -> m (GPUExp a)
@@ -290,6 +291,7 @@ transformEA tr0 = tr
     go (Ord x) = Ord <$> (tr x)
     go e@(CharLit _) = pure e
     go e@UnitExp = pure e
+    go e@(ConstructRep _) = pure e
 
 -- foldEM :: forall a b m. Monad m => (forall x. GPUExp x -> b -> m b) -> b -> GPUExp a -> m b
 -- foldEM f z = go
@@ -661,6 +663,8 @@ gpuAbsEnv env e@(NullaryMatch {}) = MkProdMatch (prodMatchAbs env e)
 
 gpuAbsEnv env (FstExp x) = fst (gpuAbsEnv env x)
 gpuAbsEnv env (SndExp x) = snd (gpuAbsEnv env x)
+
+gpuAbsEnv env (ConstructRep x) = unrep' $ gpuAbsEnv env x
 
 gpuAbsEnv env (Lam (name :: Name a) (body :: GPUExp b)) = \(arg :: a) ->
 

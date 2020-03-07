@@ -196,6 +196,7 @@ getFVs = (`execState` []) . go
     go (Ord x) = go x
     go (CharLit {}) = pure ()
     go UnitExp = pure ()
+    go (ConstructRep x) = go x
 
 
 -- | Precondition: The maximum unique of all the variables must be
@@ -247,6 +248,7 @@ getVarCount = getMax . execWriter . go
     go (Ord x) = go x
     go (CharLit {}) = pure ()
     go UnitExp = pure ()
+    go (ConstructRep x) = go x
 
 collectLambdas :: GPUExp a -> [SomeLambda]
 collectLambdas = execWriter . go
@@ -291,6 +293,7 @@ collectLambdas = execWriter . go
     go (Ord x) = go x
     go (CharLit {}) = pure ()
     go UnitExp = pure ()
+    go (ConstructRep x) = go x
 
 mkLambda :: Bool -> SomeName -> GPUExp a -> SomeLambda
 mkLambda isTailRec (SomeName argName) body =
@@ -410,6 +413,7 @@ mainCode body =
     ]
 
 genExp :: HasCallStack => GPUExp a -> CName -> CodeGen CCode
+genExp (ConstructRep x) resultName = genExp x resultName
 genExp (Var (Name n)) resultName = do
   nCName <- cg_lookup n
 
