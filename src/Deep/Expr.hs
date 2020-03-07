@@ -190,6 +190,8 @@ data GPUExp t where
 
   TailRec :: forall a b. (GPURep a, GPURep b) => GPUExp (b -> Iter a b) -> GPUExp (b -> a)
 
+  ConstructRep :: GPUExp (GPURepTy a) -> GPUExp a
+
   Construct :: a -> GPUExp a
   ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
@@ -342,28 +344,45 @@ class GPURep t where
 
   -- | This should be unapplied type (without type arguments)
 
+  construct :: t -> GPUExp (GPURepTy t)
+
+  -- NOTE: The INLINABLE pragmas make the unfoldings available to the Core
+  -- plugin
+
+  default construct :: (GPURep (GPURepTy t), GPURepTy t ~ t, GPURepTy (Rep t Void) ~ GPURepTy (GPURepTy (Rep t Void))) => t -> GPUExp (GPURepTy t)
+  construct = construct . (from :: t -> Rep t Void)
+  {-# INLINABLE construct #-}
+
   rep :: t -> GPUExp t
 
   default rep :: (GPURep (GPURepTy t)) => t -> GPUExp t
-  rep = Repped . rep'
+  rep = ConstructRep . construct
+  {-# INLINABLE rep #-}
 
   rep' :: t -> GPURepTy t
 
-  default rep' :: (Generic t, GenericRep (Rep t Void), GPURepTy t ~ (GenericRepTy (Rep t Void)))
+  default rep' :: (Generic t, GPURepTy t ~ GPURepTy (Rep t Void), GPURep (Rep t Void))
     => t -> GPURepTy t
-  rep' = genericRep' . (from :: t -> Rep t Void)
+  rep' = rep' . (from :: t -> Rep t Void)
+  {-# INLINABLE rep' #-}
 
 
   unrep' :: GPURepTy t -> t
 
-  default unrep' :: (Generic t, GenericRep (Rep t Void), GPURepTy t ~ (GenericRepTy (Rep t Void)))
+  default unrep' :: (Generic t, GPURepTy t ~ GPURepTy (Rep t Void), GPURep (Rep t Void))
     => GPURepTy t -> t
-  unrep' = (to :: Rep t Void -> t) . genericUnrep'
+  unrep' = (to :: Rep t Void -> t) . unrep'
+  {-# INLINABLE unrep' #-}
 
 -- TODO: Does this work for what we need (dealing with constructors for
 -- user defined types)?
-construct :: (GPURep a, GPURep (GPURepTy a)) => a -> GPUExp (GPURepTy a)
-construct = rep . rep'
+
+-- construct :: forall a x. (GPURep a, GPURep x, GPURepTy a ~ x) => a -> GPUExp a
+-- construct = _ . rep . rep'
+
+-- construct :: a -> GPUExp a
+-- construct = Repped . rep'
+
 -- construct :: (GPURep a, GPURep (GPURepTy a)) => GPUExp a -> GPUExp (GPURepTy a)
 -- construct (Repped e) = rep e
 -- construct _ = error "construct: Given non-Repped argument"
@@ -435,12 +454,14 @@ instance (GPURep a, GPURep b, GPURep c, GPURep d) => GPURep (a, b, c, d) where
 instance (GPURep a, GPURep b) => GPURep (Iter a b) where
 
 -- XXX: Should this instance exist?
-instance (GPURep a, GPURep b) => GPURep (a -> b) where
-  type GPURepTy (a -> b) = GPURepTy a -> GPURepTy b
+-- instance (GPURep a, GPURep b) => GPURep (a -> b) where
+--   type GPURepTy (a -> b) = GPURepTy a -> GPURepTy b
 
-  rep = Construct
-  rep' f x = rep' (f (unrep' x))
-  unrep' = undefined
+--   construct = _
+
+--   rep = Construct
+--   rep' f x = rep' (f (unrep' x))
+--   unrep' = undefined
 
 -- Generics instances
 instance (GPURep (f p), GPURep (GPURepTy (f p))) => GPURep (M1 i c f p) where
@@ -453,7 +474,9 @@ instance (GPURep (f p), GPURep (GPURepTy (f p))) => GPURep (M1 i c f p) where
 instance (GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy (q x))) => GPURep ((p :+: q) x) where
   type GPURepTy ((p :+: q) x) =  Either (GPURepTy (p x)) (GPURepTy (q x))
 
-  rep = Repped . rep'
+  -- rep = Repped . rep'
+
+  -- rep (L1 x) = LeftExp (rep x)
 
   rep' (L1 x) = Left (rep' x)
   rep' (R1 y) = Right (rep' y)
@@ -493,21 +516,28 @@ instance GPURep () where
 class GenericRep repr where
     type GenericRepTy repr
 
+    genericRep :: repr -> GPUExp (GenericRepTy repr)
+
     genericRep' :: repr -> GenericRepTy repr
     genericUnrep' :: GenericRepTy repr -> repr
 
-instance forall p q. (GPURep (p Void), GPURep (q Void)) =>
+instance forall p q. (GPURep (p Void), GPURep (q Void), GenericRep (p Void), GenericRep (q Void), GPURepTy (p Void) ~ GenericRepTy (p Void), GPURepTy (q Void) ~ GenericRepTy (q Void)) =>
   GenericRep ((p :+: q) Void) where
 
     type GenericRepTy ((p :+: q) Void) = Either (GPURepTy (p Void)) (GPURepTy (q Void))
 
+    genericRep (L1 x) = LeftExp (genericRep x)
+    genericRep (R1 x) = RightExp (genericRep x)
+
     genericRep' = bimap rep' rep' . toCanonical
     genericUnrep' = fromCanonical . bimap unrep' unrep'
 
-instance (GPURep (p Void), GPURep (q Void)) =>
+instance (GPURep (p Void), GPURep (q Void), GenericRep (p Void), GenericRep (q Void), GPURepTy (p Void) ~ GenericRepTy (p Void), GPURepTy (q Void) ~ GenericRepTy (q Void)) =>
   GenericRep ((p :*: q) Void) where
 
     type GenericRepTy ((p :*: q) Void) = (GPURepTy (p Void), GPURepTy (q Void))
+
+    genericRep (x :*: y) = PairExp (genericRep x) (genericRep y)
 
     genericRep' = bimap rep' rep' . toCanonical
     genericUnrep' = fromCanonical . bimap unrep' unrep'
@@ -516,8 +546,26 @@ instance (GenericRep (f Void)) =>
   GenericRep (M1 i c f Void) where
     type GenericRepTy (M1 i c f Void) = GenericRepTy (f Void)
 
+    genericRep = genericRep . unM1
+
     genericRep' = genericRep' . unM1
     genericUnrep' = M1 . genericUnrep'
+
+instance GenericRep (U1 x) where
+    type GenericRepTy (U1 x) = ()
+
+    genericRep _ = UnitExp
+
+    genericRep' _ = ()
+    genericUnrep' () = U1
+
+instance GenericRep (K1 i c f) where
+    type GenericRepTy (K1 i c f) = c
+
+    genericRep = undefined
+
+    genericRep' = unK1
+    genericUnrep' = K1
 
 the :: a -> a
 the = id

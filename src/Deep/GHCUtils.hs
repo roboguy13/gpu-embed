@@ -72,6 +72,8 @@ import           Data.List
 import           Data.Generics.Uniplate.Operations
 import qualified Data.Generics.Uniplate.DataOnly as Data
 
+import Debug.Trace
+
 -- | Build a dictionary for the given
 buildDictionary :: HasCallStack => ModGuts -> Id -> CoreM (Id, [CoreBind])
 buildDictionary guts evar = do
@@ -654,41 +656,95 @@ unqualifiedName :: NamedThing nm => nm -> String
 unqualifiedName = getOccString
 
 -- Adapted from getUnfoldingsT in HERMIT:
-getUnfolding :: ModGuts -> DynFlags -> Id -> CoreExpr
-getUnfolding guts dflags i =
+getUnfolding_either :: ModGuts -> DynFlags -> Id -> Either String CoreExpr
+getUnfolding_either guts dflags i =
   case lookup i (flattenBinds (mg_binds guts)) of
     Nothing ->
       case unfoldingInfo (idInfo i) of
-        CoreUnfolding { uf_tmpl = uft } -> uft
-        dunf@(DFunUnfolding {})         -> dFunExpr dunf
+        CoreUnfolding { uf_tmpl = uft } -> Right uft
+        dunf@(DFunUnfolding {})         -> Right $ dFunExpr dunf
         _ -> case idDetails i of
               ClassOpId cls -> do
                 let selectors = zip [ idName s | s <- classAllSelIds cls] [0..]
                     msg = getOccString i ++ " is not a method of " ++ getOccString cls ++ "."
                     idx = maybe (error msg) id $ lookup (idName i) selectors
-                mkDictSelRhs cls idx
-              _             -> error $ "Cannot find unfolding for " ++ showPpr dflags i
-    Just e -> e
+                    r = mkDictSelRhs cls idx
+                trace ("mkDictSelRhs = "  ++ showPpr dflags r)
+                      (Right r)
+              idDet           -> Left $ "Cannot find unfolding for " ++ showPpr dflags i
+                                        ++ "  (idDetails=" ++ showPpr dflags idDet ++ ")"
+    Just e -> Right e
   where
     flattenBinds [] = []
     flattenBinds (NonRec b e:rest) = (b, e) : flattenBinds rest
     flattenBinds (Rec bs:rest) = bs ++ flattenBinds rest
+
+getUnfolding :: ModGuts -> DynFlags -> Id -> CoreExpr
+getUnfolding guts dflags i =
+  case getUnfolding_either guts dflags i of
+    Left e -> error e
+    Right x -> x
 
 -- | Transform scrutinee of a case. If not a 'case', leave it alone.
 onScrutinee :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
 onScrutinee f (Case scrutinee wild ty alts) = Case (f scrutinee) wild ty alts
 onScrutinee _ e = e
 
+isDictVar :: Var -> Bool
+isDictVar v =
+  let str = occNameString (occName v)
+  in
+  length str >= 2 && (take 2 str == "$f" || take 2 str == "$d" || take 2 str == "C:")
+
+isDict :: CoreExpr -> Bool
+isDict (Var v) = isDictVar v
+isDict e       = tcIsConstraintKind (tcTypeKind (exprType e))
+
+isClassVar :: CoreExpr -> Bool
+isClassVar (Var v) =
+  let str = occNameString (occName v)
+  in
+  length str >= 2 && take 2 str == "C:"
+isClassVar _ = False
+
+isDictNotClass :: DynFlags -> CoreExpr -> Bool
+isDictNotClass dflags e =
+  isDict e && not (isClassVar e)
+
+-- | For use with Uniplate. Example:
+-- transform (applyWhen predicate fn) expr
+applyWhen :: (a -> Bool) -> (a -> a) -> a -> a
+applyWhen p f x
+  | p x       = f x
+  | otherwise = x
+
 -- | $fDict x0 x1 ... xN    ==>   [unfolding of $fDict] x0 x1 ... xN
+unfoldAndReduceDict_either :: ModGuts -> DynFlags -> CoreExpr -> Either String CoreExpr
+unfoldAndReduceDict_either guts dflags e =
+  case collectArgs e of
+    (fnE@(Var dictFn), dictArgs) ->
+      if isDictNotClass dflags fnE
+        then
+          case getUnfolding_either guts dflags dictFn of
+            Left err -> Left err
+            Right dictFnUnfolding ->
+              case betaReduceAll dictFnUnfolding dictArgs of
+                (fn, args) -> Right $ mkApps fn args
+        else
+          Left "unfoldAndReduceDict_either: not isDictNotClass"
+    _ -> Left "unfoldAndReduceDict_either: not of form App (... (App (Var v) x) ...) z"
+
+tryUnfoldAndReduceDict :: ModGuts -> DynFlags -> CoreExpr -> CoreExpr
+tryUnfoldAndReduceDict guts dflags e =
+  case unfoldAndReduceDict_either guts dflags e of
+    Right e' -> e'
+    _ -> e
+
 unfoldAndReduceDict :: ModGuts -> DynFlags -> CoreExpr -> CoreExpr
 unfoldAndReduceDict guts dflags e =
-  case collectArgs e of
-    (Var dictFn, dictArgs) ->
-      let dictFnUnfolding = getUnfolding guts dflags dictFn
-      in
-      case betaReduceAll dictFnUnfolding dictArgs of
-        (fn, args) -> mkApps fn args
-    _ -> error "unfoldDict"
+  case unfoldAndReduceDict_either guts dflags e of
+    Right e' -> e'
+    Left err -> error ("unfoldAndReduceDict: " ++ err)
 
 -- | This should, among other things, reduce a case-of-known-constructor
 simpleOptExpr' :: CoreExpr -> CoreM CoreExpr
