@@ -11,6 +11,10 @@ module Deep.GHCUtils where
 
 import           GhcPlugins hiding (freeVarsBind)
 
+import           CoreSubst
+import           Unique
+import           PrelNames
+
 import           TcRnTypes
 import           TcSimplify
 import           TcMType
@@ -785,6 +789,14 @@ betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])
 betaReduceAll (Lam v body) (a:as) = betaReduceAll (substCoreExpr v a body) as
 betaReduceAll e            as     = (e,as)
 
+betaReduce :: CoreExpr -> CoreExpr
+betaReduce x =
+  let (f, args) = collectArgs x
+  in
+  case args of
+    [] -> x
+    _  -> uncurry mkApps $ betaReduceAll f args
+
 -- | Find all locally defined free variables in an expression.
 localFreeVarsExpr :: CoreExpr -> VarSet
 localFreeVarsExpr = filterVarSet isLocalVar . freeVarsExpr
@@ -862,4 +874,154 @@ isSatisfiablePred :: PredType -> Bool
 isSatisfiablePred ty = case getClassPredTys_maybe ty of
     Just (_, tys@(_:_)) -> all isTyVarTy tys
     _                   -> isTyVarTy ty
+
+-- Adapted from CoreOpt and given a name (in the GHC API):
+caseInlineT :: DynFlags -> CoreExpr -> CoreExpr
+caseInlineT dflags = Data.transform (caseInline dflags)
+
+caseInline :: DynFlags -> CoreExpr -> CoreExpr
+caseInline dflags expr =
+  caseInline0 dflags init_subst expr
+  where
+    init_subst = mkEmptySubst (mkInScopeSet (exprFreeVars expr))
+
+caseInline0 :: DynFlags -> Subst -> CoreExpr -> CoreExpr
+caseInline0 dflags subst expr = go expr
+  where
+
+    -- subst = SOE { soe_dflags = dflags
+    --             , soe_inl = emptyVarEnv
+    --             , soe_subst = init_subst }
+
+    inl = emptyVarEnv
+
+    in_scope     = substInScope subst
+
+    in_scope_env = (in_scope, simpleUnfoldingFun)
+
+    go (Case e b ty as)
+         -- See Note [Getting the map/coerce RULE to work]
+        | isDeadBinder b
+        , Just (con, _tys, es) <- exprIsConApp_maybe in_scope_env e'
+        , Just (altcon, bs, rhs) <- findAlt (DataAlt con) as
+        = case altcon of
+            DEFAULT -> go rhs
+            _       -> foldr wrapLet (caseInline0 dflags env' rhs) mb_prs
+              where
+                (env', mb_prs) = mapAccumL simple_out_bind subst $
+                                 zipEqual "simpleOptExpr" bs es
+      where
+         e' = go e
+         (subst', b') = subst_opt_bndr subst b
+    go e = e
+
+wrapLet :: Maybe (Id,CoreExpr) -> CoreExpr -> CoreExpr
+wrapLet Nothing      body = body
+wrapLet (Just (b,r)) body = Let (NonRec b r) body
+
+simpleUnfoldingFun :: IdUnfoldingFun
+simpleUnfoldingFun id
+  | isAlwaysActive (idInlineActivation id) = idUnfolding id
+  | otherwise                              = noUnfolding
+
+simple_out_bind :: Subst -> (InVar, OutExpr)
+                -> (Subst, Maybe (OutVar, OutExpr))
+simple_out_bind subst (in_bndr, out_rhs)
+  | Type out_ty <- out_rhs
+  = --ASSERT( isTyVar in_bndr )
+    ( CoreSubst.extendTvSubst subst in_bndr out_ty , Nothing)
+
+  | Coercion out_co <- out_rhs
+  = --ASSERT( isCoVar in_bndr )
+    ( CoreSubst.extendCvSubst subst in_bndr out_co , Nothing)
+
+  | otherwise
+  = simple_out_bind_pair subst in_bndr Nothing out_rhs
+                         (idOccInfo in_bndr) True False
+
+-------------------
+simple_out_bind_pair :: Subst
+                     -> InId -> Maybe OutId -> OutExpr
+                     -> OccInfo -> Bool -> Bool
+                     -> (Subst, Maybe (OutVar, OutExpr))
+simple_out_bind_pair subst in_bndr mb_out_bndr out_rhs
+                     occ_info active stable_unf
+  | post_inline_unconditionally
+  = (  extendIdSubst subst in_bndr out_rhs 
+    , Nothing)
+
+  | otherwise
+  = ( env', Just (out_bndr, out_rhs) )
+  where
+    (env', bndr1) = case mb_out_bndr of
+                      Just out_bndr -> (subst, out_bndr)
+                      Nothing       -> subst_opt_bndr subst in_bndr
+    out_bndr = add_info env' in_bndr bndr1
+
+    post_inline_unconditionally :: Bool
+    post_inline_unconditionally
+       | not active                  = False
+       | isWeakLoopBreaker occ_info  = False -- If it's a loop-breaker of any kind, don't inline
+                                             -- because it might be referred to "earlier"
+       | stable_unf                  = False -- Note [Stable unfoldings and postInlineUnconditionally]
+       | isExportedId in_bndr        = False -- Note [Exported Ids and trivial RHSs]
+       | exprIsTrivial out_rhs       = True
+       | coercible_hack              = True
+       | otherwise                   = False
+
+    -- See Note [Getting the map/coerce RULE to work]
+    coercible_hack | (Var fun, args) <- collectArgs out_rhs
+                   , Just dc <- isDataConWorkId_maybe fun
+                   , dc `hasKey` heqDataConKey || dc `hasKey` coercibleDataConKey
+                   = all exprIsTrivial args
+                   | otherwise
+                   = False
+
+
+subst_opt_bndr :: Subst -> InVar -> (Subst, OutVar)
+subst_opt_bndr subst bndr
+  | isTyVar bndr  = ( subst_tv , tv')
+  | isCoVar bndr  = ( subst_cv , cv')
+  | otherwise     = subst_opt_id_bndr subst bndr
+  where
+    (subst_tv, tv') = CoreSubst.substTyVarBndr subst bndr
+    (subst_cv, cv') = CoreSubst.substCoVarBndr subst bndr
+
+subst_opt_id_bndr :: Subst -> InId -> (Subst, OutId)
+-- Nuke all fragile IdInfo, unfolding, and RULES;
+--    it gets added back later by add_info
+-- Rather like SimplEnv.substIdBndr
+--
+-- It's important to zap fragile OccInfo (which CoreSubst.substIdBndr
+-- carefully does not do) because simplOptExpr invalidates it
+
+subst_opt_id_bndr subst old_id
+  = (new_subst, new_id)
+  where
+    Subst in_scope id_subst tv_subst cv_subst = subst
+
+    id1    = uniqAway in_scope old_id
+    id2    = setIdType id1 (CoreSubst.substTy subst (idType old_id))
+    new_id = zapFragileIdInfo id2
+             -- Zaps rules, unfolding, and fragile OccInfo
+             -- The unfolding and rules will get added back later, by add_info
+
+    new_in_scope = in_scope `extendInScopeSet` new_id
+
+    no_change = new_id == old_id
+
+        -- Extend the substitution if the unique has changed,
+        -- See the notes with substTyVarBndr for the delSubstEnv
+    new_id_subst
+      | no_change = delVarEnv id_subst old_id
+      | otherwise = extendVarEnv id_subst old_id (Var new_id)
+
+    new_subst = Subst new_in_scope new_id_subst tv_subst cv_subst
+
+add_info :: Subst -> InVar -> OutVar -> OutVar
+add_info subst old_bndr new_bndr
+ | isTyVar old_bndr = new_bndr
+ | otherwise        = maybeModifyIdInfo mb_new_info new_bndr
+ where
+   mb_new_info = substIdInfo subst new_bndr (idInfo old_bndr)
 

@@ -386,7 +386,7 @@ isConstructor v
     case idDetails v of
       DataConWorkId {} -> True
       DataConWrapId {} -> True
-      _ -> False
+      _ -> trace ("is not constructor: " ++ occNameString (occName v)) False
 
 builtinConstructor :: Var -> Bool
 builtinConstructor v =
@@ -767,16 +767,18 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
             return (Var charLitId :@ expr)
 
-        go expr@(_ :@ _)
-          | Just (tys, dicts, constr, args) <- getConstructorApp_maybe expr,
-            True <- any (not . (hasExprTy' expTyCon)) args,
-            Nothing <- builtin constr,
-            not (hasExprTy expr) = do
-              dflags <- getDynFlags
-              -- liftIO $ putStrLn $ "[0] Handling: " ++ showPpr dflags expr
-              markedArgs <- mapM mark args
-              let constr' = mkApps (Var constr) (tys ++ dicts)
-              return (mkApps constr' markedArgs)
+        -- go expr@(_ :@ _)
+        --   | Just (tys, dicts, constr, args) <- getConstructorApp_maybe expr,
+        --     True <- any (not . (hasExprTy' expTyCon)) args,
+        --     Nothing <- builtin constr,
+        --     not (hasExprTy expr) = do
+        --       dflags <- getDynFlags
+
+        --       liftIO $ putStrLn $ "[0] Handling: " ++ showPpr dflags expr
+
+        --       markedArgs <- mapM mark args
+        --       let constr' = mkApps (Var constr) (tys ++ dicts)
+        --       return (mkApps constr' markedArgs)
 
         -- Handle constructors that are not builtins
         go expr@(_ :@ _)
@@ -842,19 +844,26 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- let Case scrutinee _ _ _ = expr2'
                 -- scrutinee' <- lift $ simpleOptExpr' scrutinee
 
-                let e' = onScrutinee (unfoldAndReduceDict guts dflags)
+                let e' = onScrutinee (Data.transform (tryUnfoldAndReduceDict guts dflags))
                              $ Data.transform letNonRecSubst fn
 
-                simplE' <- lift $ simpleOptExpr' e'
+                let simplE' = caseInlineT dflags e'
 
                 let e'Subst = Data.transform letNonRecSubst simplE'
-                    e'Dict  = unfoldAndReduceDict guts dflags e'Subst
+                    e'Dict  = Data.transform (tryUnfoldAndReduceDict guts dflags) e'Subst
 
                 let fnE = Data.transform letNonRecSubst
                                $ e'Dict
 
-                let (newExpr, _) = betaReduceAll fnE restArgs
-                newExpr' <- lift $ simpleOptExpr' newExpr
+                -- liftIO $ putStrLn $ "=====> restArgs = " ++ showPpr dflags restArgs
+
+                unreppedArgs <- mapM (applyUnrep guts <=< mark) args
+
+                let (newExpr, remainingArgs) = betaReduceAll fnE [mkApps constr' unreppedArgs]
+                let newExpr' = (Data.transform betaReduce . Data.transform letNonRecSubst)
+                              $ caseInlineT dflags (mkApps newExpr remainingArgs)
+                newExpr''0 <- fmap (Data.transform (tryUnfoldAndReduceDict guts dflags)) $ Data.transformM (elimRepUnrep guts) (Data.transform letNonRecSubst (caseInlineT dflags newExpr'))
+                let newExpr'' = newExpr' --Data.transform betaReduce newExpr''0
 
                 -- liftIO $ putStrLn $ "e'          = " ++ showPpr dflags e'
                 -- liftIO $ putStrLn $ "simpleE'    = " ++ showPpr dflags simplE'
@@ -870,8 +879,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 --         :@ repDictExpr
                 --         :@ (mkApps constr' markedArgs)
 
-                liftIO $ putStrLn $ "===converting to==> " ++ showPpr dflags newExpr'
-                return newExpr'
+                liftIO $ putStrLn $ "===converting to==> " ++ showPpr dflags newExpr''
+                return newExpr''
 
         go expr@(_ :@ _)
           | Nothing <- getConstructorApp_maybe expr
@@ -992,6 +1001,22 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 --               return (Var constructId :@ Type (exprType expr'') :@ expr'')
 
         go expr = return expr
+
+applyUnrep :: ModGuts -> CoreExpr -> MatchM CoreExpr
+applyUnrep guts e = do
+  unrepId <- lift $ findIdTH guts 'unrep
+  return (Var unrepId :@ Type (exprType e) :@ e)
+
+-- | rep (unrep x)  ==>  x
+elimRepUnrep :: ModGuts -> CoreExpr -> MatchM CoreExpr
+elimRepUnrep guts expr@(Var r :@ Type{} :@ dict :@ (Var u :@ Type{} :@ x)) = do
+  repId <- lift $ findIdTH guts 'rep
+  unrepId <- lift $ findIdTH guts 'unrep
+
+  if r == repId && u == unrepId
+    then return x
+    else return expr
+elimRepUnrep _guts expr = return expr
 
 transformProdMatch :: ModGuts -> (Expr Var -> MatchM (Expr Var)) -> Type -> Type -> Alt Var -> MatchM (Expr Var)
 transformProdMatch guts mark resultTy ty0_ (altCon@(DataAlt dataAlt), vars0, body0) = do

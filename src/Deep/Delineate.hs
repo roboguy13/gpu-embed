@@ -11,3 +11,7 @@ externalize :: GPURep a => a -> GPUExp a
 externalize = Construct
 {-# NOINLINE externalize #-}
 
+unrep :: GPUExp a -> a
+unrep = error "unrep called"
+{-# NOINLINE unrep #-}
+
