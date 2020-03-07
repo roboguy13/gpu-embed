@@ -250,16 +250,16 @@ example =
 {-# NOINLINE example #-}
 
 main :: IO ()
-main = putStrLn (genProgram cTest6)
-    -- do
-  -- let intList = Cons 10 (Cons 100 (Cons 1000 (Cons 10000 Nil)))
-  -- print (isEmpty Nil, isEmpty (Cons 1 Nil)
-    --     ,intListLength intList
-    --     ,intListSum intList
-    --     ,example
-    --     )
-  -- -- print $ realSum (ComplexPair (2 :+ 100) (3 :+ 10000))
-  -- -- putStrLn mandelbrotTestAscii
+main = --putStrLn (genProgram cTest6)
+    do
+  let intList = Cons 10 (Cons 100 (Cons 1000 (Cons 10000 Nil)))
+  print (isEmpty Nil, isEmpty (Cons 1 Nil)
+        ,intListLength intList
+        ,intListSum intList
+        ,example
+        )
+  -- print $ realSum (ComplexPair (2 :+ 100) (3 :+ 10000))
+  -- putStrLn mandelbrotTestAscii
 
 
 

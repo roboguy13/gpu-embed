@@ -446,7 +446,8 @@ instance (GPURep a, GPURep b) => GPURep (Either a b) where
   -- type GPURepTy (Either a b) = Either (GPURepTy a) (GPURepTy b)
   type GPURepTy (Either a b) = Either a b
 
-  construct = rep
+  construct (Left x) = LeftExp (rep x)
+  construct (Right y) = RightExp (rep y)
 
   rep (Left x) = LeftExp (rep x)
   rep (Right y) = RightExp (rep y)
@@ -458,7 +459,7 @@ instance (GPURep a, GPURep b) => GPURep (a, b) where
   -- type GPURepTy (a, b) =  (GPURepTy a, GPURepTy b)
   type GPURepTy (a, b) =  (a, b)
 
-  construct = rep
+  construct (x, y) = PairExp (rep x) (rep y)
 
   rep (x, y) = PairExp (rep x) (rep y) --uncurry PairExp
   rep' = id
@@ -471,14 +472,14 @@ instance (GPURep a, GPURep b, GPURep c, GPURep d) => GPURep (a, b, c, d) where
 instance (GPURep a, GPURep b) => GPURep (Iter a b) where
 
 -- XXX: Should this instance exist?
--- instance (GPURep a, GPURep b) => GPURep (a -> b) where
---   type GPURepTy (a -> b) = GPURepTy a -> GPURepTy b
+instance (GPURep a, GPURep b) => GPURep (a -> b) where
+  type GPURepTy (a -> b) = GPURepTy a -> GPURepTy b
 
---   construct = _
+  construct = error "construct for (a->b) instance called"
 
---   rep = Construct
---   rep' f x = rep' (f (unrep' x))
---   unrep' = undefined
+  rep = Construct
+  rep' f x = rep' (f (unrep' x))
+  unrep' = error "unrep' for (a->b) instance called"
 
 -- Generics instances
 instance (GPURep (f p), GPURep (GPURepTy (f p))) => GPURep (M1 i c f p) where
@@ -513,6 +514,10 @@ instance (GPURep c) => GPURep (K1 i c p) where
   type GPURepTy (K1 i c p) = c --GPURepTy c
 
   -- construct = construct . unK1
+
+  construct = rep . unK1
+
+  -- rep = _
 
   rep' (K1 x) = x
   unrep' = K1
@@ -582,7 +587,7 @@ instance GenericRep (U1 x) where
 instance GenericRep (K1 i c f) where
     type GenericRepTy (K1 i c f) = c
 
-    genericRep = undefined
+    genericRep = error "genericRep called for K1 instance"
 
     genericRep' = unK1
     genericUnrep' = K1

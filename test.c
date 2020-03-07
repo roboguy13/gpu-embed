@@ -18,6 +18,7 @@ typedef enum var_type_tag {
 , EXPR_STEP
 , EXPR_DONE
 , EXPR_UNBOXED
+, EXPR_COMPLEX     // Complex numbers
 } var_type_tag;
 
 struct closure_t;
@@ -99,7 +100,6 @@ x1.value = x4.value;
 
 var_t lam_1(var_t arg, struct closure_t* self) {
   var_t x5;
-
 closure_t* x6 = malloc(sizeof(closure_t));
 (*x6).fv_env = malloc(sizeof(var_t)*1);
 (*x6).fn = &lam_2;
@@ -221,7 +221,6 @@ x23.value = malloc(sizeof(var_t)*2);
 ((var_t*)(x23.value))[0] = x24;
 ((var_t*)(x23.value))[1] = x25;
 
-
 closure_t* x28 = malloc(sizeof(closure_t));
 (*x28).fv_env = malloc(sizeof(var_t)*0);
 (*x28).fn = &lam_0;
@@ -241,4 +240,3 @@ int main() {
   var_t r = top_level();
   printf("%d\n", *(int*)r.value);
 }
-

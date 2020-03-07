@@ -732,7 +732,7 @@ unfoldAndReduceDict_either guts dflags e =
                 (fn, args) -> Right $ mkApps fn args
         else
           Left "unfoldAndReduceDict_either: not isDictNotClass"
-    _ -> Left "unfoldAndReduceDict_either: not of form App (... (App (Var v) x) ...) z"
+    _ -> Left $ "unfoldAndReduceDict_either: not of form App (... (App (Var v) x) ...) z. Given: " ++ showPpr dflags e
 
 tryUnfoldAndReduceDict :: ModGuts -> DynFlags -> CoreExpr -> CoreExpr
 tryUnfoldAndReduceDict guts dflags e =
@@ -740,7 +740,7 @@ tryUnfoldAndReduceDict guts dflags e =
     Right e' -> e'
     _ -> e
 
-unfoldAndReduceDict :: ModGuts -> DynFlags -> CoreExpr -> CoreExpr
+unfoldAndReduceDict :: HasCallStack => ModGuts -> DynFlags -> CoreExpr -> CoreExpr
 unfoldAndReduceDict guts dflags e =
   case unfoldAndReduceDict_either guts dflags e of
     Right e' -> e'
