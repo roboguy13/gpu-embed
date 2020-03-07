@@ -782,92 +782,96 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
         go expr@(_ :@ _)
           | Just (tys, dicts, constr, args) <- getConstructorApp_maybe expr,
             Nothing <- builtin constr,
-            not (hasExprTy expr) = do
+            not (hasExprTy expr),
+            not (isDict (Var constr)) = do
 
             dflags <- getDynFlags
+            constructRepId <- lift $ findIdTH guts 'ConstructRep
 
-            liftIO $ putStrLn ""
-            liftIO $ putStrLn $ "Handling constructor: " ++ showPpr dflags constr
-            liftIO $ putStrLn $ "  ==> with args:      " ++ showPpr dflags args
-            liftIO $ putStrLn ""
+            if constr == constructRepId
+              then return expr
+              else do
 
-            repTyCon <- lift $ findTyConTH guts ''GPURep
-            repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
+                liftIO $ putStrLn ""
+                liftIO $ putStrLn $ "Handling constructor: " ++ showPpr dflags constr
+                liftIO $ putStrLn $ "  ==> with args:      " ++ showPpr dflags args
+                liftIO $ putStrLn ""
 
-            dflags <- lift $ getDynFlags
+                repTyCon <- lift $ findTyConTH guts ''GPURep
+                repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
 
-            repDictExpr <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [exprType expr])
-            repDictRepTy <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [mkTyConApp repTyTyCon [exprType expr]])
-            repId <- lift $ findIdTH guts 'rep
-            -- constructFnId <- lift $ findIdTH guts 'construct
+                dflags <- lift $ getDynFlags
 
-            let constr' = mkApps (Var constr) (tys ++ dicts)
-            let constr'Type = exprType constr'
+                repDictExpr <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [exprType expr])
+                repDictRepTy <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [mkTyConApp repTyTyCon [exprType expr]])
+                repId <- lift $ findIdTH guts 'rep
+                -- constructFnId <- lift $ findIdTH guts 'construct
 
-            -- markedConstr' <- mark constr'
-            markedArgs <- mapM mark args
+                let constr' = mkApps (Var constr) (tys ++ dicts)
+                let constr'Type = exprType constr'
 
-            tc@(co, ty') <- lift $ computeRepTypeCo guts (exprType expr)
+                -- markedConstr' <- mark constr'
+                markedArgs <- mapM mark args
 
-            -- liftIO $ putStrLn ""
-            -- liftIO $ putStrLn $ "+++++++++ tc = " ++ showPpr dflags tc
-            -- liftIO $ putStrLn ""
+                tc@(co, ty') <- lift $ computeRepTypeCo guts (exprType expr)
 
-            let repUnfolding = getUnfolding guts dflags repId
+                -- liftIO $ putStrLn ""
+                -- liftIO $ putStrLn $ "+++++++++ tc = " ++ showPpr dflags tc
+                -- liftIO $ putStrLn ""
 
-            let (fn, restArgs) = betaReduceAll
-                                   repUnfolding
-                                     [ Type (exprType expr)
-                                     , repDictExpr
-                                     , (mkApps constr' args)
-                                     ]
+                let repUnfolding = getUnfolding guts dflags repId
 
-            let expr2' = Data.transform letNonRecSubst fn
+                let (fn, restArgs) = betaReduceAll
+                                       repUnfolding
+                                         [ Type (exprType expr)
+                                         , repDictExpr
+                                         , (mkApps constr' args)
+                                         ]
 
-            liftIO $ putStrLn $ "++++++++++++> " ++ showPpr dflags expr2'
-            liftIO $ putStrLn $ "############> " ++ showPpr dflags (mkApps fn restArgs)
-            -- liftIO $ putStrLn $ "############> "
-            --                      ++ showPpr dflags (mkApps repUnfolding
-            --                                   [ Type (exprType expr)
-            --                                   , repDictExpr
-            --                                   , (mkApps constr' args)
-            --                                   ])
+                let expr2' = Data.transform letNonRecSubst fn
 
-            -- let Case scrutinee _ _ _ = expr2'
-            -- scrutinee' <- lift $ simpleOptExpr' scrutinee
+                -- liftIO $ putStrLn $ "++++++++++++> " ++ showPpr dflags expr2'
+                -- liftIO $ putStrLn $ "############> " ++ showPpr dflags (mkApps fn restArgs)
+                -- liftIO $ putStrLn $ "############> "
+                --                      ++ showPpr dflags (mkApps repUnfolding
+                --                                   [ Type (exprType expr)
+                --                                   , repDictExpr
+                --                                   , (mkApps constr' args)
+                --                                   ])
 
-            let e' = onScrutinee (unfoldAndReduceDict guts dflags)
-                         $ Data.transform letNonRecSubst fn
+                -- let Case scrutinee _ _ _ = expr2'
+                -- scrutinee' <- lift $ simpleOptExpr' scrutinee
 
-            simplE' <- lift $ simpleOptExpr' e'
+                let e' = onScrutinee (unfoldAndReduceDict guts dflags)
+                             $ Data.transform letNonRecSubst fn
 
-            let e'Subst = Data.transform letNonRecSubst simplE'
-                e'Dict  = unfoldAndReduceDict guts dflags e'Subst
+                simplE' <- lift $ simpleOptExpr' e'
 
-            let fnE = Data.transform letNonRecSubst
-                           $ e'Dict
+                let e'Subst = Data.transform letNonRecSubst simplE'
+                    e'Dict  = unfoldAndReduceDict guts dflags e'Subst
 
-            markedRestArgs <- mapM mark restArgs
+                let fnE = Data.transform letNonRecSubst
+                               $ e'Dict
 
-            let (newExpr, _) = betaReduceAll fnE markedRestArgs
-            newExpr' <- lift $ simpleOptExpr' newExpr
+                let (newExpr, _) = betaReduceAll fnE restArgs
+                newExpr' <- lift $ simpleOptExpr' newExpr
 
-            liftIO $ putStrLn $ "e'          = " ++ showPpr dflags e'
-            liftIO $ putStrLn $ "simpleE'    = " ++ showPpr dflags simplE'
-            liftIO $ putStrLn $ "e'Subst     = " ++ showPpr dflags e'Subst
-            liftIO $ putStrLn $ "e'Dict      = " ++ showPpr dflags e'Dict
-            liftIO $ putStrLn $ "fnE         = " ++ showPpr dflags fnE
-            liftIO $ putStrLn $ "marked args = " ++ showPpr dflags markedRestArgs
-            liftIO $ putStrLn $ "===========> " ++ showPpr dflags newExpr
+                -- liftIO $ putStrLn $ "e'          = " ++ showPpr dflags e'
+                -- liftIO $ putStrLn $ "simpleE'    = " ++ showPpr dflags simplE'
+                -- liftIO $ putStrLn $ "e'Subst     = " ++ showPpr dflags e'Subst
+                -- liftIO $ putStrLn $ "e'Dict      = " ++ showPpr dflags e'Dict
+                -- liftIO $ putStrLn $ "fnE         = " ++ showPpr dflags fnE
+                -- liftIO $ putStrLn $ "marked args = " ++ showPpr dflags markedRestArgs
+                -- liftIO $ putStrLn $ "===========> " ++ showPpr dflags newExpr
 
-            -- let expr2 =
-            --       Var repId
-            --         :@ Type (exprType expr)
-            --         :@ repDictExpr
-            --         :@ (mkApps constr' markedArgs)
+                -- let expr2 =
+                --       Var repId
+                --         :@ Type (exprType expr)
+                --         :@ repDictExpr
+                --         :@ (mkApps constr' markedArgs)
 
-            liftIO $ putStrLn $ "===converting to==> " ++ showPpr dflags newExpr'
-            return newExpr'
+                liftIO $ putStrLn $ "===converting to==> " ++ showPpr dflags newExpr'
+                return newExpr'
 
         go expr@(_ :@ _)
           | Nothing <- getConstructorApp_maybe expr

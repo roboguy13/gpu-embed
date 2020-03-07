@@ -669,8 +669,8 @@ getUnfolding_either guts dflags i =
                     msg = getOccString i ++ " is not a method of " ++ getOccString cls ++ "."
                     idx = maybe (error msg) id $ lookup (idName i) selectors
                     r = mkDictSelRhs cls idx
-                trace ("mkDictSelRhs = "  ++ showPpr dflags r)
-                      (Right r)
+                -- trace ("mkDictSelRhs = "  ++ showPpr dflags r)
+                (Right r)
               idDet           -> Left $ "Cannot find unfolding for " ++ showPpr dflags i
                                         ++ "  (idDetails=" ++ showPpr dflags idDet ++ ")"
     Just e -> Right e
