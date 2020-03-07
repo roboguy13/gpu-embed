@@ -787,6 +787,9 @@ substCoreAlt v e alt = let (con, vs, rhs) = alt
 -- | Beta-reduce as many lambda-binders as possible.
 betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])
 betaReduceAll (Lam v body) (a:as) = betaReduceAll (substCoreExpr v a body) as
+betaReduceAll (Cast (Lam v body) co) (a:as)
+  | Just (argTy, resTy) <- splitFunCo_maybe co =
+      betaReduceAll (Cast (substCoreExpr v a body) resTy) as
 betaReduceAll e            as     = (e,as)
 
 betaReduce :: CoreExpr -> CoreExpr
@@ -901,23 +904,49 @@ caseInline0 dflags subst expr = go expr
 
     go (Case e b ty as)
          -- See Note [Getting the map/coerce RULE to work]
-        | isDeadBinder b
+        -- | isDeadBinder b
+        | not (varUnique b `elemVarSetByKey` altFvs)
         , Just (con, _tys, es) <- exprIsConApp_maybe in_scope_env e'
         , Just (altcon, bs, rhs) <- findAlt (DataAlt con) as
-        = case altcon of
+        = trace "!!!!!!!!!!!!!!!!!!!Case" $ case altcon of
             DEFAULT -> go rhs
-            _       -> foldr wrapLet (caseInline0 dflags env' rhs) mb_prs
+            _       -> foldr substInto (caseInline0 dflags env' rhs) mb_prs
               where
                 (env', mb_prs) = mapAccumL simple_out_bind subst $
                                  zipEqual "simpleOptExpr" bs es
+
+         -- Note [Getting the map/coerce RULE to work]
+        -- | isDeadBinder b
+        | not (varUnique b `elemVarSetByKey` altFvs)
+        , [(DEFAULT, _, rhs)] <- as
+        , isCoVarType (varType b)
+        , (Var fun, _args) <- collectArgs e
+        , fun `hasKey` coercibleSCSelIdKey
+           -- without this last check, we get #11230
+        = go rhs
+
+        | otherwise
+        = Case e' b' (CoreSubst.substTy subst ty)
+                     (map (go_alt subst') as)
       where
+         altFvs = unionVarSets $ map (\(_, _, rhs) -> exprFreeVars rhs) as
          e' = go e
          (subst', b') = subst_opt_bndr subst b
     go e = e
 
-wrapLet :: Maybe (Id,CoreExpr) -> CoreExpr -> CoreExpr
-wrapLet Nothing      body = body
-wrapLet (Just (b,r)) body = Let (NonRec b r) body
+    go_alt env (con, bndrs, rhs)
+      = (con, bndrs', caseInline0 dflags subst' rhs)
+      where
+        (subst', bndrs') = subst_opt_bndrs env bndrs
+
+-- | Skip wrapping in a 'let' and just substitute
+substInto :: Maybe (Id, CoreExpr) -> CoreExpr -> CoreExpr
+substInto Nothing body = body
+substInto (Just (b, r)) body = substCoreExpr b r body
+
+-- wrapLet :: Maybe (Id,CoreExpr) -> CoreExpr -> CoreExpr
+-- wrapLet Nothing      body = body
+-- wrapLet (Just (b,r)) body = Let (NonRec b r) body
 
 simpleUnfoldingFun :: IdUnfoldingFun
 simpleUnfoldingFun id
@@ -977,6 +1006,8 @@ simple_out_bind_pair subst in_bndr mb_out_bndr out_rhs
                    | otherwise
                    = False
 
+subst_opt_bndrs :: Subst -> [InVar] -> (Subst, [OutVar])
+subst_opt_bndrs subst bndrs = mapAccumL subst_opt_bndr subst bndrs
 
 subst_opt_bndr :: Subst -> InVar -> (Subst, OutVar)
 subst_opt_bndr subst bndr
