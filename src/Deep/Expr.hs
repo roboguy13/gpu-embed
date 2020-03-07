@@ -349,7 +349,7 @@ class GPURep t where
   -- NOTE: The INLINABLE pragmas make the unfoldings available to the Core
   -- plugin
 
-  default construct :: (GPURep (GPURepTy t), GPURepTy t ~ t, GPURepTy (Rep t Void) ~ GPURepTy (GPURepTy (Rep t Void))) => t -> GPUExp (GPURepTy t)
+  default construct :: (Generic t, GPURep (Rep t Void), GPURep (GPURepTy t), GPURepTy (Rep t Void) ~ GPURepTy t) => t -> GPUExp (GPURepTy t)
   construct = construct . (from :: t -> Rep t Void)
   {-# INLINABLE construct #-}
 
@@ -392,27 +392,35 @@ class GPURep t where
 
 instance GPURep Int where
   type GPURepTy Int = Int
+  construct = Lit
   rep = Lit
   rep' = id
   unrep' = id
 instance GPURep Integer where
   type GPURepTy Integer = Integer
+  construct = Lit
   rep = Lit
   rep' = id
   unrep' = id
 instance GPURep Float where
   type GPURepTy Float = Float
+  construct = Lit
   rep = Lit
   rep' = id
   unrep' = id
 instance GPURep Double where
   type GPURepTy Double = Double
+  construct = Lit
   rep = Lit
   rep' = id
   unrep' = id
 
 instance GPURep Bool where
   type GPURepTy Bool = Bool
+
+  construct True = TrueExp
+  construct False = FalseExp
+
   rep False = FalseExp
   rep True  = TrueExp
   rep' = id
@@ -420,6 +428,9 @@ instance GPURep Bool where
 
 instance GPURep Char where
   type GPURepTy Char = Char
+
+  construct = CharLit
+
   rep c = CharLit c
   rep' = id
   unrep' = id
@@ -467,16 +478,16 @@ instance (GPURep a, GPURep b) => GPURep (Iter a b) where
 instance (GPURep (f p), GPURep (GPURepTy (f p))) => GPURep (M1 i c f p) where
   type GPURepTy (M1 i c f p) = GPURepTy (f p)
 
-  rep = Repped . rep'
+  construct = construct . unM1
+
   rep' (M1 x) = rep' x
   unrep' = M1 . unrep'
 
 instance (GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy (q x))) => GPURep ((p :+: q) x) where
   type GPURepTy ((p :+: q) x) =  Either (GPURepTy (p x)) (GPURepTy (q x))
 
-  -- rep = Repped . rep'
-
-  -- rep (L1 x) = LeftExp (rep x)
+  construct (L1 x) = LeftExp (construct x)
+  construct (R1 x) = RightExp (construct x)
 
   rep' (L1 x) = Left (rep' x)
   rep' (R1 y) = Right (rep' y)
@@ -487,20 +498,23 @@ instance (GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy 
 instance (GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy (q x))) => GPURep ((p :*: q) x) where
   type GPURepTy ((p :*: q) x) =  (GPURepTy (p x), GPURepTy (q x))
 
+  construct (x :*: y) = PairExp (construct x) (construct y)
+
   rep' (x :*: y) = (rep' x, rep' y)
   unrep' (x, y) = (unrep' x :*: unrep' y)
 
-instance GPURep c => GPURep (K1 i c p) where
+instance (GPURep c) => GPURep (K1 i c p) where
   type GPURepTy (K1 i c p) = c --GPURepTy c
 
-  rep = Repped . rep'
+  -- construct = construct . unK1
 
-  rep' (K1 x) = x --rep' x
+  rep' (K1 x) = x
   unrep' = K1
-  -- unrep' = K1 . unrep'
 
 instance GPURep (U1 p) where
   type GPURepTy (U1 p) = ()
+
+  construct _ = UnitExp
 
   rep' U1 = ()
   unrep' () = U1
