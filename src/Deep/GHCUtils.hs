@@ -11,6 +11,8 @@ module Deep.GHCUtils where
 
 import           GhcPlugins hiding (freeVarsBind)
 
+import           Pair
+
 import           CoreSubst
 import           Unique
 import           PrelNames
@@ -826,27 +828,29 @@ castFloatAppEither dflags (App (Cast e1 co) e2) =
     trace ("castFloatAppEither: co = " ++ showPpr dflags co) $
        case co of
 
-            TyConAppCo _r t [c1, c2] ->
-                if isFunTyCon t
-                  then trace "castFloatApp firing" $ return $ Cast (App e1 (Cast e2 (SymCo c1))) c2
-                  else Left "caseFloatAppEither"
+            -- TyConAppCo _r t [c1, c2] ->
+            --     if isFunTyCon t
+            --       then trace "castFloatApp firing" $ return $ Cast (App e1 (Cast e2 (modifyRole (SymCo c1)))) (modifyRole c2)
+            --       else Left "caseFloatAppEither"
 
 -- #if __GLASGOW_HASKELL__ > 710
 --             ForAllCo{} -> Left "castFloatAppR: ForAllCo TODO"
 -- #else
 
-            ForAllCo t _ c2 -> -- TODO: Does this work as expected with the newer GHC API?
+            ForAllCo t kc c2 -> -- TODO: Does this work as expected with the newer GHC API?
                 case e2 of
-                  Type x' -> trace "caseFloatApp forallco" $
-                    return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') c2))
+                  Type x' -> trace ("caseFloatApp forallco: { " ++ showPpr dflags (t, kc, c2) ++ "\n}\n") $
+                    return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') (modifyRole c2)))
                   _ -> Left "caseFloatAppEither"
 
 -- #endif
             _ ->
-                let (coA, coB) = decomposeFunCo (coercionRole co) co
-                in -- TODO: This seems too easy?
-                Right $ Cast (App e1 e2) coA
+              case decomposeFunCo_maybe (coercionRole co) co of
+                Just (coA, coB) -> Right $ Cast (App e1 (Cast e2 (mkSymCo (modifyRole coA)))) (modifyRole coB)
+                Nothing -> Left "castFloatAppEither: decomposeFunCo_maybe gave Nothing"
                 -- Right $ Cast (App e1 (Cast e2 coA)) coB
+  where
+    modifyRole co' = downgradeRole Representational (coercionRole co') co'
 
 castFloatAppEither _ _ = Left "castFloatAppEither: not in correct form"
 
@@ -889,10 +893,10 @@ substCoreAlt v e alt = let (con, vs, rhs) = alt
 -- | Beta-reduce as many lambda-binders as possible.
 betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])
 betaReduceAll (Lam v body) (a:as) = betaReduceAll (substCoreExpr v a body) as
-betaReduceAll (Cast (Lam v body) co) (a:as)
-  | Just (argTy, resTy) <- splitFunCo_maybe co =
-      let (remaining, args) = betaReduceAll (substCoreExpr v a body) as
-      in (Cast remaining resTy, as)
+-- betaReduceAll (Cast (Lam v body) co) (a:as)
+--   | Just (argTy, resTy) <- splitFunCo_maybe co =
+--       let (remaining, args) = betaReduceAll (substCoreExpr v a body) as
+--       in (Cast remaining resTy, as)
 betaReduceAll e            as     = (e,as)
 
 -- getLamInCasts :: CoreExpr -> Maybe (Id, CoreExpr, Coercion)
@@ -1163,4 +1167,22 @@ add_info subst old_bndr new_bndr
  | otherwise        = maybeModifyIdInfo mb_new_info new_bndr
  where
    mb_new_info = substIdInfo subst new_bndr (idInfo old_bndr)
+
+--
+-- Adapted from GHC API:
+--
+
+decomposeFunCo_maybe ::
+                  Role      -- Role of the input coercion
+               -> Coercion  -- Input coercion
+               -> Maybe (Coercion, Coercion)
+-- Expects co :: (s1 -> t1) ~ (s2 -> t2)
+-- Returns (co1 :: s1~s2, co2 :: t1~t2)
+-- See Note [Function coercions] for the "2" and "3"
+decomposeFunCo_maybe r co
+  | all_ok = Just (mkNthCo r 2 co, mkNthCo r 3 co)
+  | otherwise = Nothing
+  where
+    Pair s1t1 s2t2 = coercionKind co
+    all_ok = isFunTy s1t1 && isFunTy s2t2
 
