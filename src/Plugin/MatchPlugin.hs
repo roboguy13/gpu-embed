@@ -782,10 +782,12 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
         -- Handle constructors that are not builtins
         go expr@(_ :@ _)
-          | Just (tys, dicts, constr, args) <- getConstructorApp_maybe expr,
+          | Just (tys, dicts, constr, args0) <- getConstructorApp_maybe expr,
             Nothing <- builtin constr,
             not (hasExprTy expr),
             not (isDict (Var constr)) = do
+
+            let args = reverse args0  -- TODO: Why is this necessary?
 
             dflags <- getDynFlags
             constructRepId <- lift $ findIdTH guts 'ConstructRep
@@ -796,8 +798,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 liftIO $ putStrLn ""
                 liftIO $ putStrLn $ "Handling constructor: " ++ showPpr dflags constr
-                liftIO $ putStrLn $ "  ==> with args:      " ++ showPpr dflags args
-                liftIO $ putStrLn ""
+                -- liftIO $ putStrLn $ "  ==> with args:      " ++ showPpr dflags args
+                -- liftIO $ putStrLn ""
 
                 repTyCon <- lift $ findTyConTH guts ''GPURep
                 repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
@@ -812,14 +814,9 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 let constr' = mkApps (Var constr) (tys ++ dicts)
                 let constr'Type = exprType constr'
 
-                -- markedConstr' <- mark constr'
                 markedArgs <- mapM mark args
 
                 tc@(co, ty') <- lift $ computeRepTypeCo guts (exprType expr)
-
-                -- liftIO $ putStrLn ""
-                -- liftIO $ putStrLn $ "+++++++++ tc = " ++ showPpr dflags tc
-                -- liftIO $ putStrLn ""
 
                 let repUnfolding = getUnfolding guts dflags repId
 
@@ -839,9 +836,6 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                           _ -> Nothing
 
 
-                liftIO $ putStrLn $ "~~~~~~~~constructFn = " ++ showPpr dflags constructFn
-                -- liftIO $ putStrLn $ "~~~~~~~~constructFn1 = " ++ showPpr dflags constructFn
-
                 let (fn, restArgs) = betaReduceAll
                                        repUnfolding
                                          [ Type (exprType expr)
@@ -857,26 +851,10 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                         Var f -> Just f
                         _ -> Nothing
 
-                liftIO $ putStrLn $ "~~~~~~~~~repFn = " ++ showPpr dflags repFn
-
                 let expr2' = Data.transform letNonRecSubst fn
 
-                -- liftIO $ putStrLn $ "++++++++++++> " ++ showPpr dflags expr2'
-                -- liftIO $ putStrLn $ "############> " ++ showPpr dflags (mkApps fn restArgs)
-                -- liftIO $ putStrLn $ "############> "
-                --                      ++ showPpr dflags (mkApps repUnfolding
-                --                                   [ Type (exprType expr)
-                --                                   , repDictExpr
-                --                                   , (mkApps constr' args)
-                --                                   ])
-
-                -- let Case scrutinee _ _ _ = expr2'
-                -- scrutinee' <- lift $ simpleOptExpr' scrutinee
-
-                liftIO $ putStrLn $ "====== fn ==>  " ++ showPpr dflags fn
-
                 let e' =
-                         onScrutinee (Data.transform (tryUnfoldAndReduceDict guts dflags))
+                         onScrutinee (unfoldAndReduceDict guts dflags) --(Data.transform (tryUnfoldAndReduceDict guts dflags))
                              $ Data.transform letNonRecSubst fn
 
                 -- let e' = Data.transform letNonRecSubst $ Data.transform (tryUnfoldAndReduceDict guts dflags) fn
@@ -886,22 +864,13 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 let (Var dictFn, dictArgs) = collectArgs e''
 
-                liftIO $ putStrLn $ "********** dictFn = " ++ showPpr dflags dictFn
-
                 let simplE' =  Data.transform betaReduce $ Data.transform (targetTheFnMaybe constructFn (Data.transform (tryUnfoldAndReduceDict guts dflags) . unfoldAndReduceDict guts dflags)) $ Data.transform letNonRecSubst $ Data.transform betaReduce $
                       onAppFun (tryUnfoldAndReduceDict guts dflags) $
                       e''
 
-                -- let e'Subst = Data.transform letNonRecSubst simplE'
-                --     e'Dict  = Data.transform (tryUnfoldAndReduceDict guts dflags) e'Subst
 
                 let fnE = Data.transform letNonRecSubst
-                               $ simplE' --e'Dict
-
-                -- liftIO $ putStrLn $ "==== e'' ===>   " ++ showPpr dflags e''
-                -- liftIO $ putStrLn $ "simplE'   ==>   " ++ showPpr dflags simplE'
-
-                -- liftIO $ putStrLn $ "=====> restArgs = " ++ showPpr dflags restArgs
+                               $ simplE'
 
                 unreppedArgs <- mapM (applyUnrep guts <=< mark) args
                 unrepId <- lift $ findIdTH guts 'unrep
@@ -909,34 +878,18 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 let (newExpr, remainingArgs) = betaReduceAll fnE [mkApps constr' unreppedArgs]
                 let newExpr' = (Data.transform betaReduce . Data.transform letNonRecSubst)
                               $ caseInlineT dflags (mkApps newExpr remainingArgs)
-                -- newExpr''0 <- fmap (Data.transform (tryUnfoldAndReduceDict guts dflags)) $ Data.transformM (elimRepUnrep guts) (Data.transform (caseInlineT dflags) newExpr')
 
                 let transformUnrepParent = targetParentOfFnApp dflags unrepId (applyWhen (isDictNotClassApp dflags) (unfoldAndReduceDict guts dflags))
 
-                let newExpr''0 = Data.transform (whileRight (castFloatAppEither dflags)) . Data.transform transformUnrepParent $ onAppFun (tryUnfoldAndReduceDict guts dflags) $ Data.transform (caseInlineT dflags) newExpr' --Data.transform betaReduce newExpr''0
-                -- newExpr'' <- lift $ simpleOptExpr' newExpr''0
+                let newExpr''0 = Data.transform (whileRight (castFloatAppEither dflags)) . Data.transform transformUnrepParent $ onAppFun (tryUnfoldAndReduceDict guts dflags) $ Data.transform (caseInlineT dflags) newExpr'
 
                 newExpr'' <- Data.transformM (elimRepUnrep guts) $ Data.transform betaReduce newExpr''0
+                -- let newExpr'' = Data.transform (targetTheFnMaybe constructFn (Data.transform (tryUnfoldAndReduceDict guts dflags))) newExpr''1
 
-                liftIO $ putStrLn $ "newExpr''0 = " ++ showPpr dflags newExpr''0
-
-                -- liftIO $ putStrLn $ "remainingArgs = " ++ showPpr dflags remainingArgs
-
-                -- liftIO $ putStrLn $ "e'          = " ++ showPpr dflags e'
-                -- liftIO $ putStrLn $ "simpleE'    = " ++ showPpr dflags simplE'
-                -- liftIO $ putStrLn $ "e'Subst     = " ++ showPpr dflags e'Subst
-                -- liftIO $ putStrLn $ "e'Dict      = " ++ showPpr dflags e'Dict
-                -- liftIO $ putStrLn $ "fnE         = " ++ showPpr dflags fnE
-                -- liftIO $ putStrLn $ "marked args = " ++ showPpr dflags markedRestArgs
-                -- liftIO $ putStrLn $ "===========> " ++ showPpr dflags newExpr
-
-                -- let expr2 =
-                --       Var repId
-                --         :@ Type (exprType expr)
-                --         :@ repDictExpr
-                --         :@ (mkApps constr' markedArgs)
-
+                liftIO $ putStrLn $ "fn = " ++ showPpr dflags fn ++ "\n"
+                liftIO $ putStrLn $ "e' = " ++ showPpr dflags e' ++ "\n"
                 liftIO $ putStrLn $ "===converting to==> " ++ showPpr dflags newExpr''
+
                 return newExpr''
 
         go expr@(_ :@ _)

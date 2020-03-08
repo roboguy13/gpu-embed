@@ -825,7 +825,7 @@ simpleOptExpr' e = do
 castFloatAppEither :: DynFlags -> CoreExpr -> Either String CoreExpr
 castFloatAppEither dflags (App (Cast e1 co) e2) =
 
-    trace ("castFloatAppEither: co = " ++ showPpr dflags co) $
+    --trace ("castFloatAppEither: co = " ++ showPpr dflags co) $
        case co of
 
             -- TyConAppCo _r t [c1, c2] ->
@@ -839,14 +839,15 @@ castFloatAppEither dflags (App (Cast e1 co) e2) =
 
             ForAllCo t kc c2 -> -- TODO: Does this work as expected with the newer GHC API?
                 case e2 of
-                  Type x' -> trace ("caseFloatApp forallco: { " ++ showPpr dflags (t, kc, c2) ++ "\n}\n") $
+                  Type x' -> --trace ("caseFloatApp forallco: { " ++ showPpr dflags (t, kc, c2) ++ "\n}\n") $
+                    -- return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') (modifyRole c2)))
                     return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') (modifyRole c2)))
                   _ -> Left "caseFloatAppEither"
 
 -- #endif
             _ ->
               case decomposeFunCo_maybe (coercionRole co) co of
-                Just (coA, coB) -> Right $ Cast (App e1 (Cast e2 (mkSymCo (modifyRole coA)))) (modifyRole coB)
+                Just (coA, coB) -> Right $ Cast (App e1 (Cast e2 (mkSymCo (modifyRole coA)))) (mkSymCo (modifyRole coB))
                 Nothing -> Left "castFloatAppEither: decomposeFunCo_maybe gave Nothing"
                 -- Right $ Cast (App e1 (Cast e2 coA)) coB
   where
