@@ -299,11 +299,6 @@ transformExpr :: ModGuts -> Var -> Maybe Var -> [(Id, CoreExpr)] -> Expr Var -> 
 transformExpr guts currName recNameM primMap =
   {- transformApps guts <=< -} untilNothingM (transformExprMaybe guts currName recNameM primMap)
 
-constructExpr :: ModGuts -> Id -> MatchM CoreExpr
-constructExpr guts fId = do
-  constructDC <- lift $ findIdTH guts 'Construct
-
-  return (Var constructDC :@ Type (varType fId) :@ Var fId)
 
 -- XXX: The delineation marker probably has to be floated in (or maybe the
 -- transformation can just go through the AST at that marker without
@@ -633,10 +628,14 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
         go expr@(Lam v e) = abstractOver guts v e
 
         go expr@(Var v)
-          | not (isFunTy (varType v))
+          | not (isFunTy (varType v))  -- TODO: Can this be removed?
           , not (hasExprTy expr) = do
-              constructId <- lift $ findIdTH guts 'Construct
-              return (Var constructId :@ Type (varType v) :@ expr)
+              repId <- lift $ findIdTH guts 'rep
+
+              repTyCon <- lift $ findTyConTH guts ''GPURep
+              repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [varType v])
+
+              return (Var repId :@ Type (varType v) :@ repDict :@ expr)
 
         -- go expr@(Var v :@ Type t)
         --   | isConstructor v = do
@@ -1278,7 +1277,7 @@ transformTailRec guts recVar e0 = do
 
           return (Var f :@ Type newTy :@ newDict :@ x')
         else return expr
-    go1 ty _ e = return e
+    go1 ty lamV e = go2 ty lamV e
 
     go2 :: Type -> Var -> CoreExpr -> MatchM CoreExpr
     go2 ty lamV expr@(Var f :@ fTyArg :@ fDict :@ x) = do

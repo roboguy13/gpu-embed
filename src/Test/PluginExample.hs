@@ -237,6 +237,9 @@ intListSum :: IntList -> Int
 intListSum t =
   internalize (externalize (intListSum_helper (0, t)))
 
+intListSumE :: IntList -> GPUExp Int
+intListSumE t = externalize (intListSum_helper (0, t))
+
 example_x :: Either Char Int
 example_x = Left 'a'
 {-# INLINE example_x #-}
