@@ -15,7 +15,7 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
--- {-# OPTIONS_GHC -Wall #-}
+{-# OPTIONS_GHC -Wall #-}
 
 module Deep.Expr where
 
@@ -691,6 +691,9 @@ gpuAbsEnv env (Lam (name :: Name a) (body :: GPUExp b)) = \(arg :: a) ->
     in
 
     gpuAbsEnv (extendEnv env (name :=> rep arg)) $ go body
+
+gpuAbsEnv env (App f x) = gpuAbsEnv env f (gpuAbsEnv env x)
+gpuAbsEnv env (CharLit c) = c
 
 class Canonical t where
   type GenericOp t :: (* -> *) -> (* -> *) -> * -> *
