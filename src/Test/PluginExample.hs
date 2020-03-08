@@ -2,7 +2,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 
-{-# OPTIONS_GHC -fexpose-all-unfoldings -ddump-simpl -O0 -dcore-lint -dsuppress-all -dcmm-lint -dstg-lint -fcatch-bottoms -fplugin=Plugin.MatchPlugin #-}
+{-# OPTIONS_GHC -ddump-simpl -fexpose-all-unfoldings -O0 -dcore-lint -dsuppress-all -dcmm-lint -dstg-lint -fcatch-bottoms -fplugin=Plugin.MatchPlugin #-}
 
 module Test.PluginExample where
 
@@ -253,14 +253,14 @@ example =
 {-# NOINLINE example #-}
 
 main :: IO ()
-main = --putStrLn (genProgram cTest6)
-    do
+main = do
   let intList = Cons 10 (Cons 100 (Cons 1000 (Cons 10000 Nil)))
-  print (isEmpty Nil, isEmpty (Cons 1 Nil)
-        ,intListLength intList
-        ,intListSum intList
-        ,example
-        )
+  putStrLn (genProgram (intListSumE intList)) --putStrLn (genProgram cTest6)
+  -- print (isEmpty Nil, isEmpty (Cons 1 Nil)
+  --       ,intListLength intList
+  --       ,intListSum intList
+  --       ,example
+  --       )
   -- print $ realSum (ComplexPair (2 :+ 100) (3 :+ 10000))
   -- putStrLn mandelbrotTestAscii
 

@@ -9,6 +9,8 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DefaultSignatures #-}
 
+{-# OPTIONS_GHC -Wall #-}
+
 module CodeGen.C
   where
 
@@ -488,6 +490,22 @@ genExp (App lamExp@(Lam (Name n) _) x) resultName = do
 
 genExp (App (TailRec lam) x) resultName = genExp (App lam x) resultName
 
+genExp (App _ _) _ = error "genExp: App"
+
+-- genExp (App f x) resultName = do
+--   rName <- freshCName
+--   xName <- freshCName
+
+--   rCode <- genExp f fName
+--   xCode <- genExp x xName
+
+--   callCode <- callClosure 
+
+--   return $ unlines
+--     [ "var_t " <> fName <> ";"
+--     , "var_t " <> xName <> ";"
+--     , 
+
 genExp (Lit x :: GPUExp t) resultName =
   return $ unlines
     [ resultName <> ".value = " <> "malloc(sizeof(" <> ty <> "));"
@@ -577,6 +595,21 @@ genExp (Mul x y) resultName = do
     , xCode
     , yCode
     , "MATH_OP(*, " <> resultName <> ", " <> xName <> ", " <> yName <> ");"
+    ]
+
+genExp (Add x y) resultName = do
+  xName <- freshCName
+  yName <- freshCName
+
+  xCode <- genExp x xName
+  yCode <- genExp y yName
+
+  return $ unlines
+    [ "var_t " <> xName <> ";"
+    , "var_t " <> yName <> ";"
+    , xCode
+    , yCode
+    , "MATH_OP(+, " <> resultName <> ", " <> xName <> ", " <> yName <> ");"
     ]
 
 genExp (Equal x y) resultName = do
@@ -677,6 +710,33 @@ genExp UnitExp resultName =
     , resultName <> ".value = 0;"
     ]
 
+genExp (CharLit c) resultName =
+  return $ unlines
+    [ resultName <> ".tag = EXPR_CHAR;"
+    , "*(char*)(" <> resultName <> ".value) = " <> show c <> ";"
+    ]
+
+genExp (Ord x) resultName = do
+  xName <- freshCName
+
+  xCode <- genExp x xName
+
+  return $ unlines
+    [ "var_t " <> xName <> ";"
+    , xCode
+    , ""
+    , resultName <> ".tag = EXPR_INT;"
+    , "*(int*)(" <> resultName <> ".value) = *(int*)(" <> xName <> ".value);"
+    ]
+
+genExp (FromEnum x) resultName = error "genExp: TODO: implement FromEnum"
+
+genExp (SumMatchExp _ _) _ = error "genExp: SumMatchExp"
+genExp (NullaryMatch _) _ = error "genExp: NullaryMatch"
+genExp (OneSumMatch _) _ = error "genExp: OneSumMatch"
+genExp EmptyMatch _ = error "genExp: EmptyMatch"
+
+
 genCaseExp :: CName -> GPUExp (SumMatch a r) -> CName -> CodeGen CCode
 genCaseExp s (OneSumMatch p) resultName = genProdMatch s p resultName
 genCaseExp s (SumMatchExp x y) resultName = do
@@ -699,15 +759,22 @@ genCaseExp s (SumMatchExp x y) resultName = do
 -- TODO: Implement with multiple actual function calls?
 genProdMatch :: CName -> GPUExp (ProdMatch a r) -> CName -> CodeGen CCode
 genProdMatch s p resultName = do
-  (argUniqs0, innerLam) <- getProdMatchLams p
-  let lastArg = last argUniqs0
-      argUniqs = init argUniqs0
+  r <- getProdMatchLams p
+  case r of
+    Right x ->
+      -- Nullary
+      genExp x resultName
 
-  let itemNames = map (\i -> pairCar i s) [0..length argUniqs0-1]
+    Left (argUniqs0, innerLam) -> do
+      -- Not nullary
+      let lastArg = last argUniqs0
+          argUniqs = init argUniqs0
 
-  -- TODO: Should the enivronment be saved and restored?
-  cg_modifyNames (zip argUniqs itemNames)
-  buildAndCall innerLam (pairCar (length argUniqs0-1) s) resultName
+      let itemNames = map (\i -> pairCar i s) [0..length argUniqs0-1]
+
+      -- TODO: Should the enivronment be saved and restored?
+      cg_modifyNames (zip argUniqs itemNames)
+      buildAndCall innerLam (pairCar (length argUniqs0-1) s) resultName
 
 
 pairCar :: Int -> CName -> CCode
@@ -722,16 +789,18 @@ pairCdr depth p =
   "((var_t*)" <> (pairCdr (depth-1) p) <> ".value)[1]"
 
 -- | Get argument uniques for each lambda and also the innermost lambda
-getProdMatchLams :: GPUExp (ProdMatch a r) -> CodeGen ([Int], SomeLambda)
+getProdMatchLams :: GPUExp (ProdMatch a r) -> CodeGen (Either ([Int], SomeLambda) (GPUExp r))
 getProdMatchLams (OneProdMatch (Lam (Name n) _)) = do
   lam <- lookupLambda n
-  return ([n], lam)
+  return $ Left ([n], lam)
 
 getProdMatchLams (ProdMatchExp (Lam (Name n) x)) = do
-  (restNs, lam) <- getProdMatchLams x
-  return (n:restNs, lam)
+  r <- getProdMatchLams x
+  case r of
+    Left (restNs, lam) -> return $ Left (n:restNs, lam)
+    Right _ -> error "getProdMatchLams"
 
-getProdMatchLams (NullaryMatch _) = error "getProdMatchLams"
+getProdMatchLams (NullaryMatch x) = return $ Right x
 
 lambdaCName_byInt :: Int -> CName
 lambdaCName_byInt i = "lam_" <> show i
