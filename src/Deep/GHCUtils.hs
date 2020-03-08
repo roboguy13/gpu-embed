@@ -706,7 +706,7 @@ isDictVar :: Var -> Bool
 isDictVar v =
   let str = occNameString (occName v)
   in
-  length str >= 2 && (take 2 str == "$f" || take 2 str == "$d" || take 2 str == "C:")
+  length str >= 2 && (take 2 str == "$f" || take 2 str == "$d" || take 2 str == "$w" || take 2 str == "C:")
 
 isDict :: CoreExpr -> Bool
 isDict (Var v) = isDictVar v
@@ -723,12 +723,63 @@ isDictNotClass :: DynFlags -> CoreExpr -> Bool
 isDictNotClass dflags e =
   isDict e && not (isClassVar e)
 
+isDictNotClassApp :: DynFlags -> CoreExpr -> Bool
+isDictNotClassApp dflags e@(App _ _) =
+  case collectArgs e of
+    (fn, _) -> let r = isDictNotClass dflags fn in trace ("isDictNotClassApp: " ++ showPpr dflags (r, fn))  r
+isDictNotClassApp dflags e = False
+
 -- | For use with Uniplate. Example:
 -- transform (applyWhen predicate fn) expr
 applyWhen :: (a -> Bool) -> (a -> a) -> a -> a
 applyWhen p f x
   | p x       = f x
   | otherwise = x
+
+-- | Given a function name, a transformation and a Core expression,
+-- transform the Core expression when it is an application where
+-- the function has the same name as the given function name.
+targetTheFn :: Id -> (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+targetTheFn fn t e@(App _ _)
+  | (Var fn', args) <- collectArgs e
+  = --trace ("targetTheFn: " ++ show (occNameString (occName fn), occNameString (occName fn'))) $
+        if fn == fn'
+          then mkApps (t (Var fn')) args
+          else e
+targetTheFn fn t e = e
+
+
+targetTheFnMaybe :: Maybe Id -> (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+targetTheFnMaybe Nothing   _ e = e
+targetTheFnMaybe (Just fn) t e = targetTheFn fn t e
+
+maybeTransform :: Maybe a -> (a -> b -> b) -> b -> b
+maybeTransform Nothing  _ y = y
+maybeTransform (Just x) f y = f x y
+
+-- | Target application expressions that have an argument which is an
+-- application of the given function. For instance,
+-- 'withArgFnApp fn e' will target expressions in 'e' of the form
+--
+-- g x0 x1 ... (fn y0 y1 ... yN) ... xN
+targetParentOfFnApp :: DynFlags -> Id -> (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+targetParentOfFnApp dflags fn t e@(App _ _) =
+  let (g, args) = collectArgs e
+  in
+  if any matches args
+    then t e --trace ("targeting: " ++ showPpr dflags e) $ t e
+    else e
+  where
+    matches e'@(App _ _) =
+      case collectArgs e' of
+        (Var fn', _) -> fn == fn'
+        _ -> False
+    matches e' = False
+targetParentOfFnApp _ _ _ e = e
+
+-- targetParentOfFnAppMaybe :: Maybe Id -> (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+-- targetParentOfFnAppMaybe Nothing   _ e = e
+-- targetParentOfFnAppMaybe (Just fn) t e = targetParentOfFnApp fn t e
 
 -- | $fDict x0 x1 ... xN    ==>   [unfolding of $fDict] x0 x1 ... xN
 unfoldAndReduceDict_either :: ModGuts -> DynFlags -> CoreExpr -> Either String CoreExpr
@@ -744,7 +795,7 @@ unfoldAndReduceDict_either guts dflags e =
               case betaReduceAll dictFnUnfolding dictArgs of
                 (fn, args) -> Right $ mkApps fn args
         else
-          Left "unfoldAndReduceDict_either: not isDictNotClass"
+          Left $ "unfoldAndReduceDict_either: not isDictNotClass: " ++ showPpr dflags e
     _ -> Left $ "unfoldAndReduceDict_either: not of form App (... (App (Var v) x) ...) z. Given: " ++ showPpr dflags e
 
 tryUnfoldAndReduceDict :: ModGuts -> DynFlags -> CoreExpr -> CoreExpr
@@ -768,6 +819,42 @@ simpleOptExpr' e = do
 --
 -- From HERMIT: --
 --
+
+castFloatAppEither :: DynFlags -> CoreExpr -> Either String CoreExpr
+castFloatAppEither dflags (App (Cast e1 co) e2) =
+  let (coA, coB) = decomposeFunCo (coercionRole co) co
+  in -- TODO: This seems too easy?
+  Right $ Cast (App e1 (Cast e2 coA)) coB
+
+    -- trace ("castFloatAppEither: co = " ++ showPpr dflags co) $
+    --    case co of
+    --         TyConAppCo _r t [c1, c2] ->
+    --             if isFunTyCon t
+    --               then trace "castFloatApp firing" $ return $ Cast (App e1 (Cast e2 (SymCo c1))) c2
+    --               else Left "caseFloatAppEither"
+-- -- #if __GLASGOW_HASKELL__ > 710
+-- --             ForAllCo{} -> Left "castFloatAppR: ForAllCo TODO"
+-- -- #else
+    --         ForAllCo t _ c2 -> -- TODO: Does this work as expected with the newer GHC API?
+    --             case e2 of
+    --               Type x' -> trace "caseFloatApp forallco" $
+    --                 return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') c2))
+    --               _ -> Left "caseFloatAppEither"
+-- -- #endif
+    --         _ -> trace ("caseFloatApp failed on: " ++ showPpr dflags co) $ Left "castFloatApp"
+castFloatAppEither _ _ = Left "castFloatAppEither: not in correct form"
+
+whileRight :: (b -> Either a b) -> b -> b
+whileRight f x =
+  case f x of
+    Left _ -> x
+    Right x' -> whileRight f x'
+
+tryCastFloatApp :: DynFlags -> CoreExpr -> CoreExpr
+tryCastFloatApp dflags e =
+  case castFloatAppEither dflags e of
+    Left _ -> e
+    Right e' -> e'
 
 -- | Build a CoreExpr for a DFunUnfolding
 dFunExpr :: Unfolding -> CoreExpr
@@ -798,8 +885,14 @@ betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])
 betaReduceAll (Lam v body) (a:as) = betaReduceAll (substCoreExpr v a body) as
 betaReduceAll (Cast (Lam v body) co) (a:as)
   | Just (argTy, resTy) <- splitFunCo_maybe co =
-      betaReduceAll (Cast (substCoreExpr v a body) resTy) as
+      let (remaining, args) = betaReduceAll (substCoreExpr v a body) as
+      in (Cast remaining resTy, as)
 betaReduceAll e            as     = (e,as)
+
+-- getLamInCasts :: CoreExpr -> Maybe (Id, CoreExpr, Coercion)
+-- getLamInCasts (Cast e co) =
+--   case getLamInCasts e of
+--     Just (v, body, co') -> Just (v, body, 
 
 betaReduce :: CoreExpr -> CoreExpr
 betaReduce x =

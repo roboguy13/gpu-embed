@@ -358,7 +358,7 @@ class GPURep t where
   rep :: t -> GPUExp t
 
   default rep :: (GPURep (GPURepTy t)) => t -> GPUExp t
-  rep = ConstructRep . construct
+  rep x = ConstructRep (construct x)
   {-# INLINABLE rep #-}
 
   rep' :: t -> GPURepTy t
