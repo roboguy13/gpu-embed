@@ -822,26 +822,32 @@ simpleOptExpr' e = do
 
 castFloatAppEither :: DynFlags -> CoreExpr -> Either String CoreExpr
 castFloatAppEither dflags (App (Cast e1 co) e2) =
-  let (coA, coB) = decomposeFunCo (coercionRole co) co
-  in -- TODO: This seems too easy?
-  Right $ Cast (App e1 (Cast e2 coA)) coB
 
-    -- trace ("castFloatAppEither: co = " ++ showPpr dflags co) $
-    --    case co of
-    --         TyConAppCo _r t [c1, c2] ->
-    --             if isFunTyCon t
-    --               then trace "castFloatApp firing" $ return $ Cast (App e1 (Cast e2 (SymCo c1))) c2
-    --               else Left "caseFloatAppEither"
--- -- #if __GLASGOW_HASKELL__ > 710
--- --             ForAllCo{} -> Left "castFloatAppR: ForAllCo TODO"
--- -- #else
-    --         ForAllCo t _ c2 -> -- TODO: Does this work as expected with the newer GHC API?
-    --             case e2 of
-    --               Type x' -> trace "caseFloatApp forallco" $
-    --                 return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') c2))
-    --               _ -> Left "caseFloatAppEither"
--- -- #endif
-    --         _ -> trace ("caseFloatApp failed on: " ++ showPpr dflags co) $ Left "castFloatApp"
+    trace ("castFloatAppEither: co = " ++ showPpr dflags co) $
+       case co of
+
+            TyConAppCo _r t [c1, c2] ->
+                if isFunTyCon t
+                  then trace "castFloatApp firing" $ return $ Cast (App e1 (Cast e2 (SymCo c1))) c2
+                  else Left "caseFloatAppEither"
+
+-- #if __GLASGOW_HASKELL__ > 710
+--             ForAllCo{} -> Left "castFloatAppR: ForAllCo TODO"
+-- #else
+
+            ForAllCo t _ c2 -> -- TODO: Does this work as expected with the newer GHC API?
+                case e2 of
+                  Type x' -> trace "caseFloatApp forallco" $
+                    return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') c2))
+                  _ -> Left "caseFloatAppEither"
+
+-- #endif
+            _ ->
+                let (coA, coB) = decomposeFunCo (coercionRole co) co
+                in -- TODO: This seems too easy?
+                Right $ Cast (App e1 e2) coA
+                -- Right $ Cast (App e1 (Cast e2 coA)) coB
+
 castFloatAppEither _ _ = Left "castFloatAppEither: not in correct form"
 
 whileRight :: (b -> Either a b) -> b -> b

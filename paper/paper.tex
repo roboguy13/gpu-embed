@@ -246,7 +246,7 @@ The following contributions are made by this paper:
   matching and tail recursion already have EDSL representations.
 \item A GHC Core plugin which transforms a subset of standard Haskell code
   into this EDSL for pattern matching, extended with tail recursion,
-  lambdas and primitive operations (Section 7)
+  lambdas and primitive operations (Section 8)
 \item An implementation of a interpreter for the "standard" semantics of the EDSL (Section 6).
 \end{itemize}
 
@@ -670,6 +670,11 @@ data E t where
   ...
 \end{lstlisting}
 
+\begin{todo}
+  Cite "Rewriting a Shallow DSL using a GHC Compiler Extension"
+  (2017; Grebe, Young, Gill)
+\end{todo}
+
 \section{Representing lambdas}
 This representation of pattern matching depends on the ability to bring
 function values into the expression language. This is accomplished
@@ -817,6 +822,10 @@ absEnv env (Repped x) = unrep x
 ...
 \end{lstlisting}
 
+\section{C Backend}
+\begin{todo}
+  Write this section
+\end{todo}
 
 \section{Core Plugin}
 
@@ -831,12 +840,12 @@ So, \ttt{externalize x} marks the expression \ttt{x}.
 
 If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \ttt{a}), then the marking procedure ignores it and does not wrap it with
-\ttt{externalize} (see $M$ in Section 7.2).
+\ttt{externalize} (see $M$ in Section 8.2).
 
 \clearpage
 \subsection{Overall Control Flow of the Core Plugin}
 
-In the following flowchart, the names in parentheses in a node refers to the names of transformations from the following section (Section 7.2).
+In the following flowchart, the names in parentheses in a node refers to the names of transformations from the following section (Section 8.2).
 
 \begin{tikzpicture}[node distance=2cm]
 \node (start) [startstop] {Core from GHC};
@@ -974,8 +983,13 @@ full transformation step (that is, $C$) eliminates one mark. Therefore, the
 transformation will terminate.
 \end{itemize}
 
-
 \clearpage
+\section{Related Work}
+\begin{todo}
+  Cite and compare/contrast with pattern matching technique described in section
+  3.3 of "Unembedding Domain-Specific Languages" (2009; Atkey, Lindley, Yallop)
+\end{todo}
+
 \section{Citations and Bibliographies}
 
 
