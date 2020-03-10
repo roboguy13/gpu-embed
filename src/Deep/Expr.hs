@@ -164,7 +164,7 @@ data GPUExp t where
   -- Twice :: GPUExp (a -> a) -> GPUExp a -> GPUExp a
 
   FromEnum :: Enum a => GPUExp a -> GPUExp Int
-  FromIntegral :: (Integral a, Num b) => GPUExp a -> GPUExp b
+  FromIntegral :: forall a b. (Typeable a, Typeable b, Integral a, Num b) => GPUExp a -> GPUExp b
 
   Sqrt :: Floating a => GPUExp a -> GPUExp a
 
@@ -190,7 +190,10 @@ data GPUExp t where
 
   TailRec :: forall a b. (GPURep a, GPURep b) => GPUExp (b -> Iter a b) -> GPUExp (b -> a)
 
-  ConstructRep :: GPURep a => GPUExp (GPURepTy a) -> GPUExp a
+    -- Typeable allows us to inspect the types. This can be useful if we
+    -- want to, for instance, treat 'Complex Double' values differently
+    -- than '(Double, Double)' values in a backend
+  ConstructRep :: (Typeable a, GPURep a) => GPUExp (GPURepTy a) -> GPUExp a
 
   Construct :: a -> GPUExp a
   ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
@@ -324,7 +327,7 @@ transformEA tr0 = tr
 --     go = error "subst"
 
 -- For convenience in Core transformation
-deepFromInteger :: Num b => Integer -> GPUExp b
+deepFromInteger :: (Typeable b, Num b) => Integer -> GPUExp b
 deepFromInteger = FromIntegral . Lit
 
 -- lam :: forall a b. (GPURep a, Typeable a) => Name a -> (GPUExp a -> GPUExp b) -> GPUExp (a -> b)
@@ -338,7 +341,8 @@ runIter f = go
         Done r -> r
         Step x' -> go x'
 
-class GPURep t where
+-- Typeable constraint is for ConstructRep
+class Typeable t => GPURep t where
     -- Should we wrap these types in a 'Tagged t' in order to preserve more
     -- type safety?
   type GPURepTy t
@@ -482,7 +486,7 @@ instance (GPURep a, GPURep b) => GPURep (a -> b) where
   unrep' = error "unrep' for (a->b) instance called"
 
 -- Generics instances
-instance (GPURep (f p), GPURep (GPURepTy (f p))) => GPURep (M1 i c f p) where
+instance (Typeable (M1 i c f p), GPURep (f p), GPURep (GPURepTy (f p))) => GPURep (M1 i c f p) where
   type GPURepTy (M1 i c f p) = GPURepTy (f p)
 
   construct = construct . unM1
@@ -490,7 +494,7 @@ instance (GPURep (f p), GPURep (GPURepTy (f p))) => GPURep (M1 i c f p) where
   rep' (M1 x) = rep' x
   unrep' = M1 . unrep'
 
-instance (GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy (q x))) => GPURep ((p :+: q) x) where
+instance (Typeable ((p :+: q) x), GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy (q x))) => GPURep ((p :+: q) x) where
   type GPURepTy ((p :+: q) x) =  Either (GPURepTy (p x)) (GPURepTy (q x))
 
   construct (L1 x) = LeftExp (construct x)
@@ -502,7 +506,7 @@ instance (GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy 
   unrep' (Left x) = L1 (unrep' x)
   unrep' (Right y) = R1 (unrep' y)
 
-instance (GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy (q x))) => GPURep ((p :*: q) x) where
+instance (Typeable ((p :*: q) x), GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy (q x))) => GPURep ((p :*: q) x) where
   type GPURepTy ((p :*: q) x) =  (GPURepTy (p x), GPURepTy (q x))
 
   construct (x :*: y) = PairExp (construct x) (construct y)
@@ -510,7 +514,7 @@ instance (GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy 
   rep' (x :*: y) = (rep' x, rep' y)
   unrep' (x, y) = (unrep' x :*: unrep' y)
 
-instance (GPURep c) => GPURep (K1 i c p) where
+instance (Typeable (K1 i c p), GPURep c) => GPURep (K1 i c p) where
   type GPURepTy (K1 i c p) = c --GPURepTy c
 
   -- construct = construct . unK1
@@ -522,7 +526,7 @@ instance (GPURep c) => GPURep (K1 i c p) where
   rep' (K1 x) = x
   unrep' = K1
 
-instance GPURep (U1 p) where
+instance Typeable (U1 p) => GPURep (U1 p) where
   type GPURepTy (U1 p) = ()
 
   construct _ = UnitExp

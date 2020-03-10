@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <assert.h>
+#include <math.h>
 
 typedef enum var_type_tag {
   EXPR_INT
@@ -33,7 +34,28 @@ typedef struct closure_t {
   var_t (*fn)(var_t, struct closure_t*);
 } closure_t;
 
-var_t vars[23];
+var_t vars[69];
+
+#define GET_MATH_OP_ADD +
+#define GET_MATH_OP_MUL *
+#define GET_MATH_OP_SUB -
+#define GET_MATH_OP_DIV /
+
+#define GET_COMPARE_OP_LTE <=
+#define GET_COMPARE_OP_LT <
+#define GET_COMPARE_OP_GTE >=
+#define GET_COMPARE_OP_GT >
+#define GET_COMPARE_OP_EQUAL ==
+
+  // Remove any additional wrappers (for instance, a EXPR_COMPLEX wraps a EXPR_PAIR
+#define UNWRAP(result, x)\
+  do {\
+    if ((x).tag == EXPR_COMPLEX) {\
+      result = *((var_t*)((x).value));\
+    } else {\
+      result = x;\
+    }\
+  } while (0);
 
 #define MATH_OP(op, result, a, b)\
   do {\
@@ -42,34 +64,146 @@ var_t vars[23];
     switch ((a).tag) {\
       case EXPR_INT:\
         (result).value = malloc(sizeof(int));\
-        *((int*)(result).value) = *(int*)((a).value) op *(int*)((b).value);\
+        *((int*)(result).value) = *(int*)((a).value) GET_MATH_OP_##op *(int*)((b).value);\
         break;\
       case EXPR_FLOAT:\
         (result).value = malloc(sizeof(float));\
-        *((float*)(result).value) = *(float*)((a).value) op *(float*)((b).value);\
+        *((float*)(result).value) = *(float*)((a).value) GET_MATH_OP_##op *(float*)((b).value);\
         break;\
       case EXPR_DOUBLE:\
         (result).value = malloc(sizeof(double));\
-        *((double*)(result).value) = *(double*)((a).value) op *(double*)((b).value);\
+        *((double*)(result).value) = *(double*)((a).value) GET_MATH_OP_##op *(double*)((b).value);\
         break;\
       default:\
-       fprintf(stderr, "type tag = %d\n", (a).tag);\
-       assert(0 && "Attempting to perform arithmetic on non-numeric types");\
+        fprintf(stderr, "%s type tag = %d\n", #a, (a).tag);\
+        assert(0 && "Attempting to perform arithmetic on non-numeric types");\
     }\
   } while (0);
+
+#define COMPARE(op, result, a, b)\
+  do {\
+   assert((a).tag == (b).tag);\
+    switch ((a).tag) {\
+      case EXPR_INT:\
+        *((int*)(result).value) = *(int*)((a).value) GET_COMPARE_OP_##op *(int*)((b).value);\
+        break;\
+      case EXPR_FLOAT:\
+        *((float*)(result).value) = *(float*)((a).value) GET_COMPARE_OP_##op *(float*)((b).value);\
+        break;\
+      case EXPR_DOUBLE:\
+        *((double*)(result).value) = *(double*)((a).value) GET_COMPARE_OP_##op *(double*)((b).value);\
+        break;\
+      case EXPR_BOOL:\
+        *((bool*)(result).value) = *(bool*)((a).value) GET_COMPARE_OP_##op *(bool*)((b).value);\
+        break;\
+      case EXPR_CHAR:\
+        *((char*)(result).value) = *(char*)((a).value) GET_COMPARE_OP_##op *(char*)((b).value);\
+        break;\
+      default:\
+        fprintf(stderr, "%s type tag = %d\n", #a, (a).tag);\
+        assert(0 && "Cannot compare given type for equality");\
+    }\
+  } while (0);
+
+#define CAST_TO(result, r_type, a)\
+  do {\
+    switch ((a).tag) {\
+      case EXPR_INT:\
+        *((r_type*)(result).value) = (r_type) *(int*)((a).value);\
+        break;\
+      case EXPR_FLOAT:\
+        *((r_type*)(result).value) = (r_type) *(float*)((a).value);\
+        break;\
+      case EXPR_DOUBLE:\
+        *((r_type*)(result).value) = (r_type) *(double*)((a).value);\
+        break;\
+      default:\
+        fprintf(stderr, "%s type tag = %d\n", #a, (a).tag);\
+        assert(0 && "CAST_FROM: Invalid type tag");\
+    }\
+  } while (0);
+
+#define MATH_SQRT(result, a)\
+  do {\
+      case EXPR_FLOAT:\
+        *((float*)(result).value) = sqrt(*(float*)((a).value));\
+        break;\
+      case EXPR_DOUBLE:\
+        *((double*)(result).value) = sqrt(*(double*)((a).value));\
+        break;\
+  } while(0);
+
+#define INIT_COMPLEX(a, type, eTag)\
+  do {\
+    (a).tag = EXPR_COMPLEX;\
+    (a).value = malloc(sizeof(var_t));\
+    ((var_t*)((a).value))->tag = EXPR_PAIR;\
+    ((var_t*)((a).value))->value = malloc(2*sizeof(var_t));\
+    ((var_t*)(((var_t*)((a).value))->value))[0].tag = eTag;\
+    ((var_t*)(((var_t*)((a).value))->value))[1].tag = eTag;\
+    ((var_t*)(((var_t*)((a).value))->value))[0].value = malloc(sizeof(type));\
+    ((var_t*)(((var_t*)((a).value))->value))[1].value = malloc(sizeof(type));\
+  } while (0);
+
+#define PAIR_FST(result, p)\
+  do {\
+    assert((p).tag == EXPR_PAIR);\
+    (result) = ((var_t*)((p).value))[0];\
+  } while(0);
+
+#define PAIR_SND(result, p)\
+  do {\
+    assert((p).tag == EXPR_PAIR);\
+    (result) = ((var_t*)((p).value))[1];\
+  } while(0);
+
+#define PAIR_ASSIGN_FST(result, x)\
+  do {\
+    ((var_t*)((result).value))[0] = (x);\
+  } while(0);
+
+#define PAIR_ASSIGN_SND(result, x)\
+  do {\
+    ((var_t*)((result).value))[1] = (x);\
+  } while(0);
+
+#define COMPLEX_REAL(result, c)\
+  do {\
+    assert((p).tag == EXPR_COMPLEX);\
+    PAIR_FST(result, *((var_t*)((c).value)));\
+  } while (0);
+
+#define COMPLEX_IMAG(result, c)\
+  do {\
+    assert((c).tag == EXPR_COMPLEX);\
+    PAIR_SND(result, *((var_t*)((c).value)));\
+  } while (0);
+
+#define COMPLEX_ASSIGN_REAL(result, x)\
+  do {\
+    PAIR_ASSIGN_FST(*((var_t*)((result).value)), x);\
+  } while(0);
+
+#define COMPLEX_ASSIGN_IMAG(result, x)\
+  do {\
+    PAIR_ASSIGN_SND(*((var_t*)((result).value)), x);\
+  } while(0);
 
 bool isIterTag(var_type_tag tag) {
   return tag == EXPR_STEP || tag == EXPR_DONE;
 }
 
-var_t lam_19(var_t, struct closure_t*);
-var_t lam_21(var_t, struct closure_t*);
-var_t lam_20(var_t, struct closure_t*);
-var_t lam_23(var_t, struct closure_t*);
-var_t lam_22(var_t, struct closure_t*);
+var_t lam_62(var_t, struct closure_t*);
+var_t lam_65(var_t, struct closure_t*);
+var_t lam_64(var_t, struct closure_t*);
+var_t lam_63(var_t, struct closure_t*);
+var_t lam_67(var_t, struct closure_t*);
+var_t lam_66(var_t, struct closure_t*);
+var_t lam_69(var_t, struct closure_t*);
+var_t lam_68(var_t, struct closure_t*);
 
 
-var_t lam_19(var_t arg, struct closure_t* self) {
+var_t lam_62(var_t arg, struct closure_t* self) {
   var_t x1;
 x1.tag = EXPR_STEP;
 x1.value = malloc(sizeof(var_t));
@@ -82,240 +216,518 @@ x2 = *(var_t*)(x1.value);
 x2 = x1;
 }
 
-closure_t x3;
-x3.fv_env = malloc(sizeof(var_t)*1);
-x3.fn = &lam_20;
-x3.fv_env[0] = ((var_t*)x2.value)[0];
+var_t x3;
+UNWRAP(x3, x2);
+closure_t x4;
+x4.fv_env = malloc(sizeof(var_t)*2);
+x4.fn = &lam_63;
+x4.fv_env[0] = ((var_t*)x3.value)[1];
+x4.fv_env[1] = ((var_t*)x3.value)[0];
 
 
-x1 = x3.fn(((var_t*)x2.value)[1], &x3);
+x1 = x4.fn(((var_t*)(((var_t*)x3.value)[1]).value)[1], &x4);
+
 
 
 }
 
-var_t x4 = *(var_t*)(x1.value);
-x1.tag = x4.tag;
-x1.value = x4.value;
+var_t x5 = *(var_t*)(x1.value);
+x1.tag = x5.tag;
+x1.value = x5.value;
 
   return x1;
 }
 
-var_t lam_21(var_t arg, struct closure_t* self) {
-  var_t x5;
-closure_t* x6 = malloc(sizeof(closure_t));
-(*x6).fv_env = malloc(sizeof(var_t)*1);
-(*x6).fn = &lam_20;
-(*x6).fv_env[0] = arg;
+var_t lam_65(var_t arg, struct closure_t* self) {
+  var_t x6;
+closure_t* x7 = malloc(sizeof(closure_t));
+(*x7).fv_env = malloc(sizeof(var_t)*1);
+(*x7).fn = &lam_64;
+(*x7).fv_env[0] = arg;
 
 
 
-x5.tag = EXPR_CLOSURE;
-x5.value = (void*)x6;
+x6.tag = EXPR_CLOSURE;
+x6.value = (void*)x7;
 
-  return x5;
+  return x6;
 }
 
-var_t lam_20(var_t arg, struct closure_t* self) {
-  var_t x8;
-var_t x9;
-if (isIterTag(arg.tag)) {
-x9 = *(var_t*)(arg.value);
-} else {
-x9 = arg;
+var_t lam_64(var_t arg, struct closure_t* self) {
+  var_t x9;
+closure_t* x10 = malloc(sizeof(closure_t));
+(*x10).fv_env = malloc(sizeof(var_t)*2);
+(*x10).fn = &lam_63;
+(*x10).fv_env[0] = arg;
+(*x10).fv_env[1] = self->fv_env[0];
+
+
+
+x9.tag = EXPR_CLOSURE;
+x9.value = (void*)x10;
+
+  return x9;
 }
 
-assert(x9.tag == EXPR_EITHER_LEFT || x9.tag == EXPR_EITHER_RIGHT);
-var_t x10 = *(var_t*)(x9.value);
-if (x9.tag == EXPR_EITHER_LEFT) {
-var_t x11;
-if (isIterTag(self->fv_env[0].tag)) {
-x11 = *(var_t*)(self->fv_env[0].value);
-} else {
-x11 = self->fv_env[0];
-}
+var_t lam_63(var_t arg, struct closure_t* self) {
+  var_t x12;
+var_t x13;
+var_t x14;
+var_t x15;
 
-x8.tag = EXPR_DONE;
-x8.value = malloc(sizeof(var_t));
-*(var_t*)(x8.value) = x11;
-
-} else if (x9.tag == EXPR_EITHER_RIGHT) {
-closure_t x12;
-x12.fv_env = malloc(sizeof(var_t)*2);
-x12.fn = &lam_22;
-x12.fv_env[0] = self->fv_env[0];
-x12.fv_env[1] = ((var_t*)x10.value)[0];
-
-
-x8 = x12.fn(((var_t*)x10.value)[1], &x12);
-
-}
-
-
-  return x8;
-}
-
-var_t lam_23(var_t arg, struct closure_t* self) {
-  var_t x14;
-closure_t* x15 = malloc(sizeof(closure_t));
-(*x15).fv_env = malloc(sizeof(var_t)*2);
-(*x15).fn = &lam_22;
-(*x15).fv_env[0] = self->fv_env[0];
-(*x15).fv_env[1] = arg;
-
-
-
-x14.tag = EXPR_CLOSURE;
-x14.value = (void*)x15;
-
-  return x14;
-}
-
-var_t lam_22(var_t arg, struct closure_t* self) {
-  var_t x17;
-var_t x18;
-var_t x19;
-var_t x20;
-var_t x21;
-var_t x22;
+var_t x16;
+var_t x17;
 if (isIterTag(self->fv_env[1].tag)) {
-x21 = *(var_t*)(self->fv_env[1].value);
+x16 = *(var_t*)(self->fv_env[1].value);
 } else {
-x21 = self->fv_env[1];
+x16 = self->fv_env[1];
 }
 
-if (isIterTag(self->fv_env[0].tag)) {
-x22 = *(var_t*)(self->fv_env[0].value);
+// oneDimNumCode
+x17.value = malloc(sizeof(int));
+x17.tag = EXPR_INT;
+*(int*)(x17.value) = 50;
+
+assert(x16.tag == x17.tag);
+
+x13.tag = EXPR_BOOL;
+x13.value = malloc(sizeof(bool));
+if (x13.tag == EXPR_COMPLEX) {
+  COMPARE(EQUAL, x13, ((var_t*)(x16.value))[0], ((var_t*)(x17.value))[0]);
+  COMPARE(EQUAL, x13, ((var_t*)(x16.value))[1], ((var_t*)(x17.value))[1]);
 } else {
-x22 = self->fv_env[0];
+  COMPARE(EQUAL, x13, x16, x17);
 }
 
-MATH_OP(+, x19, x21, x22);
 
+if (*(bool*)(x13.value)) {
+var_t x18;
+// ConstructRep (Non-Complex)
+var_t x19;
+x19.tag = EXPR_UNIT;
+x19.value = 0;
+
+x18.tag = EXPR_EITHER_LEFT;
+x18.value = malloc(sizeof(var_t));
+*(var_t*)(x18.value) = x19;
+
+
+x12.tag = EXPR_DONE;
+x12.value = malloc(sizeof(var_t));
+*(var_t*)(x12.value) = x18;
+
+} else {
+var_t x20;
 if (isIterTag(arg.tag)) {
 x20 = *(var_t*)(arg.value);
 } else {
 x20 = arg;
 }
 
-x18.tag = EXPR_PAIR;
-x18.value = malloc(sizeof(var_t)*2);
-((var_t*)(x18.value))[0] = x19;
-((var_t*)(x18.value))[1] = x20;
+var_t x21;
+UNWRAP(x21, x20);
+closure_t x22;
+x22.fv_env = malloc(sizeof(var_t)*4);
+x22.fn = &lam_66;
+x22.fv_env[0] = arg;
+x22.fv_env[1] = self->fv_env[0];
+x22.fv_env[2] = self->fv_env[1];
+x22.fv_env[3] = ((var_t*)x21.value)[0];
 
-x17.tag = EXPR_STEP;
-x17.value = malloc(sizeof(var_t));
-*(var_t*)(x17.value) = x18;
 
-  return x17;
+x12 = x22.fn(((var_t*)x21.value)[1], &x22);
+
+
+
+}
+
+  return x12;
+}
+
+var_t lam_67(var_t arg, struct closure_t* self) {
+  var_t x24;
+closure_t* x25 = malloc(sizeof(closure_t));
+(*x25).fv_env = malloc(sizeof(var_t)*4);
+(*x25).fn = &lam_66;
+(*x25).fv_env[0] = self->fv_env[0];
+(*x25).fv_env[1] = self->fv_env[1];
+(*x25).fv_env[2] = self->fv_env[2];
+(*x25).fv_env[3] = arg;
+
+
+
+x24.tag = EXPR_CLOSURE;
+x24.value = (void*)x25;
+
+  return x24;
+}
+
+var_t lam_66(var_t arg, struct closure_t* self) {
+  var_t x27;
+var_t x28;
+var_t x29;
+var_t x30;
+
+var_t x31;
+var_t x32;
+// Add
+var_t x33;
+var_t x34;
+// Mul
+var_t x35;
+var_t x36;
+if (isIterTag(self->fv_env[3].tag)) {
+x35 = *(var_t*)(self->fv_env[3].value);
+} else {
+x35 = self->fv_env[3];
+}
+
+if (isIterTag(self->fv_env[3].tag)) {
+x36 = *(var_t*)(self->fv_env[3].value);
+} else {
+x36 = self->fv_env[3];
+}
+
+x33.tag = EXPR_COMPLEX;
+
+if (x35.tag == EXPR_COMPLEX) {
+  var_t x37;
+  var_t x38;
+  var_t x39;
+  var_t x40;
+  var_t x41;
+  var_t x42;
+  MATH_OP(MUL, x37, ((var_t*)(x35.value))[0], ((var_t*)(x36.value))[0]);
+  MATH_OP(MUL, x38, ((var_t*)(x35.value))[0], ((var_t*)(x36.value))[1]);
+  MATH_OP(MUL, x39, ((var_t*)(x35.value))[1], ((var_t*)(x36.value))[0]);
+  MATH_OP(MUL, x40, ((var_t*)(x35.value))[1], ((var_t*)(x36.value))[1]);
+
+  MATH_OP(SUB, x41, x37, x40);
+  MATH_OP(ADD, x42, x38, x39);
+  x33.tag = EXPR_COMPLEX;
+  COMPLEX_ASSIGN_REAL(x33, x41);
+  COMPLEX_ASSIGN_IMAG(x33, x42);
+} else {
+  MATH_OP(MUL, x33, x35, x36);
+}
+
+// Mul
+var_t x43;
+var_t x44;
+if (isIterTag(arg.tag)) {
+x43 = *(var_t*)(arg.value);
+} else {
+x43 = arg;
+}
+
+if (isIterTag(arg.tag)) {
+x44 = *(var_t*)(arg.value);
+} else {
+x44 = arg;
+}
+
+x34.tag = EXPR_COMPLEX;
+
+if (x43.tag == EXPR_COMPLEX) {
+  var_t x45;
+  var_t x46;
+  var_t x47;
+  var_t x48;
+  var_t x49;
+  var_t x50;
+  MATH_OP(MUL, x45, ((var_t*)(x43.value))[0], ((var_t*)(x44.value))[0]);
+  MATH_OP(MUL, x46, ((var_t*)(x43.value))[0], ((var_t*)(x44.value))[1]);
+  MATH_OP(MUL, x47, ((var_t*)(x43.value))[1], ((var_t*)(x44.value))[0]);
+  MATH_OP(MUL, x48, ((var_t*)(x43.value))[1], ((var_t*)(x44.value))[1]);
+
+  MATH_OP(SUB, x49, x45, x48);
+  MATH_OP(ADD, x50, x46, x47);
+  x34.tag = EXPR_COMPLEX;
+  COMPLEX_ASSIGN_REAL(x34, x49);
+  COMPLEX_ASSIGN_IMAG(x34, x50);
+} else {
+  MATH_OP(MUL, x34, x43, x44);
+}
+
+assert(x33.tag == x34.tag);
+
+if (x33.tag == EXPR_COMPLEX) {
+  MATH_OP(ADD, ((var_t*)(x31.value))[0], ((var_t*)(x33.value))[0], ((var_t*)(x34.value))[0]); 
+  MATH_OP(ADD, ((var_t*)(x31.value))[1], ((var_t*)(x33.value))[1], ((var_t*)(x34.value))[1]); 
+} else {
+  MATH_OP(ADD, x31, x33, x34);
+}
+
+// oneDimNumCode
+x32.value = malloc(sizeof(double));
+x32.tag = EXPR_DOUBLE;
+*(double*)(x32.value) = 4.0;
+
+assert(x31.tag == x32.tag);
+COMPARE(GT, x28, x31, x32);
+
+
+if (*(bool*)(x28.value)) {
+var_t x51;
+// ConstructRep (Non-Complex)
+var_t x52;
+if (isIterTag(self->fv_env[2].tag)) {
+x52 = *(var_t*)(self->fv_env[2].value);
+} else {
+x52 = self->fv_env[2];
+}
+
+x51.tag = EXPR_EITHER_RIGHT;
+x51.value = malloc(sizeof(var_t));
+*(var_t*)(x51.value) = x52;
+
+
+x27.tag = EXPR_DONE;
+x27.value = malloc(sizeof(var_t));
+*(var_t*)(x27.value) = x51;
+
+} else {
+var_t x53;
+// ConstructRep (Non-Complex)
+var_t x54;
+var_t x55;
+// Add
+var_t x56;
+var_t x57;
+if (isIterTag(self->fv_env[2].tag)) {
+x56 = *(var_t*)(self->fv_env[2].value);
+} else {
+x56 = self->fv_env[2];
+}
+
+// oneDimNumCode
+x57.value = malloc(sizeof(int));
+x57.tag = EXPR_INT;
+*(int*)(x57.value) = 1;
+
+assert(x56.tag == x57.tag);
+
+if (x56.tag == EXPR_COMPLEX) {
+  MATH_OP(ADD, ((var_t*)(x54.value))[0], ((var_t*)(x56.value))[0], ((var_t*)(x57.value))[0]); 
+  MATH_OP(ADD, ((var_t*)(x54.value))[1], ((var_t*)(x56.value))[1], ((var_t*)(x57.value))[1]); 
+} else {
+  MATH_OP(ADD, x54, x56, x57);
+}
+
+var_t x58;
+var_t x59;
+if (isIterTag(self->fv_env[1].tag)) {
+x58 = *(var_t*)(self->fv_env[1].value);
+} else {
+x58 = self->fv_env[1];
+}
+
+var_t x60;
+var_t x61;
+var_t x62;
+if (isIterTag(self->fv_env[1].tag)) {
+x61 = *(var_t*)(self->fv_env[1].value);
+} else {
+x61 = self->fv_env[1];
+}
+
+if (isIterTag(self->fv_env[0].tag)) {
+x62 = *(var_t*)(self->fv_env[0].value);
+} else {
+x62 = self->fv_env[0];
+}
+
+x60.tag = EXPR_PAIR;
+x60.value = malloc(sizeof(var_t)*2);
+((var_t*)(x60.value))[0] = x61;
+((var_t*)(x60.value))[1] = x62;
+
+var_t x63;
+UNWRAP(x63, x60);
+closure_t x64;
+x64.fv_env = malloc(sizeof(var_t)*1);
+x64.fn = &lam_68;
+x64.fv_env[0] = ((var_t*)x63.value)[0];
+
+
+x59 = x64.fn(((var_t*)x63.value)[1], &x64);
+
+
+
+x55.tag = EXPR_PAIR;
+x55.value = malloc(sizeof(var_t)*2);
+((var_t*)(x55.value))[0] = x58;
+((var_t*)(x55.value))[1] = x59;
+
+x53.tag = EXPR_PAIR;
+x53.value = malloc(sizeof(var_t)*2);
+((var_t*)(x53.value))[0] = x54;
+((var_t*)(x53.value))[1] = x55;
+
+
+x27.tag = EXPR_STEP;
+x27.value = malloc(sizeof(var_t));
+*(var_t*)(x27.value) = x53;
+
+}
+
+  return x27;
+}
+
+var_t lam_69(var_t arg, struct closure_t* self) {
+  var_t x66;
+closure_t* x67 = malloc(sizeof(closure_t));
+(*x67).fv_env = malloc(sizeof(var_t)*1);
+(*x67).fn = &lam_68;
+(*x67).fv_env[0] = arg;
+
+
+
+x66.tag = EXPR_CLOSURE;
+x66.value = (void*)x67;
+
+  return x66;
+}
+
+var_t lam_68(var_t arg, struct closure_t* self) {
+  var_t x69;
+// Add
+var_t x70;
+var_t x71;
+// Mul
+var_t x72;
+var_t x73;
+if (isIterTag(arg.tag)) {
+x72 = *(var_t*)(arg.value);
+} else {
+x72 = arg;
+}
+
+if (isIterTag(arg.tag)) {
+x73 = *(var_t*)(arg.value);
+} else {
+x73 = arg;
+}
+
+x70.tag = EXPR_COMPLEX;
+
+if (x72.tag == EXPR_COMPLEX) {
+  var_t x74;
+  var_t x75;
+  var_t x76;
+  var_t x77;
+  var_t x78;
+  var_t x79;
+  MATH_OP(MUL, x74, ((var_t*)(x72.value))[0], ((var_t*)(x73.value))[0]);
+  MATH_OP(MUL, x75, ((var_t*)(x72.value))[0], ((var_t*)(x73.value))[1]);
+  MATH_OP(MUL, x76, ((var_t*)(x72.value))[1], ((var_t*)(x73.value))[0]);
+  MATH_OP(MUL, x77, ((var_t*)(x72.value))[1], ((var_t*)(x73.value))[1]);
+
+  MATH_OP(SUB, x78, x74, x77);
+  MATH_OP(ADD, x79, x75, x76);
+  x70.tag = EXPR_COMPLEX;
+  COMPLEX_ASSIGN_REAL(x70, x78);
+  COMPLEX_ASSIGN_IMAG(x70, x79);
+} else {
+  MATH_OP(MUL, x70, x72, x73);
+}
+
+if (isIterTag(self->fv_env[0].tag)) {
+x71 = *(var_t*)(self->fv_env[0].value);
+} else {
+x71 = self->fv_env[0];
+}
+
+assert(x70.tag == x71.tag);
+
+if (x70.tag == EXPR_COMPLEX) {
+  MATH_OP(ADD, ((var_t*)(x69.value))[0], ((var_t*)(x70.value))[0], ((var_t*)(x71.value))[0]); 
+  MATH_OP(ADD, ((var_t*)(x69.value))[1], ((var_t*)(x70.value))[1], ((var_t*)(x71.value))[1]); 
+} else {
+  MATH_OP(ADD, x69, x70, x71);
+}
+
+  return x69;
 }
 
 
 var_t top_level() {
   var_t x0;
-var_t x24;
-closure_t x40;
-var_t x41;
+var_t x81;
+closure_t x91;
+var_t x92;
 
-var_t x25;
-var_t x26;
-x25.value = malloc(sizeof(int));
-x25.tag = EXPR_INT;
-*(int*)(x25.value) = 0;
+// ConstructRep (Non-Complex)
+var_t x82;
+var_t x83;
+// oneDimNumCode
+x82.value = malloc(sizeof(int));
+x82.tag = EXPR_INT;
+*(int*)(x82.value) = 0;
 
-var_t x27;
-var_t x28;
-var_t x29;
-x28.value = malloc(sizeof(int));
-x28.tag = EXPR_INT;
-*(int*)(x28.value) = 10;
+var_t x84;
+var_t x85;
+// Complex ConstructRep
+var_t x86;
+var_t x87;
+var_t x88;
+// oneDimNumCode
+x87.value = malloc(sizeof(double));
+x87.tag = EXPR_DOUBLE;
+*(double*)(x87.value) = 1.0;
 
-var_t x30;
-var_t x31;
-var_t x32;
-x31.value = malloc(sizeof(int));
-x31.tag = EXPR_INT;
-*(int*)(x31.value) = 100;
+// oneDimNumCode
+x88.value = malloc(sizeof(double));
+x88.tag = EXPR_DOUBLE;
+*(double*)(x88.value) = 0.0;
 
-var_t x33;
-var_t x34;
-var_t x35;
-x34.value = malloc(sizeof(int));
-x34.tag = EXPR_INT;
-*(int*)(x34.value) = 1000;
+x86.tag = EXPR_PAIR;
+x86.value = malloc(sizeof(var_t)*2);
+((var_t*)(x86.value))[0] = x87;
+((var_t*)(x86.value))[1] = x88;
 
-var_t x36;
-var_t x37;
-var_t x38;
-x37.value = malloc(sizeof(int));
-x37.tag = EXPR_INT;
-*(int*)(x37.value) = 10000;
+x84.tag = EXPR_COMPLEX;
+x84.value = malloc(sizeof(var_t));
+*((var_t*)(x84.value)) = x86;
 
-var_t x39;
-x39.tag = EXPR_UNIT;
-x39.value = 0;
+// Complex FromIntegral
+var_t x89;
+var_t x90;
+x90.tag = EXPR_DOUBLE;
+x90.value = malloc(sizeof(double));
+*((double*)(x90.value)) = 0;
+// oneDimNumCode
+x89.value = malloc(sizeof(int));
+x89.tag = EXPR_INT;
+*(int*)(x89.value) = 0;
 
-x38.tag = EXPR_EITHER_LEFT;
-x38.value = malloc(sizeof(var_t));
-*(var_t*)(x38.value) = x39;
+INIT_COMPLEX(x85, double, EXPR_DOUBLE);
+COMPLEX_ASSIGN_REAL(x85, x89);
+COMPLEX_ASSIGN_IMAG(x85, x90);
 
-x36.tag = EXPR_PAIR;
-x36.value = malloc(sizeof(var_t)*2);
-((var_t*)(x36.value))[0] = x37;
-((var_t*)(x36.value))[1] = x38;
+x83.tag = EXPR_PAIR;
+x83.value = malloc(sizeof(var_t)*2);
+((var_t*)(x83.value))[0] = x84;
+((var_t*)(x83.value))[1] = x85;
 
-x35.tag = EXPR_EITHER_RIGHT;
-x35.value = malloc(sizeof(var_t));
-*(var_t*)(x35.value) = x36;
+x81.tag = EXPR_PAIR;
+x81.value = malloc(sizeof(var_t)*2);
+((var_t*)(x81.value))[0] = x82;
+((var_t*)(x81.value))[1] = x83;
 
-x33.tag = EXPR_PAIR;
-x33.value = malloc(sizeof(var_t)*2);
-((var_t*)(x33.value))[0] = x34;
-((var_t*)(x33.value))[1] = x35;
 
-x32.tag = EXPR_EITHER_RIGHT;
-x32.value = malloc(sizeof(var_t));
-*(var_t*)(x32.value) = x33;
-
-x30.tag = EXPR_PAIR;
-x30.value = malloc(sizeof(var_t)*2);
-((var_t*)(x30.value))[0] = x31;
-((var_t*)(x30.value))[1] = x32;
-
-x29.tag = EXPR_EITHER_RIGHT;
-x29.value = malloc(sizeof(var_t));
-*(var_t*)(x29.value) = x30;
-
-x27.tag = EXPR_PAIR;
-x27.value = malloc(sizeof(var_t)*2);
-((var_t*)(x27.value))[0] = x28;
-((var_t*)(x27.value))[1] = x29;
-
-x26.tag = EXPR_EITHER_RIGHT;
-x26.value = malloc(sizeof(var_t));
-*(var_t*)(x26.value) = x27;
-
-x24.tag = EXPR_PAIR;
-x24.value = malloc(sizeof(var_t)*2);
-((var_t*)(x24.value))[0] = x25;
-((var_t*)(x24.value))[1] = x26;
-
-closure_t* x42 = malloc(sizeof(closure_t));
-(*x42).fv_env = malloc(sizeof(var_t)*0);
-(*x42).fn = &lam_19;
+closure_t* x93 = malloc(sizeof(closure_t));
+(*x93).fv_env = malloc(sizeof(var_t)*0);
+(*x93).fn = &lam_62;
 
 
 
-x41.tag = EXPR_CLOSURE;
-x41.value = (void*)x42;
+x92.tag = EXPR_CLOSURE;
+x92.value = (void*)x93;
 
-memcpy(&x40, (closure_t*)(x41.value), sizeof(closure_t));
-x0 = x40.fn(x24, &x40);
+memcpy(&x91, (closure_t*)(x92.value), sizeof(closure_t));
+x0 = x91.fn(x81, &x91);
 
   return x0;
-}
-
-int main() {
-  var_t r = top_level();
-  printf("%d\n", *(int*)r.value);
 }
 

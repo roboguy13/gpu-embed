@@ -2,9 +2,10 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 
-{-# OPTIONS_GHC -ddump-simpl -fexpose-all-unfoldings -O0 -dcore-lint -dsuppress-all -dcmm-lint -dstg-lint -fcatch-bottoms -fplugin=Plugin.MatchPlugin #-}
+{-# OPTIONS_GHC -Wtype-defaults -fexpose-all-unfoldings -O0 -dcore-lint -dsuppress-coercions -fplugin=Plugin.MatchPlugin #-}
 
 module Test.PluginExample where
+
 
 import           GHC.Float 
 import           Data.List
@@ -32,6 +33,8 @@ import           CodeGen.C
 -- import           Debug.Trace
 
 -- deriving instance Generic (Ratio a) -- XXX: This instance should probably be in 'base'
+
+default (Int, Double)
 
 data Nat = Z | S Nat deriving (Generic, Show)
 
@@ -198,6 +201,11 @@ mandelbrot_point c =
   internalize (externalize
     (mandelbrot_helper (0, c, 0)))
 
+mandelbrot_pointE :: Complex Double -> GPUExp (Maybe Int)
+mandelbrot_pointE c =
+  externalize
+    (mandelbrot_helper (0, c, 0))
+
 data IntList = Nil | Cons Int IntList
   deriving (Generic, Show)
 
@@ -252,10 +260,29 @@ example =
       Right i -> i))
 {-# NOINLINE example #-}
 
+data DoubleList = DNil | DCons Double DoubleList deriving (Generic)
+
+instance GPURep DoubleList
+
+doubleListSum_helper :: (Double, DoubleList) -> Double
+doubleListSum_helper p =
+  internalize (externalize
+    (case p of
+      (acc, t) ->
+        case t of
+          DNil -> acc
+          DCons x xs -> doubleListSum_helper (x+acc, xs)))
+
+doubleListSumE :: DoubleList -> GPUExp Double
+doubleListSumE t = externalize (doubleListSum_helper (0, t))
+
+
 main :: IO ()
 main = do
   let intList = Cons 10 (Cons 100 (Cons 1000 (Cons 10000 Nil)))
-  putStrLn (genProgram (intListSumE intList)) --putStrLn (genProgram cTest6)
+      doubleList = DCons 3.2 (DCons 1 (DCons 2.5 DNil))
+  putStrLn $ genProgram (mandelbrot_pointE (1 :+ 0))
+  -- putStrLn (genProgram (doubleListSumE doubleList)) --putStrLn (genProgram cTest6)
   -- print (isEmpty Nil, isEmpty (Cons 1 Nil)
   --       ,intListLength intList
   --       ,intListSum intList
