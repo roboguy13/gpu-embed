@@ -85,19 +85,19 @@ var_t vars[69];
    assert((a).tag == (b).tag);\
     switch ((a).tag) {\
       case EXPR_INT:\
-        *((int*)(result).value) = *(int*)((a).value) GET_COMPARE_OP_##op *(int*)((b).value);\
+        *((bool*)(result).value) = *(int*)((a).value) GET_COMPARE_OP_##op *(int*)((b).value);\
         break;\
       case EXPR_FLOAT:\
-        *((float*)(result).value) = *(float*)((a).value) GET_COMPARE_OP_##op *(float*)((b).value);\
+        *((bool*)(result).value) = *(float*)((a).value) GET_COMPARE_OP_##op *(float*)((b).value);\
         break;\
       case EXPR_DOUBLE:\
-        *((double*)(result).value) = *(double*)((a).value) GET_COMPARE_OP_##op *(double*)((b).value);\
+        *((bool*)(result).value) = *(double*)((a).value) GET_COMPARE_OP_##op *(double*)((b).value);\
         break;\
       case EXPR_BOOL:\
         *((bool*)(result).value) = *(bool*)((a).value) GET_COMPARE_OP_##op *(bool*)((b).value);\
         break;\
       case EXPR_CHAR:\
-        *((char*)(result).value) = *(char*)((a).value) GET_COMPARE_OP_##op *(char*)((b).value);\
+        *((bool*)(result).value) = *(char*)((a).value) GET_COMPARE_OP_##op *(char*)((b).value);\
         break;\
       default:\
         fprintf(stderr, "%s type tag = %d\n", #a, (a).tag);\
@@ -132,6 +132,14 @@ var_t vars[69];
         *((double*)(result).value) = sqrt(*(double*)((a).value));\
         break;\
   } while(0);
+
+#define INIT_COMPLEX_PAIR(result)\
+  do {\
+    (result).tag = EXPR_COMPLEX;\
+    (result).value = malloc(sizeof(var_t));\
+    (*((var_t*)(result).value)).tag = EXPR_PAIR;\
+    (*((var_t*)(result).value)).value = malloc(2*sizeof(var_t));\
+  } while (0);
 
 #define INIT_COMPLEX(a, type, eTag)\
   do {\
@@ -388,7 +396,6 @@ x36 = *(var_t*)(self->fv_env[3].value);
 x36 = self->fv_env[3];
 }
 
-x33.tag = EXPR_COMPLEX;
 
 if (x35.tag == EXPR_COMPLEX) {
   var_t x37;
@@ -397,6 +404,8 @@ if (x35.tag == EXPR_COMPLEX) {
   var_t x40;
   var_t x41;
   var_t x42;
+
+
   MATH_OP(MUL, x37, ((var_t*)(x35.value))[0], ((var_t*)(x36.value))[0]);
   MATH_OP(MUL, x38, ((var_t*)(x35.value))[0], ((var_t*)(x36.value))[1]);
   MATH_OP(MUL, x39, ((var_t*)(x35.value))[1], ((var_t*)(x36.value))[0]);
@@ -404,7 +413,7 @@ if (x35.tag == EXPR_COMPLEX) {
 
   MATH_OP(SUB, x41, x37, x40);
   MATH_OP(ADD, x42, x38, x39);
-  x33.tag = EXPR_COMPLEX;
+  INIT_COMPLEX_PAIR(x33);
   COMPLEX_ASSIGN_REAL(x33, x41);
   COMPLEX_ASSIGN_IMAG(x33, x42);
 } else {
@@ -426,7 +435,6 @@ x44 = *(var_t*)(arg.value);
 x44 = arg;
 }
 
-x34.tag = EXPR_COMPLEX;
 
 if (x43.tag == EXPR_COMPLEX) {
   var_t x45;
@@ -435,6 +443,8 @@ if (x43.tag == EXPR_COMPLEX) {
   var_t x48;
   var_t x49;
   var_t x50;
+
+
   MATH_OP(MUL, x45, ((var_t*)(x43.value))[0], ((var_t*)(x44.value))[0]);
   MATH_OP(MUL, x46, ((var_t*)(x43.value))[0], ((var_t*)(x44.value))[1]);
   MATH_OP(MUL, x47, ((var_t*)(x43.value))[1], ((var_t*)(x44.value))[0]);
@@ -442,7 +452,7 @@ if (x43.tag == EXPR_COMPLEX) {
 
   MATH_OP(SUB, x49, x45, x48);
   MATH_OP(ADD, x50, x46, x47);
-  x34.tag = EXPR_COMPLEX;
+  INIT_COMPLEX_PAIR(x34);
   COMPLEX_ASSIGN_REAL(x34, x49);
   COMPLEX_ASSIGN_IMAG(x34, x50);
 } else {
@@ -452,6 +462,7 @@ if (x43.tag == EXPR_COMPLEX) {
 assert(x33.tag == x34.tag);
 
 if (x33.tag == EXPR_COMPLEX) {
+  INIT_COMPLEX_PAIR(x31);
   MATH_OP(ADD, ((var_t*)(x31.value))[0], ((var_t*)(x33.value))[0], ((var_t*)(x34.value))[0]); 
   MATH_OP(ADD, ((var_t*)(x31.value))[1], ((var_t*)(x33.value))[1], ((var_t*)(x34.value))[1]); 
 } else {
@@ -464,6 +475,8 @@ x32.tag = EXPR_DOUBLE;
 *(double*)(x32.value) = 4.0;
 
 assert(x31.tag == x32.tag);
+x28.tag = EXPR_BOOL;
+x28.value = malloc(sizeof(bool));
 COMPARE(GT, x28, x31, x32);
 
 
@@ -508,6 +521,7 @@ x57.tag = EXPR_INT;
 assert(x56.tag == x57.tag);
 
 if (x56.tag == EXPR_COMPLEX) {
+  INIT_COMPLEX_PAIR(x54);
   MATH_OP(ADD, ((var_t*)(x54.value))[0], ((var_t*)(x56.value))[0], ((var_t*)(x57.value))[0]); 
   MATH_OP(ADD, ((var_t*)(x54.value))[1], ((var_t*)(x56.value))[1], ((var_t*)(x57.value))[1]); 
 } else {
@@ -609,7 +623,6 @@ x73 = *(var_t*)(arg.value);
 x73 = arg;
 }
 
-x70.tag = EXPR_COMPLEX;
 
 if (x72.tag == EXPR_COMPLEX) {
   var_t x74;
@@ -618,6 +631,8 @@ if (x72.tag == EXPR_COMPLEX) {
   var_t x77;
   var_t x78;
   var_t x79;
+
+
   MATH_OP(MUL, x74, ((var_t*)(x72.value))[0], ((var_t*)(x73.value))[0]);
   MATH_OP(MUL, x75, ((var_t*)(x72.value))[0], ((var_t*)(x73.value))[1]);
   MATH_OP(MUL, x76, ((var_t*)(x72.value))[1], ((var_t*)(x73.value))[0]);
@@ -625,7 +640,7 @@ if (x72.tag == EXPR_COMPLEX) {
 
   MATH_OP(SUB, x78, x74, x77);
   MATH_OP(ADD, x79, x75, x76);
-  x70.tag = EXPR_COMPLEX;
+  INIT_COMPLEX_PAIR(x70);
   COMPLEX_ASSIGN_REAL(x70, x78);
   COMPLEX_ASSIGN_IMAG(x70, x79);
 } else {
@@ -641,6 +656,7 @@ x71 = self->fv_env[0];
 assert(x70.tag == x71.tag);
 
 if (x70.tag == EXPR_COMPLEX) {
+  INIT_COMPLEX_PAIR(x69);
   MATH_OP(ADD, ((var_t*)(x69.value))[0], ((var_t*)(x70.value))[0], ((var_t*)(x71.value))[0]); 
   MATH_OP(ADD, ((var_t*)(x69.value))[1], ((var_t*)(x70.value))[1], ((var_t*)(x71.value))[1]); 
 } else {
@@ -729,5 +745,10 @@ memcpy(&x91, (closure_t*)(x92.value), sizeof(closure_t));
 x0 = x91.fn(x81, &x91);
 
   return x0;
+}
+
+int main() {
+  var_t r = top_level();
+  printf("%d\n", *(int*)r.value);
 }
 

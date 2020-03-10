@@ -303,7 +303,7 @@ mkLambda :: Bool -> SomeName -> GPUExp a -> SomeLambda
 mkLambda isTailRec (SomeName argName) body =
   SomeLambda $
     Lambda
-      { lambda_fvs =
+      { lambda_fvs = trace "lambda_fvs:" $ traceShowId $
           nub' $
           sortBy (comparing (\(SomeName a) -> getNameUniq a)) $
           deleteAll
@@ -430,19 +430,19 @@ prelude varCount =
     , "   assert((a).tag == (b).tag);\\"
     , "    switch ((a).tag) {\\"
     , "      case EXPR_INT:\\"
-    , "        *((int*)(result).value) = *(int*)((a).value) GET_COMPARE_OP_##op *(int*)((b).value);\\"
+    , "        *((bool*)(result).value) = *(int*)((a).value) GET_COMPARE_OP_##op *(int*)((b).value);\\"
     , "        break;\\"
     , "      case EXPR_FLOAT:\\"
-    , "        *((float*)(result).value) = *(float*)((a).value) GET_COMPARE_OP_##op *(float*)((b).value);\\"
+    , "        *((bool*)(result).value) = *(float*)((a).value) GET_COMPARE_OP_##op *(float*)((b).value);\\"
     , "        break;\\"
     , "      case EXPR_DOUBLE:\\"
-    , "        *((double*)(result).value) = *(double*)((a).value) GET_COMPARE_OP_##op *(double*)((b).value);\\"
+    , "        *((bool*)(result).value) = *(double*)((a).value) GET_COMPARE_OP_##op *(double*)((b).value);\\"
     , "        break;\\"
     , "      case EXPR_BOOL:\\"
     , "        *((bool*)(result).value) = *(bool*)((a).value) GET_COMPARE_OP_##op *(bool*)((b).value);\\"
     , "        break;\\"
     , "      case EXPR_CHAR:\\"
-    , "        *((char*)(result).value) = *(char*)((a).value) GET_COMPARE_OP_##op *(char*)((b).value);\\"
+    , "        *((bool*)(result).value) = *(char*)((a).value) GET_COMPARE_OP_##op *(char*)((b).value);\\"
     , "        break;\\"
     , "      default:\\"
     , "        fprintf(stderr, \"%s type tag = %d\\n\", #a, (a).tag);\\"
@@ -478,6 +478,14 @@ prelude varCount =
     , "        break;\\"
     , "  } while(0);"
     , ""  -- 
+    , "#define INIT_COMPLEX_PAIR(result)\\"
+    , "  do {\\"
+    , "    (result).tag = EXPR_COMPLEX;\\"
+    , "    (result).value = malloc(sizeof(var_t));\\"
+    , "    (*((var_t*)(result).value)).tag = EXPR_PAIR;\\"
+    , "    (*((var_t*)(result).value)).value = malloc(2*sizeof(var_t));\\"
+    , "  } while (0);"
+    , ""
     , "#define INIT_COMPLEX(a, type, eTag)\\"
     , "  do {\\"
     , "    (a).tag = EXPR_COMPLEX;\\"
@@ -602,7 +610,7 @@ genExp (Lam (Name n) body) resultName = do
   sLam@(SomeLambda lam) <- lookupLambda n
   closureCode <- buildClosure sLam ("(*" <> closurePtrName <> ")")
 
-  let fvs = lambda_fvs lam
+  -- let fvs = lambda_fvs lam
 
   return $ unlines
     [ "closure_t* " <> closurePtrName <> " = malloc(sizeof(closure_t));"
@@ -754,6 +762,7 @@ genExp (Sub x y) resultName = do
     , "assert(" <> xName <> ".tag == " <> yName <> ".tag);"
     , ""
     , "if (" <> xName <> ".tag == EXPR_COMPLEX) {"
+    , "  INIT_COMPLEX_PAIR(" <> resultName <> ");"
     , "  MATH_OP(SUB, ((var_t*)(" <> resultName <> ".value))[0], ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value)[0]); "
     , "  MATH_OP(SUB, ((var_t*)(" <> resultName <> ".value))[1], ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value)[1]); "
     , "} else {"
@@ -782,7 +791,6 @@ genExp (Mul x y) resultName = do
     , "var_t " <> yName <> ";"
     , xCode
     , yCode
-    , resultName <> ".tag = EXPR_COMPLEX;"
     -- , "assert(" <> xName <> ".tag == " <> yName <> ".tag);"
     , ""
     , "if (" <> xName <> ".tag == EXPR_COMPLEX) {"
@@ -792,6 +800,8 @@ genExp (Mul x y) resultName = do
     , "  var_t " <> x1y1Name <> ";"
     , "  var_t " <> realName <> ";"
     , "  var_t " <> imagName <> ";"
+    , ""
+    , ""
     , "  MATH_OP(MUL, " <> x0y0Name <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[0]);"
     , "  MATH_OP(MUL, " <> x0y1Name <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[1]);"
     , "  MATH_OP(MUL, " <> x1y0Name <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[0]);"
@@ -800,7 +810,7 @@ genExp (Mul x y) resultName = do
     , "  MATH_OP(SUB, " <> realName <> ", " <> x0y0Name <> ", " <> x1y1Name <> ");"
     , "  MATH_OP(ADD, " <> imagName <> ", " <> x0y1Name <> ", " <> x1y0Name <> ");"
     -- , "  assert(*(var_t*)(" <> realName <> ".value).tag == *(var_t*)(" <> imagName <> ".value).tag);"
-    , "  " <> resultName <> ".tag = EXPR_COMPLEX;"
+    , "  INIT_COMPLEX_PAIR(" <> resultName <> ");"
     , "  COMPLEX_ASSIGN_REAL(" <> resultName <> ", " <> realName <> ");"
     , "  COMPLEX_ASSIGN_IMAG(" <> resultName <> ", " <> imagName <> ");"
     -- , "  ((var_t*)(" <> resultName <> ".value))[0] = *((var_t*)(" <> realName <> ".value));"
@@ -826,6 +836,7 @@ genExp (Add x y) resultName = do
     , "assert(" <> xName <> ".tag == " <> yName <> ".tag);"
     , ""
     , "if (" <> xName <> ".tag == EXPR_COMPLEX) {"
+    , "  INIT_COMPLEX_PAIR(" <> resultName <> ");"
     , "  MATH_OP(ADD, ((var_t*)(" <> resultName <> ".value))[0], ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[0]); "
     , "  MATH_OP(ADD, ((var_t*)(" <> resultName <> ".value))[1], ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[1]); "
     , "} else {"
@@ -895,6 +906,8 @@ genExp (Lte x y) resultName = do
     , xCode
     , yCode
     , "assert(" <> xName <> ".tag == " <> yName <> ".tag);"
+    , resultName <> ".tag = EXPR_BOOL;"
+    , resultName <> ".value = malloc(sizeof(bool));"
     , "COMPARE(LTE, " <> resultName <> ", " <> xName <> ", " <> yName <> ");"
     ]
 
@@ -911,6 +924,8 @@ genExp (Gt x y) resultName = do
     , xCode
     , yCode
     , "assert(" <> xName <> ".tag == " <> yName <> ".tag);"
+    , resultName <> ".tag = EXPR_BOOL;"
+    , resultName <> ".value = malloc(sizeof(bool));"
     , "COMPARE(GT, " <> resultName <> ", " <> xName <> ", " <> yName <> ");"
     ]
 
@@ -1129,23 +1144,25 @@ genLambda sc@(SomeLambda c) = do
 
   currEnv <- fmap cg_le get
 
-  let localEnv
-        | lambda_isTailRec c =
+  let modifyFvEnv =
             le_modifyName
                 (le_modifyNames
                   currEnv
-                    (zip (map (\(SomeName n) -> getNameUniq n) (lambda_fvs c))
-                       fvIxes))
+                  (zipWith
+                    (\(SomeName fv) i -> (getNameUniq fv, fvEnvItem i))
+                    (lambda_fvs c)
+                    [0..]))
 
+                    -- (zip (map (\(SomeName n) -> getNameUniq n) (lambda_fvs c)) -- TODO: Does this put things in the correct order?
+                    --    fvIxes))
+
+  let localEnv
+        | lambda_isTailRec c =
+            modifyFvEnv
                 (getNameUniq (lambda_name c))
                 rName
         | otherwise =
-            le_modifyName
-                (le_modifyNames
-                  currEnv
-                    (zip (map (\(SomeName n) -> getNameUniq n) (lambda_fvs c)) -- TODO: Does this map the names correctly?
-                       fvIxes))
-
+            modifyFvEnv
                 (getNameUniq (lambda_name c))
                 "arg"
 
@@ -1178,10 +1195,9 @@ genLambda sc@(SomeLambda c) = do
       , "}"
       ]
   where
-    Name n = lambda_name c
+    fvEnvItem i = "self->fv_env[" <> show i <> "]"
 
-    fvIxes =
-      map (\n -> "self->fv_env[" <> show n <> "]") [0..length (lambda_fvs c)-1] -- TODO: Sort properly
+    Name n = lambda_name c
 
 genLambdas :: GPUExp a -> CodeGen CCode
 genLambdas e = do
