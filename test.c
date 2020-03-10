@@ -218,6 +218,7 @@ x1.value = malloc(sizeof(var_t));
 *(var_t*)(x1.value) = arg;
 while (x1.tag != EXPR_DONE) {
 var_t x2;
+  // Var with Name id 62 and Haskell type (Int,(Complex Double),(Complex Double))
 if (isIterTag(x1.tag)) {
 x2 = *(var_t*)(x1.value);
 } else {
@@ -229,8 +230,8 @@ UNWRAP(x3, x2);
 closure_t x4;
 x4.fv_env = malloc(sizeof(var_t)*2);
 x4.fn = &lam_63;
-x4.fv_env[0] = ((var_t*)x3.value)[1];
-x4.fv_env[1] = ((var_t*)x3.value)[0];
+x4.fv_env[0] = ((var_t*)x3.value)[1];  // For FV with id 64 with Haskell type Complex Double
+x4.fv_env[1] = ((var_t*)x3.value)[0];  // For FV with id 65 with Haskell type Int
 
 
 x1 = x4.fn(((var_t*)(((var_t*)x3.value)[1]).value)[1], &x4);
@@ -251,7 +252,7 @@ var_t lam_65(var_t arg, struct closure_t* self) {
 closure_t* x7 = malloc(sizeof(closure_t));
 (*x7).fv_env = malloc(sizeof(var_t)*1);
 (*x7).fn = &lam_64;
-(*x7).fv_env[0] = arg;
+(*x7).fv_env[0] = arg;  // For FV with id 65 with Haskell type Int
 
 
 
@@ -266,8 +267,8 @@ var_t lam_64(var_t arg, struct closure_t* self) {
 closure_t* x10 = malloc(sizeof(closure_t));
 (*x10).fv_env = malloc(sizeof(var_t)*2);
 (*x10).fn = &lam_63;
-(*x10).fv_env[0] = arg;
-(*x10).fv_env[1] = self->fv_env[0];
+(*x10).fv_env[0] = arg;  // For FV with id 64 with Haskell type Complex Double
+(*x10).fv_env[1] = self->fv_env[0];  // For FV with id 65 with Haskell type Int
 
 
 
@@ -285,6 +286,7 @@ var_t x15;
 
 var_t x16;
 var_t x17;
+  // Var with Name id 65 and Haskell type Int
 if (isIterTag(self->fv_env[1].tag)) {
 x16 = *(var_t*)(self->fv_env[1].value);
 } else {
@@ -326,6 +328,7 @@ x12.value = malloc(sizeof(var_t));
 
 } else {
 var_t x20;
+  // Var with Name id 63 and Haskell type Complex Double
 if (isIterTag(arg.tag)) {
 x20 = *(var_t*)(arg.value);
 } else {
@@ -337,10 +340,10 @@ UNWRAP(x21, x20);
 closure_t x22;
 x22.fv_env = malloc(sizeof(var_t)*4);
 x22.fn = &lam_66;
-x22.fv_env[0] = arg;
-x22.fv_env[1] = self->fv_env[0];
-x22.fv_env[2] = self->fv_env[1];
-x22.fv_env[3] = ((var_t*)x21.value)[0];
+x22.fv_env[0] = arg;  // For FV with id 63 with Haskell type Complex Double
+x22.fv_env[1] = self->fv_env[0];  // For FV with id 64 with Haskell type Complex Double
+x22.fv_env[2] = self->fv_env[1];  // For FV with id 65 with Haskell type Int
+x22.fv_env[3] = ((var_t*)x21.value)[0];  // For FV with id 67 with Haskell type Double
 
 
 x12 = x22.fn(((var_t*)x21.value)[1], &x22);
@@ -357,10 +360,10 @@ var_t lam_67(var_t arg, struct closure_t* self) {
 closure_t* x25 = malloc(sizeof(closure_t));
 (*x25).fv_env = malloc(sizeof(var_t)*4);
 (*x25).fn = &lam_66;
-(*x25).fv_env[0] = self->fv_env[0];
-(*x25).fv_env[1] = self->fv_env[1];
-(*x25).fv_env[2] = self->fv_env[2];
-(*x25).fv_env[3] = arg;
+(*x25).fv_env[0] = self->fv_env[0];  // For FV with id 63 with Haskell type Complex Double
+(*x25).fv_env[1] = self->fv_env[1];  // For FV with id 64 with Haskell type Complex Double
+(*x25).fv_env[2] = self->fv_env[2];  // For FV with id 65 with Haskell type Int
+(*x25).fv_env[3] = arg;  // For FV with id 67 with Haskell type Double
 
 
 
@@ -381,90 +384,112 @@ var_t x32;
 // Add
 var_t x33;
 var_t x34;
-// Mul
 var_t x35;
 var_t x36;
-if (isIterTag(self->fv_env[3].tag)) {
-x35 = *(var_t*)(self->fv_env[3].value);
-} else {
-x35 = self->fv_env[3];
-}
-
-if (isIterTag(self->fv_env[3].tag)) {
-x36 = *(var_t*)(self->fv_env[3].value);
-} else {
-x36 = self->fv_env[3];
-}
-
-
-if (x35.tag == EXPR_COMPLEX) {
-  var_t x37;
-  var_t x38;
-  var_t x39;
-  var_t x40;
-  var_t x41;
-  var_t x42;
-
-
-  MATH_OP(MUL, x37, ((var_t*)(x35.value))[0], ((var_t*)(x36.value))[0]);
-  MATH_OP(MUL, x38, ((var_t*)(x35.value))[0], ((var_t*)(x36.value))[1]);
-  MATH_OP(MUL, x39, ((var_t*)(x35.value))[1], ((var_t*)(x36.value))[0]);
-  MATH_OP(MUL, x40, ((var_t*)(x35.value))[1], ((var_t*)(x36.value))[1]);
-
-  MATH_OP(SUB, x41, x37, x40);
-  MATH_OP(ADD, x42, x38, x39);
-  INIT_COMPLEX_PAIR(x33);
-  COMPLEX_ASSIGN_REAL(x33, x41);
-  COMPLEX_ASSIGN_IMAG(x33, x42);
-} else {
-  MATH_OP(MUL, x33, x35, x36);
-}
-
+var_t x37;
+var_t x38;
 // Mul
-var_t x43;
-var_t x44;
-if (isIterTag(arg.tag)) {
-x43 = *(var_t*)(arg.value);
+var_t x39;
+var_t x40;
+var_t x41;
+var_t x42;
+  // Var with Name id 67 and Haskell type Double
+if (isIterTag(self->fv_env[3].tag)) {
+x39 = *(var_t*)(self->fv_env[3].value);
 } else {
-x43 = arg;
+x39 = self->fv_env[3];
 }
 
-if (isIterTag(arg.tag)) {
-x44 = *(var_t*)(arg.value);
+  // Var with Name id 67 and Haskell type Double
+if (isIterTag(self->fv_env[3].tag)) {
+x40 = *(var_t*)(self->fv_env[3].value);
 } else {
-x44 = arg;
+x40 = self->fv_env[3];
 }
 
 
-if (x43.tag == EXPR_COMPLEX) {
+if (x39.tag == EXPR_COMPLEX) {
+  var_t x43;
+  var_t x44;
   var_t x45;
   var_t x46;
   var_t x47;
   var_t x48;
-  var_t x49;
-  var_t x50;
 
+UNWRAP(x41, x39);
+UNWRAP(x42, x40);
 
-  MATH_OP(MUL, x45, ((var_t*)(x43.value))[0], ((var_t*)(x44.value))[0]);
-  MATH_OP(MUL, x46, ((var_t*)(x43.value))[0], ((var_t*)(x44.value))[1]);
-  MATH_OP(MUL, x47, ((var_t*)(x43.value))[1], ((var_t*)(x44.value))[0]);
-  MATH_OP(MUL, x48, ((var_t*)(x43.value))[1], ((var_t*)(x44.value))[1]);
+  MATH_OP(MUL, x43, ((var_t*)(x41.value))[0], ((var_t*)(x42.value))[0]);
+  MATH_OP(MUL, x44, ((var_t*)(x41.value))[0], ((var_t*)(x42.value))[1]);
+  MATH_OP(MUL, x45, ((var_t*)(x41.value))[1], ((var_t*)(x42.value))[0]);
+  MATH_OP(MUL, x46, ((var_t*)(x41.value))[1], ((var_t*)(x42.value))[1]);
 
-  MATH_OP(SUB, x49, x45, x48);
-  MATH_OP(ADD, x50, x46, x47);
-  INIT_COMPLEX_PAIR(x34);
-  COMPLEX_ASSIGN_REAL(x34, x49);
-  COMPLEX_ASSIGN_IMAG(x34, x50);
+  MATH_OP(SUB, x47, x43, x46);
+  MATH_OP(ADD, x48, x44, x45);
+  INIT_COMPLEX_PAIR(x33);
+  COMPLEX_ASSIGN_REAL(x33, x47);
+  COMPLEX_ASSIGN_IMAG(x33, x48);
 } else {
-  MATH_OP(MUL, x34, x43, x44);
+  MATH_OP(MUL, x33, x39, x40);
+}
+
+// Mul
+var_t x49;
+var_t x50;
+var_t x51;
+var_t x52;
+  // Var with Name id 66 and Haskell type Double
+if (isIterTag(arg.tag)) {
+x49 = *(var_t*)(arg.value);
+} else {
+x49 = arg;
+}
+
+  // Var with Name id 66 and Haskell type Double
+if (isIterTag(arg.tag)) {
+x50 = *(var_t*)(arg.value);
+} else {
+x50 = arg;
+}
+
+
+if (x49.tag == EXPR_COMPLEX) {
+  var_t x53;
+  var_t x54;
+  var_t x55;
+  var_t x56;
+  var_t x57;
+  var_t x58;
+
+UNWRAP(x51, x49);
+UNWRAP(x52, x50);
+
+  MATH_OP(MUL, x53, ((var_t*)(x51.value))[0], ((var_t*)(x52.value))[0]);
+  MATH_OP(MUL, x54, ((var_t*)(x51.value))[0], ((var_t*)(x52.value))[1]);
+  MATH_OP(MUL, x55, ((var_t*)(x51.value))[1], ((var_t*)(x52.value))[0]);
+  MATH_OP(MUL, x56, ((var_t*)(x51.value))[1], ((var_t*)(x52.value))[1]);
+
+  MATH_OP(SUB, x57, x53, x56);
+  MATH_OP(ADD, x58, x54, x55);
+  INIT_COMPLEX_PAIR(x34);
+  COMPLEX_ASSIGN_REAL(x34, x57);
+  COMPLEX_ASSIGN_IMAG(x34, x58);
+} else {
+  MATH_OP(MUL, x34, x49, x50);
 }
 
 assert(x33.tag == x34.tag);
 
 if (x33.tag == EXPR_COMPLEX) {
   INIT_COMPLEX_PAIR(x31);
-  MATH_OP(ADD, ((var_t*)(x31.value))[0], ((var_t*)(x33.value))[0], ((var_t*)(x34.value))[0]); 
-  MATH_OP(ADD, ((var_t*)(x31.value))[1], ((var_t*)(x33.value))[1], ((var_t*)(x34.value))[1]); 
+  UNWRAP(x35, x33);
+  UNWRAP(x36, x34);
+
+  MATH_OP(ADD, x37, ((var_t*)(x33.value))[0], ((var_t*)(x34.value))[0]); 
+  MATH_OP(ADD, x38, ((var_t*)(x33.value))[1], ((var_t*)(x34.value))[1]); 
+
+  COMPLEX_ASSIGN_REAL(x31, x37);
+  COMPLEX_ASSIGN_IMAG(x31, x38);
 } else {
   MATH_OP(ADD, x31, x33, x34);
 }
@@ -481,107 +506,122 @@ COMPARE(GT, x28, x31, x32);
 
 
 if (*(bool*)(x28.value)) {
-var_t x51;
+var_t x59;
 // ConstructRep (Non-Complex)
-var_t x52;
+var_t x60;
+  // Var with Name id 65 and Haskell type Int
 if (isIterTag(self->fv_env[2].tag)) {
-x52 = *(var_t*)(self->fv_env[2].value);
+x60 = *(var_t*)(self->fv_env[2].value);
 } else {
-x52 = self->fv_env[2];
+x60 = self->fv_env[2];
 }
 
-x51.tag = EXPR_EITHER_RIGHT;
-x51.value = malloc(sizeof(var_t));
-*(var_t*)(x51.value) = x52;
+x59.tag = EXPR_EITHER_RIGHT;
+x59.value = malloc(sizeof(var_t));
+*(var_t*)(x59.value) = x60;
 
 
 x27.tag = EXPR_DONE;
 x27.value = malloc(sizeof(var_t));
-*(var_t*)(x27.value) = x51;
+*(var_t*)(x27.value) = x59;
 
 } else {
-var_t x53;
+var_t x61;
 // ConstructRep (Non-Complex)
-var_t x54;
-var_t x55;
+var_t x62;
+var_t x63;
 // Add
-var_t x56;
-var_t x57;
+var_t x64;
+var_t x65;
+var_t x66;
+var_t x67;
+var_t x68;
+var_t x69;
+  // Var with Name id 65 and Haskell type Int
 if (isIterTag(self->fv_env[2].tag)) {
-x56 = *(var_t*)(self->fv_env[2].value);
+x64 = *(var_t*)(self->fv_env[2].value);
 } else {
-x56 = self->fv_env[2];
+x64 = self->fv_env[2];
 }
 
 // oneDimNumCode
-x57.value = malloc(sizeof(int));
-x57.tag = EXPR_INT;
-*(int*)(x57.value) = 1;
+x65.value = malloc(sizeof(int));
+x65.tag = EXPR_INT;
+*(int*)(x65.value) = 1;
 
-assert(x56.tag == x57.tag);
+assert(x64.tag == x65.tag);
 
-if (x56.tag == EXPR_COMPLEX) {
-  INIT_COMPLEX_PAIR(x54);
-  MATH_OP(ADD, ((var_t*)(x54.value))[0], ((var_t*)(x56.value))[0], ((var_t*)(x57.value))[0]); 
-  MATH_OP(ADD, ((var_t*)(x54.value))[1], ((var_t*)(x56.value))[1], ((var_t*)(x57.value))[1]); 
+if (x64.tag == EXPR_COMPLEX) {
+  INIT_COMPLEX_PAIR(x62);
+  UNWRAP(x66, x64);
+  UNWRAP(x67, x65);
+
+  MATH_OP(ADD, x68, ((var_t*)(x64.value))[0], ((var_t*)(x65.value))[0]); 
+  MATH_OP(ADD, x69, ((var_t*)(x64.value))[1], ((var_t*)(x65.value))[1]); 
+
+  COMPLEX_ASSIGN_REAL(x62, x68);
+  COMPLEX_ASSIGN_IMAG(x62, x69);
 } else {
-  MATH_OP(ADD, x54, x56, x57);
+  MATH_OP(ADD, x62, x64, x65);
 }
 
-var_t x58;
-var_t x59;
+var_t x70;
+var_t x71;
+  // Var with Name id 64 and Haskell type Complex Double
 if (isIterTag(self->fv_env[1].tag)) {
-x58 = *(var_t*)(self->fv_env[1].value);
+x70 = *(var_t*)(self->fv_env[1].value);
 } else {
-x58 = self->fv_env[1];
+x70 = self->fv_env[1];
 }
 
-var_t x60;
-var_t x61;
-var_t x62;
+var_t x72;
+var_t x73;
+var_t x74;
+  // Var with Name id 64 and Haskell type Complex Double
 if (isIterTag(self->fv_env[1].tag)) {
-x61 = *(var_t*)(self->fv_env[1].value);
+x73 = *(var_t*)(self->fv_env[1].value);
 } else {
-x61 = self->fv_env[1];
+x73 = self->fv_env[1];
 }
 
+  // Var with Name id 63 and Haskell type Complex Double
 if (isIterTag(self->fv_env[0].tag)) {
-x62 = *(var_t*)(self->fv_env[0].value);
+x74 = *(var_t*)(self->fv_env[0].value);
 } else {
-x62 = self->fv_env[0];
+x74 = self->fv_env[0];
 }
 
-x60.tag = EXPR_PAIR;
-x60.value = malloc(sizeof(var_t)*2);
-((var_t*)(x60.value))[0] = x61;
-((var_t*)(x60.value))[1] = x62;
+x72.tag = EXPR_PAIR;
+x72.value = malloc(sizeof(var_t)*2);
+((var_t*)(x72.value))[0] = x73;
+((var_t*)(x72.value))[1] = x74;
 
-var_t x63;
-UNWRAP(x63, x60);
-closure_t x64;
-x64.fv_env = malloc(sizeof(var_t)*1);
-x64.fn = &lam_68;
-x64.fv_env[0] = ((var_t*)x63.value)[0];
-
-
-x59 = x64.fn(((var_t*)x63.value)[1], &x64);
+var_t x75;
+UNWRAP(x75, x72);
+closure_t x76;
+x76.fv_env = malloc(sizeof(var_t)*1);
+x76.fn = &lam_68;
+x76.fv_env[0] = ((var_t*)x75.value)[0];  // For FV with id 69 with Haskell type Complex Double
 
 
+x71 = x76.fn(((var_t*)x75.value)[1], &x76);
 
-x55.tag = EXPR_PAIR;
-x55.value = malloc(sizeof(var_t)*2);
-((var_t*)(x55.value))[0] = x58;
-((var_t*)(x55.value))[1] = x59;
 
-x53.tag = EXPR_PAIR;
-x53.value = malloc(sizeof(var_t)*2);
-((var_t*)(x53.value))[0] = x54;
-((var_t*)(x53.value))[1] = x55;
+
+x63.tag = EXPR_PAIR;
+x63.value = malloc(sizeof(var_t)*2);
+((var_t*)(x63.value))[0] = x70;
+((var_t*)(x63.value))[1] = x71;
+
+x61.tag = EXPR_PAIR;
+x61.value = malloc(sizeof(var_t)*2);
+((var_t*)(x61.value))[0] = x62;
+((var_t*)(x61.value))[1] = x63;
 
 
 x27.tag = EXPR_STEP;
 x27.value = malloc(sizeof(var_t));
-*(var_t*)(x27.value) = x53;
+*(var_t*)(x27.value) = x61;
 
 }
 
@@ -589,160 +629,181 @@ x27.value = malloc(sizeof(var_t));
 }
 
 var_t lam_69(var_t arg, struct closure_t* self) {
-  var_t x66;
-closure_t* x67 = malloc(sizeof(closure_t));
-(*x67).fv_env = malloc(sizeof(var_t)*1);
-(*x67).fn = &lam_68;
-(*x67).fv_env[0] = arg;
+  var_t x78;
+closure_t* x79 = malloc(sizeof(closure_t));
+(*x79).fv_env = malloc(sizeof(var_t)*1);
+(*x79).fn = &lam_68;
+(*x79).fv_env[0] = arg;  // For FV with id 69 with Haskell type Complex Double
 
 
 
-x66.tag = EXPR_CLOSURE;
-x66.value = (void*)x67;
+x78.tag = EXPR_CLOSURE;
+x78.value = (void*)x79;
 
-  return x66;
+  return x78;
 }
 
 var_t lam_68(var_t arg, struct closure_t* self) {
-  var_t x69;
+  var_t x81;
 // Add
-var_t x70;
-var_t x71;
+var_t x82;
+var_t x83;
+var_t x84;
+var_t x85;
+var_t x86;
+var_t x87;
 // Mul
-var_t x72;
-var_t x73;
+var_t x88;
+var_t x89;
+var_t x90;
+var_t x91;
+  // Var with Name id 68 and Haskell type Complex Double
 if (isIterTag(arg.tag)) {
-x72 = *(var_t*)(arg.value);
+x88 = *(var_t*)(arg.value);
 } else {
-x72 = arg;
+x88 = arg;
 }
 
+  // Var with Name id 68 and Haskell type Complex Double
 if (isIterTag(arg.tag)) {
-x73 = *(var_t*)(arg.value);
+x89 = *(var_t*)(arg.value);
 } else {
-x73 = arg;
+x89 = arg;
 }
 
 
-if (x72.tag == EXPR_COMPLEX) {
-  var_t x74;
-  var_t x75;
-  var_t x76;
-  var_t x77;
-  var_t x78;
-  var_t x79;
+if (x88.tag == EXPR_COMPLEX) {
+  var_t x92;
+  var_t x93;
+  var_t x94;
+  var_t x95;
+  var_t x96;
+  var_t x97;
 
+UNWRAP(x90, x88);
+UNWRAP(x91, x89);
 
-  MATH_OP(MUL, x74, ((var_t*)(x72.value))[0], ((var_t*)(x73.value))[0]);
-  MATH_OP(MUL, x75, ((var_t*)(x72.value))[0], ((var_t*)(x73.value))[1]);
-  MATH_OP(MUL, x76, ((var_t*)(x72.value))[1], ((var_t*)(x73.value))[0]);
-  MATH_OP(MUL, x77, ((var_t*)(x72.value))[1], ((var_t*)(x73.value))[1]);
+  MATH_OP(MUL, x92, ((var_t*)(x90.value))[0], ((var_t*)(x91.value))[0]);
+  MATH_OP(MUL, x93, ((var_t*)(x90.value))[0], ((var_t*)(x91.value))[1]);
+  MATH_OP(MUL, x94, ((var_t*)(x90.value))[1], ((var_t*)(x91.value))[0]);
+  MATH_OP(MUL, x95, ((var_t*)(x90.value))[1], ((var_t*)(x91.value))[1]);
 
-  MATH_OP(SUB, x78, x74, x77);
-  MATH_OP(ADD, x79, x75, x76);
-  INIT_COMPLEX_PAIR(x70);
-  COMPLEX_ASSIGN_REAL(x70, x78);
-  COMPLEX_ASSIGN_IMAG(x70, x79);
+  MATH_OP(SUB, x96, x92, x95);
+  MATH_OP(ADD, x97, x93, x94);
+  INIT_COMPLEX_PAIR(x82);
+  COMPLEX_ASSIGN_REAL(x82, x96);
+  COMPLEX_ASSIGN_IMAG(x82, x97);
 } else {
-  MATH_OP(MUL, x70, x72, x73);
+  MATH_OP(MUL, x82, x88, x89);
 }
 
+  // Var with Name id 69 and Haskell type Complex Double
 if (isIterTag(self->fv_env[0].tag)) {
-x71 = *(var_t*)(self->fv_env[0].value);
+x83 = *(var_t*)(self->fv_env[0].value);
 } else {
-x71 = self->fv_env[0];
+x83 = self->fv_env[0];
 }
 
-assert(x70.tag == x71.tag);
+assert(x82.tag == x83.tag);
 
-if (x70.tag == EXPR_COMPLEX) {
-  INIT_COMPLEX_PAIR(x69);
-  MATH_OP(ADD, ((var_t*)(x69.value))[0], ((var_t*)(x70.value))[0], ((var_t*)(x71.value))[0]); 
-  MATH_OP(ADD, ((var_t*)(x69.value))[1], ((var_t*)(x70.value))[1], ((var_t*)(x71.value))[1]); 
+if (x82.tag == EXPR_COMPLEX) {
+  INIT_COMPLEX_PAIR(x81);
+  UNWRAP(x84, x82);
+  UNWRAP(x85, x83);
+
+  MATH_OP(ADD, x86, ((var_t*)(x82.value))[0], ((var_t*)(x83.value))[0]); 
+  MATH_OP(ADD, x87, ((var_t*)(x82.value))[1], ((var_t*)(x83.value))[1]); 
+
+  COMPLEX_ASSIGN_REAL(x81, x86);
+  COMPLEX_ASSIGN_IMAG(x81, x87);
 } else {
-  MATH_OP(ADD, x69, x70, x71);
+  MATH_OP(ADD, x81, x82, x83);
 }
 
-  return x69;
+  return x81;
 }
 
 
 var_t top_level() {
   var_t x0;
-var_t x81;
-closure_t x91;
-var_t x92;
+var_t x99;
+closure_t x110;
+var_t x111;
 
 // ConstructRep (Non-Complex)
-var_t x82;
-var_t x83;
+var_t x100;
+var_t x101;
 // oneDimNumCode
-x82.value = malloc(sizeof(int));
-x82.tag = EXPR_INT;
-*(int*)(x82.value) = 0;
+x100.value = malloc(sizeof(int));
+x100.tag = EXPR_INT;
+*(int*)(x100.value) = 0;
 
-var_t x84;
-var_t x85;
+var_t x102;
+var_t x103;
 // Complex ConstructRep
-var_t x86;
-var_t x87;
-var_t x88;
+var_t x104;
+var_t x105;
+var_t x106;
 // oneDimNumCode
-x87.value = malloc(sizeof(double));
-x87.tag = EXPR_DOUBLE;
-*(double*)(x87.value) = 1.0;
+x105.value = malloc(sizeof(double));
+x105.tag = EXPR_DOUBLE;
+*(double*)(x105.value) = 1.0;
 
 // oneDimNumCode
-x88.value = malloc(sizeof(double));
-x88.tag = EXPR_DOUBLE;
-*(double*)(x88.value) = 0.0;
+x106.value = malloc(sizeof(double));
+x106.tag = EXPR_DOUBLE;
+*(double*)(x106.value) = 0.0;
 
-x86.tag = EXPR_PAIR;
-x86.value = malloc(sizeof(var_t)*2);
-((var_t*)(x86.value))[0] = x87;
-((var_t*)(x86.value))[1] = x88;
+x104.tag = EXPR_PAIR;
+x104.value = malloc(sizeof(var_t)*2);
+((var_t*)(x104.value))[0] = x105;
+((var_t*)(x104.value))[1] = x106;
 
-x84.tag = EXPR_COMPLEX;
-x84.value = malloc(sizeof(var_t));
-*((var_t*)(x84.value)) = x86;
+x102.tag = EXPR_COMPLEX;
+x102.value = malloc(sizeof(var_t));
+*((var_t*)(x102.value)) = x104;
 
-// Complex FromIntegral
-var_t x89;
-var_t x90;
-x90.tag = EXPR_DOUBLE;
-x90.value = malloc(sizeof(double));
-*((double*)(x90.value)) = 0;
+// Complex FromIntegral with ty = double
+var_t x107;
+var_t x109;
+var_t x108;
+x108.tag = EXPR_DOUBLE;
+x108.value = malloc(sizeof(double));
+*((double*)(x108.value)) = 0;
 // oneDimNumCode
-x89.value = malloc(sizeof(int));
-x89.tag = EXPR_INT;
-*(int*)(x89.value) = 0;
+x107.value = malloc(sizeof(int));
+x107.tag = EXPR_INT;
+*(int*)(x107.value) = 0;
 
-INIT_COMPLEX(x85, double, EXPR_DOUBLE);
-COMPLEX_ASSIGN_REAL(x85, x89);
-COMPLEX_ASSIGN_IMAG(x85, x90);
+x109.tag = EXPR_DOUBLE;
+x109.value = malloc(sizeof(double));
+*(double*)(x109.value) = *(double*)(x107.value);
+INIT_COMPLEX(x103, double, EXPR_DOUBLE);
+COMPLEX_ASSIGN_REAL(x103, x109);
+COMPLEX_ASSIGN_IMAG(x103, x108);
 
-x83.tag = EXPR_PAIR;
-x83.value = malloc(sizeof(var_t)*2);
-((var_t*)(x83.value))[0] = x84;
-((var_t*)(x83.value))[1] = x85;
+x101.tag = EXPR_PAIR;
+x101.value = malloc(sizeof(var_t)*2);
+((var_t*)(x101.value))[0] = x102;
+((var_t*)(x101.value))[1] = x103;
 
-x81.tag = EXPR_PAIR;
-x81.value = malloc(sizeof(var_t)*2);
-((var_t*)(x81.value))[0] = x82;
-((var_t*)(x81.value))[1] = x83;
-
-
-closure_t* x93 = malloc(sizeof(closure_t));
-(*x93).fv_env = malloc(sizeof(var_t)*0);
-(*x93).fn = &lam_62;
+x99.tag = EXPR_PAIR;
+x99.value = malloc(sizeof(var_t)*2);
+((var_t*)(x99.value))[0] = x100;
+((var_t*)(x99.value))[1] = x101;
 
 
+closure_t* x112 = malloc(sizeof(closure_t));
+(*x112).fv_env = malloc(sizeof(var_t)*0);
+(*x112).fn = &lam_62;
 
-x92.tag = EXPR_CLOSURE;
-x92.value = (void*)x93;
 
-memcpy(&x91, (closure_t*)(x92.value), sizeof(closure_t));
-x0 = x91.fn(x81, &x91);
+
+x111.tag = EXPR_CLOSURE;
+x111.value = (void*)x112;
+
+memcpy(&x110, (closure_t*)(x111.value), sizeof(closure_t));
+x0 = x110.fn(x99, &x110);
 
   return x0;
 }

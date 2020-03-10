@@ -581,11 +581,12 @@ genExp (ConstructRep x :: GPUExp t) resultName =
         , "*((var_t*)(" <> resultName <> ".value)) = " <> pairName <> ";"
         ]
 
-genExp (Var (Name n)) resultName = do
+genExp (Var name@(Name n)) resultName = do
   nCName <- cg_lookup n
 
   return $ unlines
-    [ "if (isIterTag(" <> nCName <> ".tag)) {"
+    [ "  // Var with Name id " <> show n <> " and Haskell type " <> show (typeRep name)
+    , "if (isIterTag(" <> nCName <> ".tag)) {"
     , resultName <> " = " <> "*(var_t*)(" <> nCName <> ".value);"
     , "} else {"
     , resultName <> " = " <> nCName <> ";"
@@ -746,7 +747,7 @@ genExp (StepExp x) resultName = do
     , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
     ]
 
-genExp (Sub x y) resultName = do
+genExp (Sub x y) resultName = do -- TODO: Fix complex number support (see Add)
   xName <- freshCName
   yName <- freshCName
 
@@ -774,6 +775,9 @@ genExp (Mul x y) resultName = do
   xName <- freshCName
   yName <- freshCName
 
+  complexPairNameX <- freshCName
+  complexPairNameY <- freshCName
+
   x0y0Name <- freshCName
   x0y1Name <- freshCName
   x1y0Name <- freshCName
@@ -789,6 +793,8 @@ genExp (Mul x y) resultName = do
     [ "// Mul"
     , "var_t " <> xName <> ";"
     , "var_t " <> yName <> ";"
+    , "var_t " <> complexPairNameX <> ";"
+    , "var_t " <> complexPairNameY <> ";"
     , xCode
     , yCode
     -- , "assert(" <> xName <> ".tag == " <> yName <> ".tag);"
@@ -801,11 +807,13 @@ genExp (Mul x y) resultName = do
     , "  var_t " <> realName <> ";"
     , "  var_t " <> imagName <> ";"
     , ""
+    , "UNWRAP(" <> complexPairNameX <> ", " <> xName <> ");"
+    , "UNWRAP(" <> complexPairNameY <> ", " <> yName <> ");"
     , ""
-    , "  MATH_OP(MUL, " <> x0y0Name <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[0]);"
-    , "  MATH_OP(MUL, " <> x0y1Name <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[1]);"
-    , "  MATH_OP(MUL, " <> x1y0Name <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[0]);"
-    , "  MATH_OP(MUL, " <> x1y1Name <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[1]);"
+    , "  MATH_OP(MUL, " <> x0y0Name <> ", ((var_t*)(" <> complexPairNameX <> ".value))[0], ((var_t*)(" <> complexPairNameY <> ".value))[0]);"
+    , "  MATH_OP(MUL, " <> x0y1Name <> ", ((var_t*)(" <> complexPairNameX <> ".value))[0], ((var_t*)(" <> complexPairNameY <> ".value))[1]);"
+    , "  MATH_OP(MUL, " <> x1y0Name <> ", ((var_t*)(" <> complexPairNameX <> ".value))[1], ((var_t*)(" <> complexPairNameY <> ".value))[0]);"
+    , "  MATH_OP(MUL, " <> x1y1Name <> ", ((var_t*)(" <> complexPairNameX <> ".value))[1], ((var_t*)(" <> complexPairNameY <> ".value))[1]);"
     , ""
     , "  MATH_OP(SUB, " <> realName <> ", " <> x0y0Name <> ", " <> x1y1Name <> ");"
     , "  MATH_OP(ADD, " <> imagName <> ", " <> x0y1Name <> ", " <> x1y0Name <> ");"
@@ -824,6 +832,12 @@ genExp (Add x y) resultName = do
   xName <- freshCName
   yName <- freshCName
 
+  complexPairNameX <- freshCName
+  complexPairNameY <- freshCName
+
+  realResultName <- freshCName
+  imagResultName <- freshCName
+
   xCode <- genExp x xName
   yCode <- genExp y yName
 
@@ -831,14 +845,24 @@ genExp (Add x y) resultName = do
     [ "// Add"
     , "var_t " <> xName <> ";"
     , "var_t " <> yName <> ";"
+    , "var_t " <> complexPairNameX <> ";"
+    , "var_t " <> complexPairNameY <> ";"
+    , "var_t " <> realResultName <> ";"
+    , "var_t " <> imagResultName <> ";"
     , xCode
     , yCode
     , "assert(" <> xName <> ".tag == " <> yName <> ".tag);"
     , ""
     , "if (" <> xName <> ".tag == EXPR_COMPLEX) {"
     , "  INIT_COMPLEX_PAIR(" <> resultName <> ");"
-    , "  MATH_OP(ADD, ((var_t*)(" <> resultName <> ".value))[0], ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[0]); "
-    , "  MATH_OP(ADD, ((var_t*)(" <> resultName <> ".value))[1], ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[1]); "
+    , "  UNWRAP(" <> complexPairNameX <> ", " <> xName <> ");"
+    , "  UNWRAP(" <> complexPairNameY <> ", " <> yName <> ");"
+    , ""
+    , "  MATH_OP(ADD, " <> realResultName <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[0]); "
+    , "  MATH_OP(ADD, " <> imagResultName <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[1]); "
+    , ""
+    , "  COMPLEX_ASSIGN_REAL(" <> resultName <> ", " <> realResultName <> ");"
+    , "  COMPLEX_ASSIGN_IMAG(" <> resultName <> ", " <> imagResultName <> ");"
     , "} else {"
     , "  MATH_OP(ADD, " <> resultName <> ", " <> xName <> ", " <> yName <> ");"
     , "}"
@@ -856,16 +880,22 @@ genExp (FromIntegral (x :: GPUExp a) :: GPUExp b) resultName = do
 
       zeroName <- freshCName
 
+      castedXName <- freshCName
+
       return $ unlines
-        [ "// Complex FromIntegral"
+        [ "// Complex FromIntegral with ty = " <> ty
         , "var_t " <> xName <> ";"
+        , "var_t " <> castedXName <> ";"
         , "var_t " <> zeroName <> ";"
         , zeroName <> ".tag = " <> tag <> ";"
         , zeroName <> ".value = malloc(sizeof(" <> ty <> "));"
         , "*((" <> ty <> "*)(" <> zeroName <> ".value)) = 0;"
         , xCode
+        , castedXName <> ".tag = " <> tag <> ";"
+        , castedXName <> ".value = malloc(sizeof(" <> ty <> "));"
+        , "*(" <> ty <> "*)(" <> castedXName <> ".value) = *(" <> ty <> "*)(" <> xName <> ".value);"
         , "INIT_COMPLEX(" <> resultName <> ", " <> ty <> ", " <> tag <> ");"
-        , "COMPLEX_ASSIGN_REAL(" <> resultName <> ", " <> xName <> ");"
+        , "COMPLEX_ASSIGN_REAL(" <> resultName <> ", " <> castedXName <> ");"
         , "COMPLEX_ASSIGN_IMAG(" <> resultName <> ", " <> zeroName <> ");"
         -- , resultName <> ".value = malloc(2*sizeof(var_t));"
         -- , "((var_t*)(" <> resultName <> ".value))[0] = " <> xName <> ";"
@@ -1225,9 +1255,9 @@ buildClosure sc@(SomeLambda c) closureVarName = do
 
   let fvs = lambda_fvs c
   traceM $ "////////// fvs = " ++ show fvs
-  init_fvEnv <- forM (zip [0..] fvs) (\(i, SomeName fv) -> do
+  init_fvEnv <- forM (zip [0..] fvs) (\(i, n@(SomeName fv)) -> do
                             fvName <- cg_lookup (getNameUniq fv)
-                            return (closureVarName <> ".fv_env[" <> show i <> "] = " <> fvName <> ";"))
+                            return (closureVarName <> ".fv_env[" <> show i <> "] = " <> fvName <> ";  // For FV with id " <> (show (getNameUniq fv) <> " with Haskell type " <> showNameType n)))
 
   return $
     unlines
@@ -1242,6 +1272,9 @@ callClosure :: SomeLambda -> CName -> CName -> CName -> CodeGen CCode
 callClosure (SomeLambda (Lambda { lambda_name })) closureName argName resultName =
   return $
     resultName <> " = " <> closureName <> ".fn(" <> argName <> ", &" <> closureName <> ");"
+
+showNameType :: SomeName -> String
+showNameType (SomeName n) = show (typeRep n)
 
 
 -- TODO: Determine if the warning this gives is a sign of a problem (it
