@@ -715,8 +715,9 @@ execution.
   Cite "Trampolined Style" (S. E. Gantz, D. P. Friedman, M. Ward; 1999)
 \end{todo}
 
-In the technique presented here, we do not need to allocate closures and we
-actually do not to use higher-order functions at all.
+In the technique presented here, we do not need to allocate thunks or closures.
+We actually do not to use higher-order functions at all in this tail recursion
+representation.
 
 In the \ttt{E} type, this is used to represent tail recursion by
 the following constructors:
@@ -816,7 +817,11 @@ envLookup (Env maps) = go maps
 
 \section{Recovering standard semantics for pattern matches}
 
-The standard semantics for the EDSL is given by \ttt{abs}.
+The standard semantics for the EDSL is given by \ttt{abs}. Two helper
+functions, \ttt{sumMatchAbs} and \ttt{prodMatchAbs}, are used to provide
+the standard semantics for matches on sum types and matches on product
+types, respectively. These helper functions are based on the mechanism
+described in section 3.4.
 
 \begin{lstlisting}
 abs :: forall t. E t -> t
@@ -836,57 +841,10 @@ prodMatchAbs :: (ERep s)
      -> s
      -> t
 ...
-
-absEnv :: forall t. Env -> E t -> t
-absEnv env (CaseExp x f) =
-  sumMatchAbs f (absEnv env x)
-
-absEnv env (TailRec f) = \ x ->
-  case absEnv env f x of
-    Step x' -> absEnv env (TailRec f) x'
-    Done r  -> r
-
-absEnv env (Var v) =
-  case envLookup env v of
-    Just x -> absEnv env
-    Nothing ->
-      error
-        ("No binding for name "
-          ++ show v)
-
-absEnv env (Lam (name :: Name a)
-                (body :: E b)) =
-  \ (arg :: a) ->
-    let go :: forall x. E x -> E x
-        go expr@(Var name2 :: E a') =
-          case namesEq name name2 of
-            Just Refl -> rep arg
-            _ ->
-              case envLookup env name2 of
-                Just v  -> v
-                Nothing -> expr
-
-        -- [... traverse rest of expression
-        --      in go ...]
-    in
-    absEnv (extendEnv env
-                      (name :=> rep arg))
-           (go body)
-
-absEnv env (LeftExp x) =
-  Left (absEnv env x)
-
-absEnv env (RightExp y) =
-  Right (absEnv env y)
-
-absEnv env (PairExp x y) =
-  (absEnv env x, absEnv env y)
-
-absEnv env (ConstructRep x) =
-  unrep' (absEnv env x)
-
-...
 \end{lstlisting}
+
+See Appendix A for more implementation details of \ttt{absEnv}.
+
 
 \section{C Backend}
 \begin{todo}
@@ -1065,6 +1023,64 @@ transformation will terminate.
   Cite and compare/contrast with pattern matching technique described in section
   3.3 of "Unembedding Domain-Specific Languages" (2009; Atkey, Lindley, Yallop)
 \end{todo}
+
+\clearpage
+
+\appendix
+\section{Additional Code for Standard Haskell Semantics Implementation}
+\begin{lstlisting}
+absEnv :: forall t. Env -> E t -> t
+absEnv env (CaseExp x f) =
+  sumMatchAbs f (absEnv env x)
+
+absEnv env (TailRec f) = \ x ->
+  case absEnv env f x of
+    Step x' -> absEnv env (TailRec f) x'
+    Done r  -> r
+
+absEnv env (Var v) =
+  case envLookup env v of
+    Just x -> absEnv env
+    Nothing ->
+      error
+        ("No binding for name "
+          ++ show v)
+
+absEnv env (Lam (name :: Name a)
+                (body :: E b)) =
+  \ (arg :: a) ->
+    let go :: forall x. E x -> E x
+        go expr@(Var name2 :: E a') =
+          case namesEq name name2 of
+            Just Refl -> rep arg
+            _ ->
+              case envLookup env name2 of
+                Just v  -> v
+                Nothing -> expr
+
+        -- [... traverse rest of expression
+        --      in go ...]
+    in
+    absEnv (extendEnv env
+                      (name :=> rep arg))
+           (go body)
+
+absEnv env (LeftExp x) =
+  Left (absEnv env x)
+
+absEnv env (RightExp y) =
+  Right (absEnv env y)
+
+absEnv env (PairExp x y) =
+  (absEnv env x, absEnv env y)
+
+absEnv env (ConstructRep x) =
+  unrep' (absEnv env x)
+
+...
+\end{lstlisting}
+
+\clearpage
 
 \section{Citations and Bibliographies}
 
