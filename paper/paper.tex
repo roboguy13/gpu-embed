@@ -121,7 +121,7 @@
 %%
 %% The "title" command has an optional parameter,
 %% allowing the author to define a "short title" to be used in page headers.
-\title{Title Goes Here\\
+\title{First Class Pattern Matching in a Deeply Embedded Domain Specific Language\\
 \large{Not For Distribution}}
 
 %%
@@ -236,6 +236,9 @@ Additionally, lambdas can also be difficult to implement in EDSLs. A major reaso
 for this is that control flow constructs which are typically \textit{outside} the EDSL,
 such as pattern matching and tail recursion, can make it challenging to "look inside"
 the lambda.
+\begin{todo}
+  Add brief summary of relationship to lambdas
+\end{todo}
 
 The following contributions are made by this paper:
 
@@ -271,8 +274,9 @@ internalize :: E a -> a
 externalize :: a -> E a
 \end{lstlisting}
 
-In this paper, the data constructors of the \ttt{E} type will be described
-incrementally as they are needed.
+The \ttt{E} type is the type of expressions in the EDSL.  In this paper, the
+data constructors of this type will be described incrementally as they
+are needed.
 
 \subsection{Translation Example}
 \begin{todo}
@@ -590,7 +594,7 @@ Note the \ttt{ERepTy a \typeeq a} constraints. This constraint ensures that the 
 \ttt{E (ProdMatch x y)} is equivalent to a curried function from \ttt{x} to
 \ttt{y} in the expression language .  Note that \ttt{s} is a (potentially
 nested) pair type. For example, \ttt{E (ProdMatch (a, (b, c)) r)} is
-equivalent to \ttt{E (a -> b -> c -> r)}.
+equivalent to \ttt{E (a -> E (b -> E (c -> E r)))}.
 
 \begin{lstlisting}
 data E t where
@@ -665,10 +669,32 @@ Likewise for \ttt{ProdMatch a b} values.
   Expand the explanation in this section
 \end{todo}
 
+Tail recursion is given a direct-style representation using a simple sum type.
+
+Consider a tail recursive function of the type \ttt{f :: a -> b}. Each recursive
+call can be seen as a simple "update" of the values of the arguments, since
+these calls are all in tail position. This is why tail recursive functions
+can be easily compiled to simple loops or conditional jumps.
+
+We can take advantage of this view by transforming a tail recursive function
+\ttt{f :: a -> b} into a function \ttt{f' :: a -> Iter b a}. \ttt{Iter b a} is a
+type which can either correspond to an argument "update" (in the sense mentioned
+previously) or a final result. This type is implemented as a sum of the types
+\ttt{a} and \ttt{b}.
+
 \begin{lstlisting}
 data Iter a b = Step b | Done a
   deriving (Functor, Generic)
+\end{lstlisting}
 
+To use the new \ttt{f'} function, we repeatedly call it until it gives a
+\ttt{Done} value. If it gives a \ttt{Step} value, we pass the the value wrapped
+in the \ttt{Step} back into \ttt{f'} and continue.
+
+The function \ttt{runIter} provides the standard semantics for executing such a
+function representing a tail recursive function:
+
+\begin{lstlisting}
 runIter :: (ERep a, ERep b)
   => (a -> Iter b a)
      -> (a -> b)
@@ -679,6 +705,18 @@ runIter f = go
         Done r  -> r
         Step x' -> go x'
 \end{lstlisting}
+
+This technique can be contrasted with the more traditional trampolining
+technique for implementing tail recursion. Conventional trampolining uses a
+sum type of the result type and a thunk with the code necessary to continue
+execution.
+
+\begin{todo}
+  Cite "Trampolined Style" (S. E. Gantz, D. P. Friedman, M. Ward; 1999)
+\end{todo}
+
+In the technique presented here, we do not need to allocate closures and we
+actually do not to use higher-order functions at all.
 
 In the \ttt{E} type, this is used to represent tail recursion by
 the following constructors:
@@ -778,6 +816,8 @@ envLookup (Env maps) = go maps
 
 \section{Recovering standard semantics for pattern matches}
 
+The standard semantics for the EDSL is given by \ttt{abs}.
+
 \begin{lstlisting}
 abs :: forall t. E t -> t
 abs = absEnv emptyEnv
@@ -862,7 +902,7 @@ the \ttt{externalize} function:
 externalize :: a -> E a
 \end{lstlisting}
 
-So, \ttt{externalize x} marks the expression \ttt{x}.
+For example, \ttt{externalize x} marks the expression \ttt{x}.
 
 If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \ttt{a}), then the marking procedure ignores it and does not wrap it with
