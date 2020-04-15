@@ -2,12 +2,18 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 
-{-# OPTIONS_GHC -Wtype-defaults -fexpose-all-unfoldings -O0 -dcore-lint -dsuppress-coercions -fplugin=Plugin.MatchPlugin #-}
+-- {-# LANGUAGE TypeOperators #-}
+-- {-# LANGUAGE DataKinds #-}
+-- {-# LANGUAGE KindSignatures #-}
+-- {-# LANGUAGE StandaloneDeriving #-}
+-- {-# LANGUAGE FlexibleInstances #-}
+
+{-# OPTIONS_GHC -O0 -fno-worker-wrapper -fno-strictness -fno-unbox-small-strict-fields -fno-unbox-strict-fields -Wtype-defaults -fexpose-all-unfoldings -dcore-lint -dsuppress-coercions -fplugin=Plugin.MatchPlugin #-}
 
 module Test.PluginExample where
 
 
-import           GHC.Float 
+import           GHC.Float
 import           Data.List
 
 import           Deep.Expr
@@ -276,11 +282,28 @@ doubleListSum_helper p =
 doubleListSumE :: DoubleList -> GPUExp Double
 doubleListSumE t = externalize (doubleListSum_helper (0, t))
 
+-- data FinBitTree (n :: TL.Nat) where
+--   FBTLeafZero :: FinBitTree n
+--   FBTLeafOne  :: FinBitTree n
+--   FBTNode     :: FinBitTree n -> FinBitTree m -> FinBitTree (n+m)
+
+-- deriving instance Generic1 FinBitTree
+
+nonterm_test0 :: Int -> Int
+nonterm_test0 0 = 0
+nonterm_test0 n = (n-1)
+
+nonterm_test :: Int -> Int
+nonterm_test x =
+  internalize (externalize
+    (nonterm_test0 4))
+
 
 main :: IO ()
 main = do
   let intList = Cons 10 (Cons 100 (Cons 1000 (Cons 10000 Nil)))
       doubleList = DCons 3.2 (DCons 1 (DCons 2.5 DNil))
+  -- print $ mandelbrot_point (1 :+ 0)
   putStrLn $ genProgram (mandelbrot_pointE (1 :+ 0))
   -- putStrLn (genProgram (doubleListSumE doubleList)) --putStrLn (genProgram cTest6)
   -- print (isEmpty Nil, isEmpty (Cons 1 Nil)

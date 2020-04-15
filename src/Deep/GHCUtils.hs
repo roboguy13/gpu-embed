@@ -1005,24 +1005,23 @@ caseInline0 :: DynFlags -> Subst -> CoreExpr -> CoreExpr
 caseInline0 dflags subst expr = go expr
   where
 
-    -- subst = SOE { soe_dflags = dflags
-    --             , soe_inl = emptyVarEnv
-    --             , soe_subst = init_subst }
-
-    inl = emptyVarEnv
-
     in_scope     = substInScope subst
 
     in_scope_env = (in_scope, simpleUnfoldingFun)
 
     go (Case e b ty as)
-         -- See Note [Getting the map/coerce RULE to work]
+        | not (varUnique b `elemVarSetByKey` altFvs)
+        , Just lit <- exprIsLiteral_maybe in_scope_env e'
+        , Just (altcon, bs, rhs) <- findAlt (LitAlt lit) as
+        = caseInline0 dflags subst rhs
+
+        -- See Note [Getting the map/coerce RULE to work]
         -- | isDeadBinder b
         | not (varUnique b `elemVarSetByKey` altFvs)
         , Just (con, _tys, es) <- exprIsConApp_maybe in_scope_env e'
         , Just (altcon, bs, rhs) <- findAlt (DataAlt con) as
         = case altcon of
-            DEFAULT -> go rhs
+            DEFAULT -> caseInline0 dflags subst rhs --go rhs
             _       -> foldr substInto (caseInline0 dflags env' rhs) mb_prs
               where
                 (env', mb_prs) = mapAccumL simple_out_bind subst $
@@ -1036,16 +1035,16 @@ caseInline0 dflags subst expr = go expr
         , (Var fun, _args) <- collectArgs e
         , fun `hasKey` coercibleSCSelIdKey
            -- without this last check, we get #11230
-        = go rhs
+        = caseInline0 dflags subst rhs --go rhs
 
         | otherwise
         = Case e' b' (CoreSubst.substTy subst ty)
                      (map (go_alt subst') as)
       where
          altFvs = unionVarSets $ map (\(_, _, rhs) -> exprFreeVars rhs) as
-         e' = go e
+         e' = caseInline0 dflags subst' e --go e
          (subst', b') = subst_opt_bndr subst b
-    go e = e
+    go e = substExpr (text "caseInline0.go") subst e
 
     go_alt env (con, bndrs, rhs)
       = (con, bndrs', caseInline0 dflags subst' rhs)

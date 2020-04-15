@@ -96,6 +96,12 @@ import qualified Data.Set as Set
 import           Data.Char
 import           Data.List
 
+data PluginState =
+  PluginState
+    { currUniq :: Int
+    , inlinedNames :: [Name] -- | Names inlined so far
+    }
+
 newtype UniqueSupply m a = UniqueSupply (StateT Int m a)
   deriving (Functor, Applicative, Monad, MonadTrans, MonadIO)
 
@@ -108,7 +114,13 @@ newUnique = UniqueSupply (modify (+1) *> get)
 runUniqueSupply :: Monad m => UniqueSupply m a -> m a
 runUniqueSupply (UniqueSupply us) = evalStateT us 0
 
+
 type MatchM = UniqueSupply CoreM
+
+-- -- | Keeps a list of inlined names, to prevent infinite inlining
+-- newtype InlinerM m a = InlinerM (StateT [Name] m a)
+
+-- type MatchM = InlinerM (UniqueSupply CoreM)
 
 infixl 0 :@
 pattern f :@ x = App f x
@@ -241,21 +253,6 @@ transformBinds guts instEnv primMap binds = do
             dflags <- lift getDynFlags
             (name,) <$> transformExpr (guts {mg_binds = new_mg_binds}) name (Just name) primMap e
           else return (name, e)
-
--- transformBind :: ModGuts -> InstEnv -> [(Id, CoreExpr)] -> CoreBind -> MatchM CoreBind
--- transformBind guts instEnv primMap (NonRec name e) =
---   fmap (NonRec name) (transformExpr guts name Nothing primMap e)
--- transformBind guts instEnv primMap (Rec bnds) = Rec <$> mapM go bnds
---   where
---     go :: (Var, Expr Var) -> MatchM (Var, Expr Var)
---     go (name, e) = do
---       hasEx <- hasExternalize guts e
---       if hasEx
---         then do
---           dflags <- lift getDynFlags
---           e' <- transformTailRec guts name e
---           (name,) <$> transformExpr guts name (Just name) primMap e'
---         else return (name, e)
 
 changed :: Monad m => WriterT Any m ()
 changed = tell (Any True)
@@ -890,11 +887,18 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- markedF <- mark unfoldingF
                 markedArgs <- mapM mark args
 
-                let (newF, newArgs) = betaReduceAll unfoldingF args --markedArgs
+                let (newF0, newArgs) = betaReduceAll unfoldingF args --markedArgs
+                    newF             = caseInlineT dflags $ caseInline dflags (caseInline dflags newF0)
 
                 markedNewF <- mark newF
 
                 liftIO $ putStrLn $ "newArgs = " ++ showPpr dflags newArgs
+
+                liftIO $ putStrLn $ "inlining (pre-beta reduce): { " ++ showPpr dflags unfoldingF ++ " }"
+                liftIO $ putStrLn $ "inlining (pre-case inline): { " ++ showPpr dflags newF0 ++ " }"
+                liftIO $ putStrLn $ "inlining: { " ++ showPpr dflags newF ++ " }"
+                liftIO $ putStrLn $ "inlining (new args): " ++ showPpr dflags newArgs
+                -- liftIO $ putStrLn $ "inlining: { " ++ showPpr dflags (betaReduceAll (caseInlineT dflags newF) args) ++ " }"
 
                 mkExprApps guts markedNewF newArgs
 
@@ -972,7 +976,7 @@ transformProdMatch guts mark resultTy ty0_ (altCon@(DataAlt dataAlt), vars0, bod
 
       rest <- go body pairTyCon repTyCon restTys xs
 
-      ty1Dict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [ty1]) 
+      ty1Dict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [ty1])
       restTyDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [restTy])
 
       abs'd <- abstractOver guts x rest
@@ -1305,7 +1309,7 @@ transformLams guts mark e0 = Data.transformM go e0
 -- TODO: Make sure there aren't any issues with this type transformation
 -- and foralls, etc.
 
-abstractOver :: ModGuts -> Var -> Expr Var -> MatchM (Expr Var)
+abstractOver :: HasCallStack => ModGuts -> Var -> Expr Var -> MatchM (Expr Var)
 abstractOver guts v e = do
   expTyCon <- lift $ findTyConTH guts ''GPUExp
   repTyCon <- lift $ findTyConTH guts ''GPURep
@@ -1337,12 +1341,17 @@ abstractOver guts v e = do
 
   dflags <- getDynFlags
 
+  liftIO $ putStrLn $ "abstractOver: e = " ++ showPpr dflags e
+  liftIO $ putStrLn $ "abstractOver: v = " ++ showPpr dflags v
+  liftIO $ putStrLn $ "abstractOver: varType v = " ++ showPpr dflags (varType v)
   repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [varType v])
 
   markedE' <- mark0 guts (Data.transform (go varId newTy) e)
 
-  let markedSubstE' = substCoreExpr v' (Var varId :@ Type origTy :@ typeableDict :@ nameVal) markedE'
+  -- unreppedVar <- applyUnrep guts (Var varId :@ Type origTy :@ typeableDict :@ nameVal)
+  -- let markedSubstE' = substCoreExpr v' unreppedVar markedE'
 
+  let markedSubstE' = substCoreExpr v' (Var varId :@ Type origTy :@ typeableDict :@ nameVal) markedE'
   -- liftIO $ putStrLn $ "markedSubstE' = " ++ showPpr dflags markedSubstE'
 
   return (Var lamId :@ Type origTy :@ Type eTy' :@ repDict :@ typeableDict :@ nameVal
@@ -1576,7 +1585,7 @@ findTypeTH guts thName = do
 -- Modified from 'Inst':
 
 mkEqBox :: TcCoercion -> CoreExpr
-mkEqBox co = 
+mkEqBox co =
     Var (dataConWorkId eqDataCon) :@ Type k :@ Type ty1 :@ Type ty2 :@ Coercion co
   where
     k = tcTypeKind ty1

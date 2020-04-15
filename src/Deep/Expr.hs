@@ -15,8 +15,6 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
-{-# OPTIONS_GHC -Wall #-}
-
 module Deep.Expr where
 
 import           Data.Void
@@ -37,6 +35,8 @@ import           Data.Type.Equality
 import           Data.Typeable
 
 import           Data.Char
+
+import           GHC.Prim
 
 -- Idea: Represent a pattern match of a particular type as
 --    KnownSymbol name => Proxy name -> MatchType name
