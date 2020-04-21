@@ -39,6 +39,9 @@ import           Data.Ord
 
 import           Data.Complex
 
+import           CodeGen.C.Types
+import           CodeGen.C.Helper
+
 import Debug.Trace
 
 nub' :: Ord a => [a] -> [a]
@@ -50,8 +53,6 @@ deleteAll x (y:ys)
   | y == x    =     deleteAll x ys
   | otherwise = y : deleteAll x ys
 
-type CCode = String
-type CName = String
 
 data SomeName = forall a. Typeable a => SomeName (Name a)
 
@@ -364,13 +365,18 @@ prelude varCount =
     , ", EXPR_STEP"
     , ", EXPR_DONE"
     , ", EXPR_UNBOXED"
-    , ", EXPR_COMPLEX     // Complex numbers"
     , "} var_type_tag;"
+    , ""
+    , "typedef enum semantic_type_tag {"
+    , "  NO_SEMANTIC_TAG"
+    , ", EXPR_COMPLEX     // Complex numbers"
+    , "} semantic_type_tag;"
     , ""
     , "struct closure_t;"
     , ""
     , "typedef struct var_t {"
     , "  var_type_tag tag;"
+    , "  semantic_type_tag semantic_tag;  // For optional additional information about the \"un-deconstructed\" type (for instance, it could be the case that tag=EXPR_PAIR, but specific_tag=EXPR_COMPLEX)"
     , "  void* value;"
     , "} var_t;"
     , ""
@@ -392,19 +398,10 @@ prelude varCount =
     , "#define GET_COMPARE_OP_GT >"
     , "#define GET_COMPARE_OP_EQUAL =="
     , ""
-    , "  // Remove any additional wrappers (for instance, a EXPR_COMPLEX wraps a EXPR_PAIR"
-    , "#define UNWRAP(result, x)\\"
-    , "  do {\\"
-    , "    if ((x).tag == EXPR_COMPLEX) {\\"
-    , "      result = *((var_t*)((x).value));\\"
-    , "    } else {\\"
-    , "      result = x;\\"
-    , "    }\\"
-    , "  } while (0);"
-    , ""
     , "#define MATH_OP(op, result, a, b)\\"
     , "  do {\\"
     , "    assert((a).tag == (b).tag);\\"
+    , "    (result).semantic_tag = (a).semantic_tag;\\"
     , "    (result).tag = (a).tag;\\"
     , "    switch ((a).tag) {\\"
     , "      case EXPR_INT:\\"
@@ -480,22 +477,20 @@ prelude varCount =
     , ""  -- 
     , "#define INIT_COMPLEX_PAIR(result)\\"
     , "  do {\\"
-    , "    (result).tag = EXPR_COMPLEX;\\"
-    , "    (result).value = malloc(sizeof(var_t));\\"
-    , "    (*((var_t*)(result).value)).tag = EXPR_PAIR;\\"
-    , "    (*((var_t*)(result).value)).value = malloc(2*sizeof(var_t));\\"
+    , "    (result).semantic_tag = EXPR_COMPLEX;\\"
+    , "    (result).tag = EXPR_PAIR;\\"
+    , "    (result).value = malloc(2*sizeof(var_t));\\"
     , "  } while (0);"
     , ""
     , "#define INIT_COMPLEX(a, type, eTag)\\"
     , "  do {\\"
-    , "    (a).tag = EXPR_COMPLEX;\\"
-    , "    (a).value = malloc(sizeof(var_t));\\"
-    , "    ((var_t*)((a).value))->tag = EXPR_PAIR;\\"
-    , "    ((var_t*)((a).value))->value = malloc(2*sizeof(var_t));\\"
-    , "    ((var_t*)(((var_t*)((a).value))->value))[0].tag = eTag;\\"
-    , "    ((var_t*)(((var_t*)((a).value))->value))[1].tag = eTag;\\"
-    , "    ((var_t*)(((var_t*)((a).value))->value))[0].value = malloc(sizeof(type));\\"
-    , "    ((var_t*)(((var_t*)((a).value))->value))[1].value = malloc(sizeof(type));\\"
+    , "    (a).semantic_tag = EXPR_COMPLEX;\\"
+    , "    (a).tag = EXPR_PAIR;\\"
+    , "    (a).value = malloc(2*sizeof(var_t));\\"
+    , "    ((var_t*)((a).value))[0].tag = eTag;\\"
+    , "    ((var_t*)((a).value))[0].value = malloc(sizeof(var_t));\\"
+    , "    ((var_t*)((a).value))[1].tag = eTag;\\"
+    , "    ((var_t*)((a).value))[1].value = malloc(sizeof(var_t));\\"
     , "  } while (0);"
     , ""
     , "#define PAIR_FST(result, p)\\"
@@ -522,24 +517,24 @@ prelude varCount =
     , ""
     , "#define COMPLEX_REAL(result, c)\\"
     , "  do {\\"
-    , "    assert((p).tag == EXPR_COMPLEX);\\"
-    , "    PAIR_FST(result, *((var_t*)((c).value)));\\"
+    , "    assert((p).semantic_tag == EXPR_COMPLEX);\\"
+    , "    PAIR_FST(result, c);\\"
     , "  } while (0);"
     , ""
     , "#define COMPLEX_IMAG(result, c)\\"
     , "  do {\\"
-    , "    assert((c).tag == EXPR_COMPLEX);\\"
-    , "    PAIR_SND(result, *((var_t*)((c).value)));\\"
+    , "    assert((c).semantic_tag == EXPR_COMPLEX);\\"
+    , "    PAIR_SND(result, c);\\"
     , "  } while (0);"
     , ""
     , "#define COMPLEX_ASSIGN_REAL(result, x)\\"
     , "  do {\\"
-    , "    PAIR_ASSIGN_FST(*((var_t*)((result).value)), x);\\"
+    , "    PAIR_ASSIGN_FST(result, x);\\"
     , "  } while(0);"
     , ""
     , "#define COMPLEX_ASSIGN_IMAG(result, x)\\"
     , "  do {\\"
-    , "    PAIR_ASSIGN_SND(*((var_t*)((result).value)), x);\\"
+    , "    PAIR_ASSIGN_SND(result, x);\\"
     , "  } while(0);"
     , ""
     , "bool isIterTag(var_type_tag tag) {"
@@ -576,8 +571,14 @@ genExp (ConstructRep x :: GPUExp t) resultName =
         [ "// Complex ConstructRep"
         , "var_t " <> pairName <> ";"
         , pairCode
-        , resultName <> ".tag = EXPR_COMPLEX;"
-        , resultName <> ".value = malloc(sizeof(var_t));"
+
+        , (resultName#"value") =: cCall "malloc" ["2*sizeof(var_t)"]
+        , resultName <> ".semantic_tag = EXPR_COMPLEX;"
+        , resultName <> ".tag = EXPR_PAIR;"
+        , cCall "COMPLEX_ASSIGN_REAL" [resultName, (cCast "var_t*" (pairName # "value")) ! 0]
+        , cCall "COMPLEX_ASSIGN_IMAG" [resultName, (cCast "var_t*" (pairName # "value")) ! 1]
+        -- , "COMPLEX_ASSIGN_REAL(" <> resultName <> ", " <> pairName <> "
+        -- , resultName <> ".value = malloc(sizeof(var_t));"
         , "*((var_t*)(" <> resultName <> ".value)) = " <> pairName <> ";"
         ]
 
@@ -618,6 +619,7 @@ genExp (Lam (Name n) body) resultName = do
     , closureCode
     , ""
     , resultName <> ".tag = EXPR_CLOSURE;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = (void*)" <> closurePtrName <> ";"
     ]
 
@@ -704,12 +706,14 @@ genExp (Lit x :: GPUExp t) resultName =
         [ "// oneDimNumCode"
         , resultName' <> ".value = malloc(sizeof(" <> ty <> "));"
         , resultName' <> ".tag = " <> tag <> ";"
+        , resultName' <> ".semantic_tag = NO_SEMANTIC_TAG;"
         , "*(" <> ty <>"*)(" <> resultName' <> ".value) = " <> show x' <> ";"
         ]
 
 genExp TrueExp resultName =
   return $ unlines
     [ resultName <> ".tag = EXPR_BOOL;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(bool));"
     , "*(bool*)(" <> resultName <> ".value) = true;"
     ]
@@ -717,6 +721,7 @@ genExp TrueExp resultName =
 genExp FalseExp resultName =
   return $ unlines
     [ resultName <> ".tag = EXPR_BOOL;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(bool));"
     , "*(bool*)(" <> resultName <> ".value) = false;"
     ]
@@ -730,6 +735,7 @@ genExp (DoneExp x) resultName = do
     [ "var_t " <> xName <> ";"
     , xCode
     , resultName <> ".tag = EXPR_DONE;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(var_t));"
     , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
     ]
@@ -743,6 +749,7 @@ genExp (StepExp x) resultName = do
     [ "var_t " <> xName <> ";"
     , xCode
     , resultName <> ".tag = EXPR_STEP;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(var_t));"
     , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
     ]
@@ -762,21 +769,18 @@ genExp (Sub x y) resultName = do -- TODO: Fix complex number support (see Add)
     , yCode
     , "assert(" <> xName <> ".tag == " <> yName <> ".tag);"
     , ""
-    , "if (" <> xName <> ".tag == EXPR_COMPLEX) {"
+    , "if (" <> xName <> ".semantic_tag == EXPR_COMPLEX) {"
     , "  INIT_COMPLEX_PAIR(" <> resultName <> ");"
     , "  MATH_OP(SUB, ((var_t*)(" <> resultName <> ".value))[0], ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value)[0]); "
     , "  MATH_OP(SUB, ((var_t*)(" <> resultName <> ".value))[1], ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value)[1]); "
     , "} else {"
-    , "  MATH_OP(SUB, " <> resultName <> ", " <> xName <> ", " <> yName <> ");"
+    , "  MATHOP(SUB, " <> resultName <> ", " <> xName <> ", " <> yName <> ");"
     , "}"
     ]
 
 genExp (Mul x y) resultName = do
   xName <- freshCName
   yName <- freshCName
-
-  complexPairNameX <- freshCName
-  complexPairNameY <- freshCName
 
   x0y0Name <- freshCName
   x0y1Name <- freshCName
@@ -793,13 +797,11 @@ genExp (Mul x y) resultName = do
     [ "// Mul"
     , "var_t " <> xName <> ";"
     , "var_t " <> yName <> ";"
-    , "var_t " <> complexPairNameX <> ";"
-    , "var_t " <> complexPairNameY <> ";"
     , xCode
     , yCode
     -- , "assert(" <> xName <> ".tag == " <> yName <> ".tag);"
     , ""
-    , "if (" <> xName <> ".tag == EXPR_COMPLEX) {"
+    , "if (" <> xName <> ".semantic_tag == EXPR_COMPLEX) {"
     , "  var_t " <> x0y0Name <> ";"
     , "  var_t " <> x0y1Name <> ";"
     , "  var_t " <> x1y0Name <> ";"
@@ -807,13 +809,10 @@ genExp (Mul x y) resultName = do
     , "  var_t " <> realName <> ";"
     , "  var_t " <> imagName <> ";"
     , ""
-    , "UNWRAP(" <> complexPairNameX <> ", " <> xName <> ");"
-    , "UNWRAP(" <> complexPairNameY <> ", " <> yName <> ");"
-    , ""
-    , "  MATH_OP(MUL, " <> x0y0Name <> ", ((var_t*)(" <> complexPairNameX <> ".value))[0], ((var_t*)(" <> complexPairNameY <> ".value))[0]);"
-    , "  MATH_OP(MUL, " <> x0y1Name <> ", ((var_t*)(" <> complexPairNameX <> ".value))[0], ((var_t*)(" <> complexPairNameY <> ".value))[1]);"
-    , "  MATH_OP(MUL, " <> x1y0Name <> ", ((var_t*)(" <> complexPairNameX <> ".value))[1], ((var_t*)(" <> complexPairNameY <> ".value))[0]);"
-    , "  MATH_OP(MUL, " <> x1y1Name <> ", ((var_t*)(" <> complexPairNameX <> ".value))[1], ((var_t*)(" <> complexPairNameY <> ".value))[1]);"
+    , "  MATH_OP(MUL, " <> x0y0Name <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[0]);"
+    , "  MATH_OP(MUL, " <> x0y1Name <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[1]);"
+    , "  MATH_OP(MUL, " <> x1y0Name <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[0]);"
+    , "  MATH_OP(MUL, " <> x1y1Name <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[1]);"
     , ""
     , "  MATH_OP(SUB, " <> realName <> ", " <> x0y0Name <> ", " <> x1y1Name <> ");"
     , "  MATH_OP(ADD, " <> imagName <> ", " <> x0y1Name <> ", " <> x1y0Name <> ");"
@@ -853,13 +852,11 @@ genExp (Add x y) resultName = do
     , yCode
     , "assert(" <> xName <> ".tag == " <> yName <> ".tag);"
     , ""
-    , "if (" <> xName <> ".tag == EXPR_COMPLEX) {"
+    , "if (" <> xName <> ".semantic_tag == EXPR_COMPLEX) {"
     , "  INIT_COMPLEX_PAIR(" <> resultName <> ");"
-    , "  UNWRAP(" <> complexPairNameX <> ", " <> xName <> ");"
-    , "  UNWRAP(" <> complexPairNameY <> ", " <> yName <> ");"
     , ""
-    , "  MATH_OP(ADD, " <> realResultName <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[0]); "
-    , "  MATH_OP(ADD, " <> imagResultName <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[1]); "
+    , "  MATH_OP(ADD, " <> realResultName <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[0]);"
+    , "  MATH_OP(ADD, " <> imagResultName <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[1]);"
     , ""
     , "  COMPLEX_ASSIGN_REAL(" <> resultName <> ", " <> realResultName <> ");"
     , "  COMPLEX_ASSIGN_IMAG(" <> resultName <> ", " <> imagResultName <> ");"
@@ -893,7 +890,8 @@ genExp (FromIntegral (x :: GPUExp a) :: GPUExp b) resultName = do
         , xCode
         , castedXName <> ".tag = " <> tag <> ";"
         , castedXName <> ".value = malloc(sizeof(" <> ty <> "));"
-        , "*(" <> ty <> "*)(" <> castedXName <> ".value) = *(" <> ty <> "*)(" <> xName <> ".value);"
+        , "CAST_TO(" <> castedXName <> ", " <> ty <> ", " <> xName <> ");"
+        -- , "*(" <> ty <> "*)(" <> castedXName <> ".value) = *(" <> ty <> "*)(" <> xName <> ".value);"
         , "INIT_COMPLEX(" <> resultName <> ", " <> ty <> ", " <> tag <> ");"
         , "COMPLEX_ASSIGN_REAL(" <> resultName <> ", " <> castedXName <> ");"
         , "COMPLEX_ASSIGN_IMAG(" <> resultName <> ", " <> zeroName <> ");"
@@ -937,6 +935,7 @@ genExp (Lte x y) resultName = do
     , yCode
     , "assert(" <> xName <> ".tag == " <> yName <> ".tag);"
     , resultName <> ".tag = EXPR_BOOL;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(bool));"
     , "COMPARE(LTE, " <> resultName <> ", " <> xName <> ", " <> yName <> ");"
     ]
@@ -955,6 +954,7 @@ genExp (Gt x y) resultName = do
     , yCode
     , "assert(" <> xName <> ".tag == " <> yName <> ".tag);"
     , resultName <> ".tag = EXPR_BOOL;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(bool));"
     , "COMPARE(GT, " <> resultName <> ", " <> xName <> ", " <> yName <> ");"
     ]
@@ -974,6 +974,7 @@ genExp (Equal x y) resultName = do
     , "assert(" <> xName <> ".tag == " <> yName <> ".tag);"
     , ""
     , resultName <> ".tag = EXPR_BOOL;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(bool));"
     , "if (" <> resultName <> ".tag == EXPR_COMPLEX) {"
     , "  COMPARE(EQUAL, " <> resultName <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[0]);"
@@ -1022,6 +1023,7 @@ genExp (PairExp x y) resultName = do
     , xCode
     , yCode
     , resultName <> ".tag = EXPR_PAIR;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(var_t)*2);"
     , "((var_t*)(" <> resultName <> ".value))[0] = " <> xName <> ";"
     , "((var_t*)(" <> resultName <> ".value))[1] = " <> yName <> ";"
@@ -1038,6 +1040,7 @@ genExp (LeftExp x) resultName = do
     [ "var_t " <> xName <> ";"
     , xCode
     , resultName <> ".tag = EXPR_EITHER_LEFT;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(var_t));"
     , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
     ]
@@ -1051,6 +1054,7 @@ genExp (RightExp x) resultName = do
     [ "var_t " <> xName <> ";"
     , xCode
     , resultName <> ".tag = EXPR_EITHER_RIGHT;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(var_t));"
     , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
     ]
@@ -1058,12 +1062,14 @@ genExp (RightExp x) resultName = do
 genExp UnitExp resultName =
   return $ unlines
     [ resultName <> ".tag = EXPR_UNIT;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = 0;"
     ]
 
 genExp (CharLit c) resultName =
   return $ unlines
     [ resultName <> ".tag = EXPR_CHAR;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , "*(char*)(" <> resultName <> ".value) = " <> show c <> ";"
     ]
 
@@ -1077,6 +1083,7 @@ genExp (Ord x) resultName = do
     , xCode
     , ""
     , resultName <> ".tag = EXPR_INT;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , "*(int*)(" <> resultName <> ".value) = *(int*)(" <> xName <> ".value);"
     ]
 
@@ -1121,21 +1128,14 @@ genProdMatch s p resultName = do
       let lastArg = last argUniqs0
           argUniqs = init argUniqs0
 
-      unwrappedName <- freshCName
-
-      let itemNames = map (\i -> pairCar i unwrappedName) [0..length argUniqs0-1]
+      let itemNames = map (\i -> pairCar i s) [0..length argUniqs0-1]
 
       -- TODO: Should the enivronment be saved and restored?
-      cg_modifyNames (zip argUniqs itemNames)
+      -- cg_modifyNames (zip argUniqs itemNames)
 
-      code <- buildAndCall innerLam (pairCar (length argUniqs0-1) unwrappedName) resultName
-
-      return $ unlines
-        [ "var_t " <> unwrappedName <> ";"
-        , "UNWRAP(" <> unwrappedName <> ", " <> s <> ");"
-        , code
-        ]
-
+      le <- fmap cg_le get
+      withLocalEnv (le_modifyNames le (zip argUniqs itemNames))
+        $ buildAndCall innerLam (pairCar (length argUniqs0-1) s) resultName
 
 pairCar :: Int -> CName -> CCode
 pairCar 0 p = "((var_t*)" <> p <> ".value)[0]"
@@ -1204,6 +1204,7 @@ genLambda sc@(SomeLambda c) = do
         | lambda_isTailRec c =
             unlines
               [ rName <> ".tag = EXPR_STEP;"
+              , rName <> ".semantic_tag = NO_SEMANTIC_TAG;"
               , rName <> ".value = malloc(sizeof(var_t));"
               , "*(var_t*)(" <> rName <> ".value) = arg;"
               , "while (" <> rName <> ".tag != EXPR_DONE) {"
@@ -1212,6 +1213,7 @@ genLambda sc@(SomeLambda c) = do
               , ""
               , "var_t " <> tempName <> " = *(var_t*)(" <> rName <> ".value);"
               , rName <> ".tag = " <> tempName <> ".tag;"
+              , rName <> ".semantic_tag = " <> tempName <> ".semantic_tag;"
               , rName <> ".value = " <> tempName <> ".value;"
               ]
         | otherwise = body
