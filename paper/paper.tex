@@ -254,7 +254,7 @@ The following contributions are made by this paper:
 \item An outline of a C backend for this EDSL (Section 7).
 \end{itemize}
 
-Readers who are primarily interested only in the encoding of pattern matching itself, can direct
+Readers who are primarily interested only in the encoding of pattern matching itself can direct
 most of their attention to sections 2, 3 and 6.
 
 \subsection{Overview}
@@ -611,7 +611,6 @@ data E t where
     (ERep a)
       => E r -> E (ProdMatch a r)
 
-
   OneProdMatch ::
     (ERep a)
       => E (a -> b) -> E (ProdMatch a b)
@@ -761,7 +760,7 @@ The \ttt{Typeable} constraints are necessary to lookup correctly typed
 values in the variable binding environment later on.
 
 The \ttt{Name t} type represents a lambda variable identifier together with its
-type \ttt{t} (Note that the \ttt{ScopedTypeVariables} extension is enabled.):
+type \ttt{t} (Note that the \ttt{ScopedTypeVariables} extension is enabled):
 
 \begin{lstlisting}
 newtype Name a = Name Int
@@ -773,9 +772,9 @@ namesEq :: forall a b.
 namesEq (Name n) (Name n') =
   case eqT :: Maybe (a :~: b) of
     Just Refl
-      | n == n' -> Just Refl
+      | n == n'   -> Just Refl
       | otherwise -> Nothing
-    Nothing   -> Nothing
+    Nothing       -> Nothing
 \end{lstlisting}
 
 In the Core transformation, each lambda is given a \ttt{Name} with a globally
