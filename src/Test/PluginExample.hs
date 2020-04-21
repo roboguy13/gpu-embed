@@ -8,7 +8,7 @@
 -- {-# LANGUAGE StandaloneDeriving #-}
 -- {-# LANGUAGE FlexibleInstances #-}
 
-{-# OPTIONS_GHC -O0 -fno-worker-wrapper -fno-strictness -fno-unbox-small-strict-fields -fno-unbox-strict-fields -Wtype-defaults -fexpose-all-unfoldings -dcore-lint -dsuppress-coercions -fplugin=Plugin.MatchPlugin #-}
+{-# OPTIONS_GHC -O0 -Wtype-defaults -fexpose-all-unfoldings -dcore-lint -dsuppress-all -fplugin=Plugin.MatchPlugin #-}
 
 module Test.PluginExample where
 
@@ -137,20 +137,20 @@ example7_ x = IntPair 1 2
 --           then y
 --           else x))
 
--- example8 :: IntPair -> Int
--- example8 p =
---   internalize (externalize
---     (case p of
---       IntPair x y -> y))
+example8 :: IntPair -> Int
+example8 p =
+  internalize (externalize
+    (case p of
+      IntPair x y -> y))
 
--- example9 :: IntPair -> Int
--- example9 p =
---   internalize (externalize
---     (case p of
---       IntPair x y ->
---         if x == 0
---           then example8 p
---           else example9 (IntPair (x-1) (x*y))))
+example9 :: IntPair -> Int
+example9 p =
+  internalize (externalize
+    (case p of
+      IntPair x y ->
+        if x == 0
+          then example8 p
+          else example9 (IntPair (x-1) (x*y))))
 
 -- floatTest :: Float
 -- floatTest =
@@ -289,14 +289,18 @@ doubleListSumE t = externalize (doubleListSum_helper (0, t))
 
 -- deriving instance Generic1 FinBitTree
 
-nonterm_test0 :: Int -> Int
-nonterm_test0 0 = 0
-nonterm_test0 n = (n-1)
+-- nonterm_test0 :: Int -> Int
+-- nonterm_test0 0 = 0
+-- nonterm_test0 n = nonterm_test1 (n-1)
 
-nonterm_test :: Int -> Int
-nonterm_test x =
-  internalize (externalize
-    (nonterm_test0 4))
+-- nonterm_test1 :: Int -> Int
+-- nonterm_test1 0 = 1
+-- nonterm_test1 n = nonterm_test0 (n-1)
+
+-- nonterm_test :: Int -> Int
+-- nonterm_test x =
+--   internalize (externalize
+--     (nonterm_test0 4))
 
 
 main :: IO ()

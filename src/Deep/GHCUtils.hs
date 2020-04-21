@@ -78,6 +78,8 @@ import           Data.List
 import           Data.Generics.Uniplate.Operations
 import qualified Data.Generics.Uniplate.DataOnly as Data
 
+import           Data.Data (Data)
+
 import Debug.Trace
 
 -- | Build a dictionary for the given
@@ -693,8 +695,14 @@ getUnfolding guts dflags i =
 
 -- | Transform scrutinee of a case. If not a 'case', leave it alone.
 onScrutinee :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
-onScrutinee f (Case scrutinee wild ty alts) = Case (f scrutinee) wild ty alts
-onScrutinee _ e = e
+onScrutinee f = maybeApply (onScrutinee_maybe f)
+-- onScrutinee f (Case scrutinee wild ty alts) = Case (f scrutinee) wild ty alts
+-- onScrutinee _ e = e
+
+onScrutinee_maybe :: (CoreExpr -> CoreExpr) -> CoreExpr -> Maybe CoreExpr
+onScrutinee_maybe f (Case scrutinee wild ty alts) = Just $ Case (f scrutinee) wild ty alts
+onScrutinee_maybe _ e = Nothing
+
 
 -- | Transform the function position of a collection of Apps:
 -- f :@ x0 :@ x1 :@ ... :@ xN    ==>    (t f) :@ x0 :@ x1 :@ ... :@ xN
@@ -704,11 +712,18 @@ onAppFun t e@(App _ _) =
   in mkApps (t f) args
 onAppFun t e = e
 
+onAppFunId :: (Id -> CoreExpr) -> CoreExpr -> CoreExpr
+onAppFunId t e = onAppFun go e
+  where
+    go (Var f) = t f
+    go _ = e
+onAppFunId _ e = e
+
 isDictVar :: Var -> Bool
 isDictVar v =
   let str = occNameString (occName v)
   in
-  length str >= 2 && (take 2 str == "$f" || take 2 str == "$d" || take 2 str == "$w" || take 2 str == "C:")
+  length str >= 2 && (take 2 str == "$f" || take 2 str == "$d" || take 2 str == "$w" || take 2 str == "$c" || take 2 str == "C:")
 
 isDict :: CoreExpr -> Bool
 isDict (Var v) = isDictVar v
@@ -742,22 +757,52 @@ applyWhen p f x
 -- transform the Core expression when it is an application where
 -- the function has the same name as the given function name.
 targetTheFn :: Id -> (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
-targetTheFn fn t e@(App _ _)
+targetTheFn fn t = maybeApply (targetTheFn_maybe fn t)
+  -- case targetTheFn_maybe fn t e of
+  --   Just e' -> e'
+  --   _       -> e
+
+targetTheFn_maybe :: Id -> (CoreExpr -> CoreExpr) -> CoreExpr -> Maybe CoreExpr
+targetTheFn_maybe fn t e@(App _ _)
   | (Var fn', args) <- collectArgs e
   = --trace ("targetTheFn: " ++ show (occNameString (occName fn), occNameString (occName fn'))) $
         if fn == fn'
-          then mkApps (t (Var fn')) args
-          else e
-targetTheFn fn t e = e
+          then Just $ mkApps (t (Var fn')) args
+          else Nothing
+targetTheFn_maybe _ _ _ = Nothing
 
+targetTheFnId_maybe :: Id -> (Id -> CoreExpr) -> CoreExpr -> Maybe CoreExpr
+targetTheFnId_maybe fn t e@(App _ _)
+  | (Var fn', args) <- collectArgs e
+  = --trace ("targetTheFn: " ++ show (occNameString (occName fn), occNameString (occName fn'))) $
+        if fn == fn'
+          then Just $ mkApps (t fn') args
+          else Nothing
+targetTheFnId_maybe _ _ _ = Nothing
 
-targetTheFnMaybe :: Maybe Id -> (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
-targetTheFnMaybe Nothing   _ e = e
-targetTheFnMaybe (Just fn) t e = targetTheFn fn t e
+targetTheFnId :: Id -> (Id -> CoreExpr) -> CoreExpr -> CoreExpr
+targetTheFnId fn t e =
+  case targetTheFnId_maybe fn t e of
+    Just e' -> e'
+    _ -> e
 
-maybeTransform :: Maybe a -> (a -> b -> b) -> b -> b
-maybeTransform Nothing  _ y = y
-maybeTransform (Just x) f y = f x y
+unfoldTheFn_maybe :: ModGuts -> DynFlags -> Id -> CoreExpr -> Maybe CoreExpr
+unfoldTheFn_maybe guts dflags fn = targetTheFnId_maybe fn (getUnfolding guts dflags)
+
+unfoldTheFn :: ModGuts -> DynFlags -> Id -> CoreExpr -> CoreExpr
+unfoldTheFn guts dflags fn = maybeApply (unfoldTheFn_maybe guts dflags fn)
+
+-- targetTheFnMaybe :: Maybe Id -> (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+-- targetTheFnMaybe Nothing   _ e = e
+-- targetTheFnMaybe (Just fn) t e = targetTheFn fn t e
+
+maybeTransform :: (a -> b -> b) -> Maybe a -> b -> b
+maybeTransform _ Nothing  y = y
+maybeTransform f (Just x) y = f x y
+
+maybeTransform3 :: (a -> b -> c -> c) -> Maybe a -> b -> c -> c
+maybeTransform3 _ Nothing  _ = id
+maybeTransform3 f (Just x) y = f x y
 
 -- | Target application expressions that have an argument which is an
 -- application of the given function. For instance,
@@ -778,6 +823,29 @@ targetParentOfFnApp dflags fn t e@(App _ _) =
         _ -> False
     matches e' = False
 targetParentOfFnApp _ _ _ e = e
+
+targetAppArgs :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+targetAppArgs t e@(App _ _) =
+  let (f, args) = collectArgs e
+  in
+    mkApps f (map t args)
+targetAppArgs t e = e
+
+targetLastAppArg :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+targetLastAppArg t e@(App _ _) =
+  let (f, args) = collectArgs e
+  in
+  case args of
+    [] -> e
+    _ -> mkApps f (init args ++ [t (last args)])
+targetLastAppArg t e = e
+
+
+maybeApply :: (a -> Maybe a) -> a -> a
+maybeApply f x0 =
+  case f x0 of
+    Just x -> x
+    _      -> x0
 
 -- targetParentOfFnAppMaybe :: Maybe Id -> (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
 -- targetParentOfFnAppMaybe Nothing   _ e = e
@@ -861,6 +929,23 @@ whileRight f x =
     Left _ -> x
     Right x' -> whileRight f x'
 
+untilNothing :: (a -> Maybe a) -> a -> a
+untilNothing f x =
+  case f x of
+    Nothing -> x
+    Just x' -> untilNothing f x'
+
+transform_either :: Data b => (b -> Either a b) -> b -> Maybe b
+transform_either f x0 =
+    case Data.transformM go x0 of
+      Left r -> Just r
+      _ -> Nothing
+  where
+    go x =
+      case f x of
+        Left _ -> Right x
+        Right x' -> Left x'
+
 tryCastFloatApp :: DynFlags -> CoreExpr -> CoreExpr
 tryCastFloatApp dflags e =
   case castFloatAppEither dflags e of
@@ -894,10 +979,10 @@ substCoreAlt v e alt = let (con, vs, rhs) = alt
 -- | Beta-reduce as many lambda-binders as possible.
 betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])
 betaReduceAll (Lam v body) (a:as) = betaReduceAll (substCoreExpr v a body) as
--- betaReduceAll (Cast (Lam v body) co) (a:as)
---   | Just (argTy, resTy) <- splitFunCo_maybe co =
---       let (remaining, args) = betaReduceAll (substCoreExpr v a body) as
---       in (Cast remaining resTy, as)
+betaReduceAll (Cast (Lam v body) co) (a:as)
+  | Just (argTy, resTy) <- splitFunCo_maybe co =
+      let (remaining, args) = betaReduceAll (substCoreExpr v a body) as
+      in (Cast remaining resTy, as)
 betaReduceAll e            as     = (e,as)
 
 -- getLamInCasts :: CoreExpr -> Maybe (Id, CoreExpr, Coercion)
@@ -990,6 +1075,11 @@ isSatisfiablePred :: PredType -> Bool
 isSatisfiablePred ty = case getClassPredTys_maybe ty of
     Just (_, tys@(_:_)) -> all isTyVarTy tys
     _                   -> isTyVarTy ty
+
+caseInlineDefault :: CoreExpr -> CoreExpr
+caseInlineDefault (Case e wild ty [(DEFAULT, _, rhs)]) =
+  substInto (Just (wild, e)) rhs
+caseInlineDefault e = e
 
 -- Adapted from CoreOpt and given a name (in the GHC API):
 caseInlineT :: DynFlags -> CoreExpr -> CoreExpr
