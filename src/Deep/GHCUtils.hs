@@ -695,13 +695,20 @@ getUnfolding guts dflags i =
 
 -- | Transform scrutinee of a case. If not a 'case', leave it alone.
 onScrutinee :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
-onScrutinee f = maybeApply (onScrutinee_maybe f)
+onScrutinee f = maybeApply (onScrutinee_maybe (Just . f))
 -- onScrutinee f (Case scrutinee wild ty alts) = Case (f scrutinee) wild ty alts
 -- onScrutinee _ e = e
 
-onScrutinee_maybe :: (CoreExpr -> CoreExpr) -> CoreExpr -> Maybe CoreExpr
-onScrutinee_maybe f (Case scrutinee wild ty alts) = Just $ Case (f scrutinee) wild ty alts
+onScrutinee_maybe :: (CoreExpr -> Maybe CoreExpr) -> CoreExpr -> Maybe CoreExpr
+onScrutinee_maybe f (Case scrutinee wild ty alts) = do
+    s' <- f scrutinee
+    Just $ Case s' wild ty alts
 onScrutinee_maybe _ e = Nothing
+
+whenVarHasClassName_maybe :: Name -> (CoreExpr -> CoreExpr) -> CoreExpr -> Maybe CoreExpr
+whenVarHasClassName_maybe cName f e@(Var v)
+  | Just c <- isClassOpId_maybe v, className c == cName = Just (f e)
+whenVarHasClassName_maybe _ _ e = Nothing
 
 
 -- | Transform the function position of a collection of Apps:
@@ -785,6 +792,24 @@ targetTheFnId fn t e =
   case targetTheFnId_maybe fn t e of
     Just e' -> e'
     _ -> e
+
+targetTheFnApp_maybe :: Id -> (CoreExpr -> CoreExpr) -> CoreExpr -> Maybe CoreExpr
+targetTheFnApp_maybe fn t e@(App _ _)
+  | (Var fn', _) <- collectArgs e, fn' == fn =
+      Just (t e)
+targetTheFnApp_maybe _ _ _ = Nothing
+
+targetTheFnApp :: Id -> (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+targetTheFnApp fn t e =
+  case targetTheFnApp_maybe fn t e of
+    Just e' -> e'
+    _ -> e
+
+-- | Apply to f in (((...((f x0 x1 ... xN) y0) ...) yM) y(M-1))
+descendAppLhs :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+descendAppLhs t (App a@(App _ _) arg) = App (descendAppLhs t a) arg
+descendAppLhs t (App f arg) = App (t f) arg
+descendAppLhs _ e = e
 
 unfoldTheFn_maybe :: ModGuts -> DynFlags -> Id -> CoreExpr -> Maybe CoreExpr
 unfoldTheFn_maybe guts dflags fn = targetTheFnId_maybe fn (getUnfolding guts dflags)
@@ -874,6 +899,12 @@ tryUnfoldAndReduceDict guts dflags e =
     Right e' -> e'
     _ -> e
 
+unfoldAndReduceDict_maybe :: ModGuts -> DynFlags -> CoreExpr -> Maybe CoreExpr
+unfoldAndReduceDict_maybe guts dflags e =
+  case unfoldAndReduceDict_either guts dflags e of
+    Right e' -> Just e'
+    _ -> Nothing
+
 unfoldAndReduceDict :: HasCallStack => ModGuts -> DynFlags -> CoreExpr -> CoreExpr
 unfoldAndReduceDict guts dflags e =
   case unfoldAndReduceDict_either guts dflags e of
@@ -922,6 +953,11 @@ castFloatAppEither dflags (App (Cast e1 co) e2) =
     modifyRole co' = downgradeRole Representational (coercionRole co') co'
 
 castFloatAppEither _ _ = Left "castFloatAppEither: not in correct form"
+
+-- -- | (Cast (App f x) co)  ==>  (App (
+-- appFloatCast_maybe :: DynFlags -> CoreExpr -> Maybe CoreExpr
+-- appFloatCast_maybe dflags (Cast (App f x) co) =
+--   undefined
 
 whileRight :: (b -> Either a b) -> b -> b
 whileRight f x =
@@ -1084,6 +1120,15 @@ caseInlineDefault e = e
 -- Adapted from CoreOpt and given a name (in the GHC API):
 caseInlineT :: DynFlags -> CoreExpr -> CoreExpr
 caseInlineT dflags = Data.transform (caseInline dflags)
+
+-- TODO: Make sure this works (I believe it does)
+caseInline_maybe :: DynFlags -> CoreExpr -> Maybe CoreExpr
+caseInline_maybe dflags expr0@(Case _ wild0 _ _) =
+  case caseInline dflags expr0 of
+    expr1@(Case _ wild1 _ _)
+      | wild1 == wild0 -> Nothing
+    expr1              -> Just expr1
+caseInline_maybe _ _ = Nothing
 
 caseInline :: DynFlags -> CoreExpr -> CoreExpr
 caseInline dflags expr =

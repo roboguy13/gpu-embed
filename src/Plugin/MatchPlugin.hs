@@ -867,7 +867,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 let newExpr''2
                       = -- Data.transform betaReduce $ Data.transform (maybeApply (fmap (Data.transform (caseInline dflags) . betaReduce . Data.transform (caseInline dflags)) . unfoldTheFn_maybe guts dflags constructFnId))
                         Data.transform betaReduce $ Data.transform (tryCastFloatApp dflags) $ caseInlineT dflags $ Data.transform betaReduce $ Data.transform (maybeApply (fmap betaReduce . unfoldTheFn_maybe guts dflags constructFnId))
-                        $ Data.transform betaReduce $ targetLastAppArg (Data.transform letNonRecSubst . Data.transform caseInlineDefault . betaReduce . onAppFun (tryUnfoldAndReduceDict guts dflags)) $ Data.transform (maybeApply (fmap (Data.transform letNonRecSubst . tryUnfoldAndReduceDict guts dflags . caseInlineT dflags) . onScrutinee_maybe (tryUnfoldAndReduceDict guts dflags)))
+                        $ Data.transform betaReduce $ targetLastAppArg (Data.transform letNonRecSubst . Data.transform caseInlineDefault . betaReduce . onAppFun (tryUnfoldAndReduceDict guts dflags)) $ Data.transform (maybeApply (fmap (Data.transform letNonRecSubst . tryUnfoldAndReduceDict guts dflags . caseInlineT dflags) . onScrutinee_maybe (unfoldAndReduceDict_maybe guts dflags)))
                         $ targetAppArgs betaReduce
                         $ betaReduce
                         $ targetAppArgs betaReduce
@@ -877,13 +877,65 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 fromFnId <- lift $ findIdTH guts 'from
 
-                let newExpr''
-                        = --Data.transform (targetTheFn fromFnId (tryUnfoldAndReduceDict guts dflags)) --(unfoldTheFn guts dflags fromFnId)
-                         -- (caseInline dflags)
-                            Data.transform (maybeApply (fmap (onAppFun (tryUnfoldAndReduceDict guts dflags)) . onScrutinee_maybe (tryUnfoldAndReduceDict guts dflags)))
-                          $ Data.transform betaReduce
-                          $ Data.transform (maybeApply (fmap (Data.transform betaReduce . Data.transform (tryUnfoldAndReduceDict guts dflags) . betaReduce) . unfoldTheFn_maybe guts dflags fromFnId))
-                          $ newExpr''2
+                -- Unfold a 'from'
+                let newExpr''3
+                        =
+                          Data.transform (caseInline dflags) $
+                          Data.transform betaReduce $
+                          Data.transform (maybeApply (fmap (unfoldAndReduceDict guts dflags . caseInline dflags) . onScrutinee_maybe (unfoldAndReduceDict_maybe guts dflags))) $
+                          Data.transform betaReduce $
+                          Data.transform (maybeApply (unfoldTheFn_maybe guts dflags fromFnId)) $
+                          newExpr''2
+
+                -- Unfold a 'construct'
+                let newExpr''4
+                        =
+                          Data.transform betaReduce $
+                          Data.transform (caseInline dflags) $
+                          Data.transform (maybeApply (onScrutinee_maybe (unfoldAndReduceDict_maybe guts dflags))) $
+                          Data.transform betaReduce $
+                          Data.transform (maybeApply (unfoldTheFn_maybe guts dflags constructFnId)) $
+                          newExpr''3
+
+                repClassName <- fmap tyConName $ lift $ findTyConTH guts ''GPURep
+
+                constructRepConstructorId <- lift $ findIdTH guts 'ConstructRep
+
+                -- Unfold another 'construct'
+                -- TODO: Automate these 'construct' unfolding steps
+                -- (including the next 'let')
+                let newExpr''5
+                        =
+                          -- Data.transform (targetTheFnApp constructRepConstructorId (targetLastAppArg (descendAppLhs (onAppFunId (getUnfolding guts dflags))))) $
+                          -- Data.transform (maybeApply (whenVarHasClassName_maybe repClassName (tryUnfoldAndReduceDict guts dflags))) $
+                          Data.transform (caseInline dflags) $
+                          Data.transform betaReduce $
+                          Data.transform (maybeApply (fmap (tryUnfoldAndReduceDict guts dflags) . caseInline_maybe dflags)) $
+                          -- Data.transform (maybeApply (onScrutinee_maybe (unfoldAndReduceDict_maybe guts dflags))) $
+                          Data.transform betaReduce $
+                          Data.transform (maybeApply (unfoldTheFn_maybe guts dflags constructFnId)) $
+                          newExpr''4
+
+                let newExpr''6
+                      =
+                          Data.transform (caseInline dflags) $
+                          Data.transform betaReduce $
+                          Data.transform (maybeApply (fmap (tryUnfoldAndReduceDict guts dflags) . caseInline_maybe dflags)) $
+                          -- Data.transform (maybeApply (onScrutinee_maybe (unfoldAndReduceDict_maybe guts dflags))) $
+                          Data.transform betaReduce $
+                          Data.transform (maybeApply (unfoldTheFn_maybe guts dflags constructFnId)) $
+
+
+
+                          Data.transform (caseInline dflags) $
+                          Data.transform betaReduce $
+                          Data.transform (maybeApply (fmap (tryUnfoldAndReduceDict guts dflags) . caseInline_maybe dflags)) $
+                          -- Data.transform (maybeApply (onScrutinee_maybe (unfoldAndReduceDict_maybe guts dflags))) $
+                          Data.transform betaReduce $
+                          Data.transform (maybeApply (unfoldTheFn_maybe guts dflags constructFnId)) $
+                          newExpr''5
+
+                newExpr'' <- Data.transformM (elimRepUnrep guts) $ newExpr''6
 
                 -- case newExpr'' of
                 --   App{} ->
@@ -962,41 +1014,43 @@ applyUnrep guts e = do
 
 -- | rep (unrep x)  ==>  x
 elimRepUnrep :: ModGuts -> CoreExpr -> MatchM CoreExpr
-elimRepUnrep guts expr@(Var r :@ Type{} :@ dict :@ arg) =
-  case arg of
-    (Var u :@ Type{} :@ x) -> go u x
-    (Cast (Var u :@ Type{} :@ x) _) -> go u x
-    _ -> return expr
+elimRepUnrep guts (Cast e co) = elimRepUnrep_co guts (Just co) e
+elimRepUnrep guts expr = elimRepUnrep_co guts Nothing expr
+
+elimRepUnrep_co :: ModGuts -> Maybe Coercion -> CoreExpr -> MatchM CoreExpr
+elimRepUnrep_co guts coA_M expr@(Var r :@ Type{} :@ dict :@ arg) =
+  go0 arg
   where
-    go u x = do
+    go0 e =
+      case e of
+        (Var u :@ Type{} :@ x) -> go u Nothing x
+        (Cast (Var u :@ Type{} :@ x) coB) -> go u (Just coB) x
+        _ -> return expr
+
+    go u coB_M x = do
       repId <- lift $ findIdTH guts 'rep
       unrepId <- lift $ findIdTH guts 'unrep
 
       if r == repId && u == unrepId
-        then return x
+        then
+          case (coA_M, coB_M) of
+            (Nothing, Just coB)  -> do
+              liftIO $ putStrLn "Casting..."
+              return $ Cast x coB
+            (Just coA, Nothing)  -> do
+              liftIO $ putStrLn "Casting..."
+              return $ Cast x coA
+            (Nothing, Nothing)   -> do
+              return $ x
+            (Just coA, Just coB) -> do
+              liftIO $ putStrLn "Casting..."
+              return $ Cast x (composeCos coA coB)
         else return expr
-elimRepUnrep _guts expr = return expr
 
--- | unrep (externalize x)  ==>  x
-elimUnrepExternalize :: ModGuts -> CoreExpr -> MatchM CoreExpr
-elimUnrepExternalize guts expr@(Var u :@ Type{} :@ arg) =
-  case arg of
-    (Var e :@ Type{} :@ _dict :@ x) -> go e x
-    (Cast (Var e :@ Type{} :@ _dict :@ x) _) -> go e x
-    _ -> return expr
-  where
-    go e x = do
-      unrepId <- lift $ findIdTH guts 'unrep
-      externalizeId <- lift $ findIdTH guts 'externalize
+    composeCos = mkTransCo
 
-      dflags <- getDynFlags
-
-      liftIO $ putStrLn $ "elimUnrepExternalize: " ++ showPpr dflags (u, e)
-
-      if u == unrepId && e == externalizeId
-        then return x
-        else return expr
-elimUnrepExternalize _guts expr = return expr
+elimRepUnrep_co _guts _co expr = return expr
+-- elimRepUnrep guts (Cast e _) = elimRepUnrep guts e
 
 transformProdMatch :: ModGuts -> (Expr Var -> MatchM (Expr Var)) -> Type -> Type -> Alt Var -> MatchM (Expr Var)
 transformProdMatch guts mark resultTy ty0_ (altCon@(DataAlt dataAlt), vars0, body0) = do
