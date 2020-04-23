@@ -853,6 +853,9 @@ See Appendix A for more implementation details of \ttt{absEnv}.
   Write this section
 \end{todo}
 
+The C backend makes use of a small EDSL for generating C code. See
+Appendix B for implementation details of this ESDL.
+
 \section{Core Plugin}
 
 The Core plugin translates marked expressions. Expressions are marked by
@@ -1081,6 +1084,58 @@ absEnv env (ConstructRep x) =
 
 ...
 \end{lstlisting}
+
+\section{EDSL for C code generation}
+\begin{lstlisting}
+type CCode = String
+type CName = String
+
+stmt :: CCode -> CCode
+stmt = (<> ";")
+
+cCall :: CName -> [CCode] -> CCode
+cCall fnName args =
+  fnName <> "(" <> intercalate ", " args <> ")"
+
+derefPtr :: CCode -> CCode
+derefPtr x = "*(" <> x <> ")"
+
+cCast :: CCode -> CCode -> CCode
+cCast toType x =
+  "((" <> toType <> ")" <> x <> ")"
+
+cIndex :: CCode -> Int -> CCode
+cIndex x i = "(" <> x <> ")[" <> show i <> "]"
+
+(!) :: CCode -> Int -> CCode
+(!) = cIndex
+
+(=:) :: CCode -> CCode -> CCode
+x =: y = stmt (x <> " = " <> y)
+
+cDecl :: CName -> CName -> CCode
+cDecl cType v = stmt (cType <> " " <> v)
+
+(#) :: CCode -> CName -> CCode
+x # fieldName = x <> "." <> fieldName
+
+macroDef :: CName -> [CName] -> [CCode] -> CCode
+macroDef name args theLines =
+  unlines
+    [ "#define " <> name
+              <> "(" <>
+                intercalate ", " args
+              <> ")\\"
+    , "  do {\\"
+    , unlines
+        . map ("    "++)
+        . map (++"\\")
+        $ theLines
+    , "  } while (0);"
+    ]
+\end{lstlisting}
+
+
 
 \clearpage
 
