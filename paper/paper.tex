@@ -850,11 +850,62 @@ See Appendix A for more implementation details of \ttt{absEnv}.
 
 \section{C Backend}
 \begin{todo}
-  Write this section
+  Expand this section
 \end{todo}
 
 The C backend makes use of a small EDSL for generating C code. See
 Appendix B for implementation details of this ESDL.
+
+This backend is based on a globally unique name generator. Similar to
+SSA form, a new C variable is created for each Haskell subexpression.
+It differs from SSA, however, in that these variables can be assigned multiple
+times. In particular, a variable can be assigned in multiple branches of
+an \ttt{if} statement or inside of a \ttt{while} loop. This simplifies
+the implementation, as $\phi$ nodes are not needed.
+
+The following \ttt{struct}s provide the C representation for Haskell expressions:
+
+\begin{lstlisting}
+typedef enum var_type_tag {
+  EXPR_INT
+, EXPR_FLOAT
+, EXPR_DOUBLE
+, EXPR_CHAR
+, EXPR_BOOL
+, EXPR_CLOSURE
+, EXPR_EITHER_LEFT
+, EXPR_EITHER_RIGHT
+, EXPR_PAIR
+, EXPR_UNIT
+, EXPR_STEP
+, EXPR_DONE
+, EXPR_UNBOXED
+} var_type_tag;
+
+typedef enum semantic_type_tag {
+  NO_SEMANTIC_TAG
+, EXPR_COMPLEX     // Complex numbers
+} semantic_type_tag;
+
+struct closure_t;
+
+typedef struct var_t {
+  var_type_tag tag;
+  semantic_type_tag semantic_tag;
+  void* value;
+} var_t;
+
+typedef struct closure_t {
+  var_t* fv_env;
+  var_t (*fn)(var_t, struct closure_t*);
+} closure_t;
+\end{lstlisting}
+
+The \ttt{semantic\_tag} allows type information preserved by the \ttt{Typeable} constraints
+in the EDSL to be brought over to the generated C code. In our implementation, this is
+used to distinguish between pairs of \ttt{Double}s and \ttt{Complex Double} values. In the
+case of a \ttt{Complex Double}, the \ttt{var\_t} would have a \ttt{tag} field with the value
+\ttt{EXPR\_PAIR} and a \ttt{semantic\_tag} field with the value \ttt{EXPR\_COMPLEX}.
 
 \section{Core Plugin}
 
