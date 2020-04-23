@@ -918,6 +918,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 let newExpr''6
                       =
+                          Data.transform combineCasts $
+
                           Data.transform (caseInline dflags) $
                           Data.transform betaReduce $
                           Data.transform (maybeApply (fmap (tryUnfoldAndReduceDict guts dflags) . caseInline_maybe dflags)) $
@@ -935,7 +937,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                           Data.transform (maybeApply (unfoldTheFn_maybe guts dflags constructFnId)) $
                           newExpr''5
 
-                newExpr'' <- Data.transformM (elimRepUnrep guts) $ newExpr''6
+                newExpr'' <- Data.transformM (targetCastM (elimRepUnrep guts)) $ newExpr''6
 
                 -- case newExpr'' of
                 --   App{} ->

@@ -988,6 +988,20 @@ tryCastFloatApp dflags e =
     Left _ -> e
     Right e' -> e'
 
+combineCasts_maybe :: CoreExpr -> Maybe CoreExpr
+combineCasts_maybe (Cast (Cast e coA) coB) = Just $ Cast e (mkTransCo coA coB)
+combineCasts_maybe _ = Nothing
+
+combineCasts :: CoreExpr -> CoreExpr
+combineCasts e =
+  case combineCasts_maybe e of
+    Just e' -> e'
+    _ -> e
+
+targetCastM :: Applicative m => (CoreExpr -> m CoreExpr) -> CoreExpr -> m CoreExpr
+targetCastM t e@(Cast _ _) = t e
+targetCastM _ e = pure e
+
 -- | Build a CoreExpr for a DFunUnfolding
 dFunExpr :: Unfolding -> CoreExpr
 dFunExpr dunf@(DFunUnfolding {}) = mkCoreLams (df_bndrs dunf) $ mkCoreConApps (df_con dunf) (df_args dunf)
