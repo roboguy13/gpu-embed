@@ -1032,7 +1032,9 @@ betaReduceAll (Lam v body) (a:as) = betaReduceAll (substCoreExpr v a body) as
 betaReduceAll (Cast (Lam v body) co) (a:as)
   | Just (argTy, resTy) <- splitFunCo_maybe co =
       let (remaining, args) = betaReduceAll (substCoreExpr v a body) as
-      in (Cast remaining resTy, as)
+      in case splitFunCo_maybe co of
+           Just (coA, coB) -> (Cast remaining coB, as)
+           Nothing -> (Cast remaining resTy, as)
 betaReduceAll e            as     = (e,as)
 
 -- getLamInCasts :: CoreExpr -> Maybe (Id, CoreExpr, Coercion)
