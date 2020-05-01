@@ -906,7 +906,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 let newExpr''6
                       =
-                          Data.transform combineCasts $
+                          Data.transform (combineCasts dflags) $
 
                           Data.transform (caseInline dflags) $
                           Data.transform betaReduce $
@@ -1011,8 +1011,8 @@ elimRepUnrep_co guts coA_M expr@(Var r :@ Type{} :@ dict :@ arg) =
                   liftIO $ putStrLn $ "Casting B... " ++ showPpr dflags coB
                   return $ Just coB
                 (Just coA, Just coB) -> do
-                  liftIO $ putStrLn $ "Casting AB... " ++ showPpr dflags (coA, coB)
-                  return $ Just (composeCos coB coA)
+                  liftIO $ putStrLn $ "Casting AB... " ++ showPpr dflags (coercionKind coA, coercionKind coB)
+                  return $ Just coA --(composeCos coA coB)
 
       if r == repId && u == unrepId
         then return $ coerceMaybe co_M x

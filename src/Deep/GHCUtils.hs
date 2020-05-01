@@ -71,6 +71,8 @@ import           Control.Monad
 
 import           Control.Arrow (first, second)
 
+import           Control.Applicative
+
 
 import           Data.Char
 import           Data.List
@@ -988,13 +990,45 @@ tryCastFloatApp dflags e =
     Left _ -> e
     Right e' -> e'
 
-combineCasts_maybe :: CoreExpr -> Maybe CoreExpr
-combineCasts_maybe (Cast (Cast e coA) coB) = Just $ Cast e (mkTransCo coA coB)
-combineCasts_maybe _ = Nothing
+coercionRKind :: Coercion -> Type
+coercionRKind co =
+  let Pair _ y = coercionKind co
+  in y
 
-combineCasts :: CoreExpr -> CoreExpr
-combineCasts e =
-  case combineCasts_maybe e of
+coercionLKind :: Coercion -> Type
+coercionLKind co =
+  let Pair x _ = coercionKind co
+  in x
+
+orderCoercions0 :: Coercion -> Coercion -> Maybe (Coercion, Coercion)
+orderCoercions0 co1 co2
+  | ty1b `eqType` ty2a                 = Just (co1, co2)
+  | ty1b_flipped `eqType` ty2a_flipped = Just (co2, co1)
+  | otherwise                          = Nothing
+  where
+    ty1b = coercionRKind co1
+    ty2a = coercionLKind co2
+
+    ty1b_flipped = coercionRKind co2
+    ty2a_flipped = coercionLKind co1
+
+orderCoercions :: Coercion -> Coercion -> Maybe (Coercion, Coercion)
+orderCoercions co1 co2 =
+  orderCoercions0 co1 co2 <|> orderCoercions0 (mkSymCo co1) co2 <|> orderCoercions0 co1 (mkSymCo co2)
+
+combineCasts_maybe :: DynFlags -> CoreExpr -> Maybe CoreExpr
+combineCasts_maybe dflags origE@(Cast (Cast e coA) coB) =
+    if isReflexiveCo coA
+      then Just $ Cast e coB -- TODO: Figure out why this 'if' is needed
+      else trace ("combineCasts_maybe: " ++ showPpr dflags (coercionKind coA, coercionKind coB)) $
+            case orderCoercions coA coB of
+              Just (coA', coB') -> Just $ Cast e (mkTransCo coA' coB')
+              Nothing -> trace ("combineCasts_maybe: *** coercions do not match ***") $ Just e
+combineCasts_maybe _ _ = Nothing
+
+combineCasts :: DynFlags -> CoreExpr -> CoreExpr
+combineCasts dflags e =
+  case combineCasts_maybe dflags e of
     Just e' -> e'
     _ -> e
 
