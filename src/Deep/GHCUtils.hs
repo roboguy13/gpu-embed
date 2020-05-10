@@ -68,6 +68,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 import           Control.Monad
+import           Control.Monad.Identity
 
 import           Control.Arrow (first, second)
 
@@ -744,6 +745,13 @@ onAppFun = maybeApply . onAppFun_maybe . (Just .)
 onAppFunId :: (Id -> CoreExpr) -> CoreExpr -> CoreExpr
 onAppFunId = maybeApply . onAppFunId_maybe . (Just .)
 
+descendIntoCastsM :: Applicative f => (CoreExpr -> f CoreExpr) -> CoreExpr -> f CoreExpr
+descendIntoCastsM f (Cast e co) = Cast <$> descendIntoCastsM f e <*> pure co
+descendIntoCastsM f e = f e
+
+descendIntoCasts :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+descendIntoCasts f = runIdentity . (descendIntoCastsM (Identity . f))
+
 isDictVar :: Var -> Bool
 isDictVar v =
   let str = occNameString (occName v)
@@ -859,11 +867,13 @@ maybeTransform3 _ Nothing  _ = id
 maybeTransform3 f (Just x) y = f x y
 
 -- | If q rewrites a subexpression e to e', then apply p to the
--- superexpression of e'. If there is no subexpression, simply apply
--- q (this is the last case).
+-- superexpression of e'. If there is no subexpression, give Nothing.
 --
 -- TODO: See if a "cursor rewrite" system can be implemented by internally
 -- using this function together with a modified continuation monad.
+--
+-- TODO: Try to generalize this to work with any `Data` type (maybe use
+-- Uniplate?).
 upOneLevel_maybe :: (CoreExpr -> Maybe CoreExpr) -> (CoreExpr -> Maybe CoreExpr) -> CoreExpr -> Maybe CoreExpr
 upOneLevel_maybe p q (App f0 x0) = do
   let f_M = q f0
@@ -910,7 +920,7 @@ upOneLevel_maybe p q (Tick tick e0) = do
   e <- q e0
   p (Tick tick e)
 
-upOneLevel_maybe _ q e = q e
+upOneLevel_maybe _ _ _ = Nothing
   
 
 bindApply_maybe :: (CoreExpr -> Maybe CoreExpr) -> CoreBind -> Maybe CoreBind

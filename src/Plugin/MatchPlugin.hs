@@ -784,6 +784,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 repDictRepTy <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [mkTyConApp repTyTyCon [exprType expr]])
                 repId <- lift $ findIdTH guts 'rep
                 constructFnId <- lift $ findIdTH guts 'construct
+                fromId <- lift $ findIdTH guts 'from
 
                 let constr' = mkApps (Var constr) (tys ++ dicts)
                 let constr'Type = exprType constr'
@@ -860,22 +861,58 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 let fnE' = Data.transform betaReduce $ Data.transform letNonRecSubst $ Data.transform betaReduce $ Data.transform (tryUnfoldAndReduceDict guts dflags) fnE
                 let (newExpr, remainingArgs) = betaReduceAll fnE' [mkApps constr' unreppedArgs]
 
-                let elimConstruct
+                let elimConstructThen t
                       -- = Data.transform betaReduce
                       -- . Data.transform caseInlineDefault
                       = Data.transform
                           (maybeApply
-                            (upOneLevel_maybe (Just . betaReduce)
+                            (upOneLevel_maybe (t . betaReduce)
                               (fmap caseInlineDefault .
                                (upOneLevel_maybe (Just . (\e -> Data.transform (simpleOptExpr dflags) $ Data.transform letNonRecSubst $ Data.transform betaReduce $ (onAppFunId getUnfolding') $ Data.transform letNonRecSubst $ simpleOptExpr dflags (onVar getUnfolding' e))
                                                       . Data.transform (caseInline dflags)
                                                       . Data.transform betaReduce)
                                                 (onAppFun_maybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId)))))))
 
-                let newExpr'
-                      = elimConstruct $ elimConstruct newExpr
+                let tryUnfoldAndReduceDict' = tryUnfoldAndReduceDict guts dflags
+                let unfoldAndReduceDict_maybe' = unfoldAndReduceDict_maybe guts dflags
 
-                error (showPpr dflags newExpr')
+                let elimConstruct
+                      = elimConstructThen
+                          (Just
+                          . descendIntoCasts
+                              (maybeApply
+                                (upOneLevel_maybe (--(fmap (\e -> trace ("inner = {" ++ showPpr dflags e ++ "}") e))
+                                  -- (upOneLevel_maybe (Just . Data.transform (maybeApply 
+                                  --       -- (upOneLevel_maybe (upOneLevel_maybe (Just . (\e -> trace ("inner = {" ++ showPpr dflags e ++ "}") e)) Just) 
+                                  --                                                  {-  . Data.transform (caseInline dflags)
+                                  --       . Data.transform (onScrutinee tryUnfoldAndReduceDict')
+                                  --       . Data.transform (caseInline dflags)
+                                  --       . Data.transform betaReduce -}
+                                  --         -- )
+                                  --         (replaceVarId_maybe fromId (getUnfolding' fromId)))
+                                        Just
+                                      . Data.transform (caseInline dflags)
+                                      . Data.transform betaReduce
+                                      . Data.transform (maybeApply $
+                                            fmap tryUnfoldAndReduceDict'
+                                          . fmap (caseInline dflags)
+                                          . fmap (onScrutinee tryUnfoldAndReduceDict')
+                                          . (upOneLevel_maybe (Just . betaReduce)
+                                            (upOneLevel_maybe (Just . betaReduce)
+                                              (replaceVarId_maybe fromId (getUnfolding' fromId)))))
+
+                                      . (Data.transform (caseInline dflags))
+                                      . betaReduce)
+                                    (onAppFun_maybe unfoldAndReduceDict_maybe'))))
+
+                -- TODO: Recursively call elimConstruct until it makes no
+                -- changes
+                let newExpr'
+                      = elimConstruct $ elimConstruct $ elimConstruct newExpr
+
+                newExpr'' <- Data.transformM (elimRepUnrep guts) newExpr'
+
+                error (showPpr dflags newExpr'')
                 -- error (showPpr dflags (newExpr, remainingArgs))
 
         go expr@(_ :@ _)
