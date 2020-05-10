@@ -8,7 +8,7 @@
 -- {-# LANGUAGE StandaloneDeriving #-}
 -- {-# LANGUAGE FlexibleInstances #-}
 
-{-# OPTIONS_GHC -O0 -Wtype-defaults -fexpose-all-unfoldings -dcore-lint -dsuppress-all -fprint-explicit-coercions -dno-suppress-coercions -fplugin=Plugin.MatchPlugin #-}
+{-# OPTIONS_GHC -O0 -Wtype-defaults -fexpose-all-unfoldings -dcore-lint -dsuppress-all -fprint-explicit-coercions -fplugin=Plugin.MatchPlugin #-}
 
 module Test.PluginExample where
 

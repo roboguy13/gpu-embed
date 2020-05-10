@@ -7,6 +7,8 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Plugin.MatchPlugin (plugin) where
 
@@ -97,6 +99,10 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import           Data.Char
 import           Data.List
+
+import           CoreOpt
+
+import Debug.Trace
 
 data PluginState =
   PluginState
@@ -830,7 +836,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 let e'' =
                       onScrutinee (Data.transform (tryUnfoldAndReduceDict guts dflags)) $
-                        Data.transform (caseInlineT dflags) $ onScrutinee (Data.transform betaReduce) e'
+                        Data.transform (caseInline dflags) $ onScrutinee (Data.transform betaReduce) e'
 
                 let (Var dictFn, dictArgs) = collectArgs e''
 
@@ -854,11 +860,20 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 let fnE' = Data.transform betaReduce $ Data.transform letNonRecSubst $ Data.transform betaReduce $ Data.transform (tryUnfoldAndReduceDict guts dflags) fnE
                 let (newExpr, remainingArgs) = betaReduceAll fnE' [mkApps constr' unreppedArgs]
 
+                let elimConstruct
+                      -- = Data.transform betaReduce
+                      -- . Data.transform caseInlineDefault
+                      = Data.transform
+                          (maybeApply
+                            (upOneLevel_maybe (Just . betaReduce)
+                              (fmap caseInlineDefault .
+                               (upOneLevel_maybe (Just . (\e -> Data.transform (simpleOptExpr dflags) $ Data.transform letNonRecSubst $ Data.transform betaReduce $ (onAppFunId getUnfolding') $ Data.transform letNonRecSubst $ simpleOptExpr dflags (onVar getUnfolding' e))
+                                                      . Data.transform (caseInline dflags)
+                                                      . Data.transform betaReduce)
+                                                (onAppFun_maybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId)))))))
+
                 let newExpr'
-                      = Data.transform (caseInlineT dflags)
-                      $ Data.transform betaReduce
-                      $ Data.transform (maybeApply (fmap (tryUnfoldAndReduceDict guts dflags) . replaceVarId_maybe constructFnId constructUnfolding))
-                      $ newExpr
+                      = elimConstruct $ elimConstruct newExpr
 
                 error (showPpr dflags newExpr')
                 -- error (showPpr dflags (newExpr, remainingArgs))
@@ -913,6 +928,10 @@ applyUnrep :: ModGuts -> CoreExpr -> MatchM CoreExpr
 applyUnrep guts e = do
   unrepId <- lift $ findIdTH guts 'unrep
   return (Var unrepId :@ Type (exprType e) :@ e)
+
+-- TODO: Implement and use to repeatedly apply constructor transformation
+repToExternalize :: ModGuts -> CoreExpr -> MatchM CoreExpr
+repToExternalize guts e = error "repToExternalize unimplemented"
 
 -- | rep (unrep x)  ==>  x
 elimRepUnrep :: ModGuts -> CoreExpr -> MatchM CoreExpr

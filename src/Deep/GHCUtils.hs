@@ -82,6 +82,8 @@ import qualified Data.Generics.Uniplate.DataOnly as Data
 
 import           Data.Data (Data)
 
+import           Data.Maybe (fromMaybe)
+
 import Debug.Trace
 
 -- | Build a dictionary for the given
@@ -715,21 +717,32 @@ whenVarHasClassName_maybe cName f e@(Var v)
   | Just c <- isClassOpId_maybe v, className c == cName = Just (f e)
 whenVarHasClassName_maybe _ _ e = Nothing
 
+onVar_maybe :: (Id -> CoreExpr) -> CoreExpr -> Maybe CoreExpr
+onVar_maybe f (Var x) = Just $ f x
+onVar_maybe _ e = Nothing
+
+onVar :: (Id -> CoreExpr) -> CoreExpr -> CoreExpr
+onVar = maybeApply  . onVar_maybe
 
 -- | Transform the function position of a collection of Apps:
 -- f :@ x0 :@ x1 :@ ... :@ xN    ==>    (t f) :@ x0 :@ x1 :@ ... :@ xN
-onAppFun :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
-onAppFun t e@(App _ _) =
+onAppFun_maybe :: (CoreExpr -> Maybe CoreExpr) -> CoreExpr -> Maybe CoreExpr
+onAppFun_maybe t e@(App _ _) =
   let (f, args) = collectArgs e
-  in mkApps (t f) args
-onAppFun t e = e
+  in mkApps <$> t f <*> pure args
+onAppFun_maybe t e = Nothing
 
-onAppFunId :: (Id -> CoreExpr) -> CoreExpr -> CoreExpr
-onAppFunId t e = onAppFun go e
+onAppFunId_maybe :: (Id -> Maybe CoreExpr) -> CoreExpr -> Maybe CoreExpr
+onAppFunId_maybe t e = onAppFun_maybe go e
   where
     go (Var f) = t f
-    go _ = e
-onAppFunId _ e = e
+    go _ = Nothing
+
+onAppFun :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+onAppFun = maybeApply . onAppFun_maybe . (Just .)
+
+onAppFunId :: (Id -> CoreExpr) -> CoreExpr -> CoreExpr
+onAppFunId = maybeApply . onAppFunId_maybe . (Just .)
 
 isDictVar :: Var -> Bool
 isDictVar v =
@@ -844,6 +857,86 @@ maybeTransform f (Just x) y = f x y
 maybeTransform3 :: (a -> b -> c -> c) -> Maybe a -> b -> c -> c
 maybeTransform3 _ Nothing  _ = id
 maybeTransform3 f (Just x) y = f x y
+
+-- | If q rewrites a subexpression e to e', then apply p to the
+-- superexpression of e'. If there is no subexpression, simply apply
+-- q (this is the last case).
+--
+-- TODO: See if a "cursor rewrite" system can be implemented by internally
+-- using this function together with a modified continuation monad.
+upOneLevel_maybe :: (CoreExpr -> Maybe CoreExpr) -> (CoreExpr -> Maybe CoreExpr) -> CoreExpr -> Maybe CoreExpr
+upOneLevel_maybe p q (App f0 x0) = do
+  let f_M = q f0
+      x_M = q x0
+
+  guard (atLeastOneJust f_M x_M)
+
+  let f = fromMaybe f0 f_M
+      x = fromMaybe x0 x_M
+
+  p (App f x)
+
+upOneLevel_maybe p q (Lam v body0) = do
+  body <- q body0
+  p (Lam v body)
+
+upOneLevel_maybe p q (Let bind0 body0) = do
+  let bind_M = bindApply_maybe q bind0
+      body_M = q body0
+
+  guard (atLeastOneJust bind_M body_M)
+
+  let bind = fromMaybe bind0 bind_M
+      body = fromMaybe body0 body_M
+
+  p (Let bind body)
+
+upOneLevel_maybe p q (Case e0 wild ty alts0) = do
+  let e_M = q e0
+      alts_M = altsApply_maybe q alts0
+
+  guard (atLeastOneJust e_M alts_M)
+
+  let e = fromMaybe e0 e_M
+      alts = fromMaybe alts0 alts_M
+
+  p (Case e wild ty alts)
+
+upOneLevel_maybe p q (Cast e0 co) = do
+  e <- q e0
+  p (Cast e co)
+
+upOneLevel_maybe p q (Tick tick e0) = do
+  e <- q e0
+  p (Tick tick e)
+
+upOneLevel_maybe _ q e = q e
+  
+
+bindApply_maybe :: (CoreExpr -> Maybe CoreExpr) -> CoreBind -> Maybe CoreBind
+bindApply_maybe f (NonRec n e) = NonRec <$> pure n <*> f e
+bindApply_maybe f (Rec binds0)  = Rec <$> go False binds0
+  where
+    go True [] = Just []
+    go False [] = Nothing
+    go foundJust (bind@(n, e):binds) =
+      case f e of
+        Nothing -> (bind:)    <$> go foundJust binds
+        Just e' -> ((n, e'):) <$> go True      binds
+
+altsApply_maybe :: (CoreExpr -> Maybe CoreExpr) -> [CoreAlt] -> Maybe [CoreAlt]
+altsApply_maybe f = go False
+  where
+    go True [] = Just []
+    go False [] = Nothing
+    go foundJust (alt@(con, conArgs, body):alts) =
+      case f body of
+        Nothing -> (alt:)                      <$> go foundJust alts
+        Just body' -> ((con, conArgs, body'):) <$> go True      alts
+
+atLeastOneJust :: Maybe a -> Maybe b -> Bool
+atLeastOneJust Nothing Nothing = False
+atLeastOneJust _ _ = True
 
 -- | Target application expressions that have an argument which is an
 -- application of the given function. For instance,
