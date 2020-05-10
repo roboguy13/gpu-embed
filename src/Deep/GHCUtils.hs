@@ -149,6 +149,7 @@ normaliseTypeCo guts ty =
     famInstEnvs <- getFamInstEnvs
     return (normaliseType famInstEnvs Nominal ty)
 
+{-
 -- TODO: This is a stop-gap measure. Try to figure out why some of the
 -- coercion holes are not getting filled by the GHC API (particularly for
 -- the equality constraint in the incoherent instance of ConstructC).
@@ -199,6 +200,8 @@ tryToFillCoHoles guts bind =
       --   fillCoercionHole coHole (mkNomReflCo (varType ch_co_var))
       --   return expr
     go expr = return expr
+-}
+
 
 runTcM :: HasCallStack => ModGuts -> TcM a -> CoreM a
 runTcM guts m = do
@@ -913,11 +916,11 @@ unfoldAndReduceDict guts dflags e =
     Right e' -> e'
     Left err -> error ("unfoldAndReduceDict: " ++ err)
 
--- | This should, among other things, reduce a case-of-known-constructor
-simpleOptExpr' :: CoreExpr -> CoreM CoreExpr
-simpleOptExpr' e = do
-    dflags <- getDynFlags
-    return $ simpleOptExpr dflags e
+-- -- | This should, among other things, reduce a case-of-known-constructor
+-- simpleOptExpr' :: CoreExpr -> CoreM CoreExpr
+-- simpleOptExpr' e = do
+--     dflags <- getDynFlags
+--     return $ simpleOptExpr dflags e
 
 --
 -- From HERMIT: --
@@ -942,13 +945,20 @@ castFloatAppEither dflags (App (Cast e1 co) e2) =
                 case e2 of
                   Type x' -> --trace ("caseFloatApp forallco: { " ++ showPpr dflags (t, kc, c2) ++ "\n}\n") $
                     -- return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') (modifyRole c2)))
-                    return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') (modifyRole c2)))
+                    Left "" --return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') (modifyRole c2)))
                   _ -> Left "caseFloatAppEither"
 
 -- #endif
             _ ->
               case decomposeFunCo_maybe (coercionRole co) co of
-                Just (coA, coB) -> Right $ Cast (App e1 (Cast e2 (mkSymCo (modifyRole coA)))) (mkSymCo (modifyRole coB))
+                Just (coA, coB) ->
+                  let coA' = mkSymCo (modifyRole coA)
+                      coB' = mkSymCo (modifyRole coB)
+                  in
+                    -- trace ("caseFloatApp decomposeFun modified: " ++ showPpr dflags (coA', coB')) $
+                    -- trace ("caseFloatApp coA' free vars: " ++ showPpr dflags (freeVarsCoercion coA')) $
+                    -- trace ("caseFloatApp coB' free vars: " ++ showPpr dflags (freeVarsCoercion coB')) $
+                    Right $ Cast (App e1 (Cast e2 coA')) coB'
                 Nothing -> Left "castFloatAppEither: decomposeFunCo_maybe gave Nothing"
                 -- Right $ Cast (App e1 (Cast e2 coA)) coB
   where
@@ -1018,12 +1028,11 @@ orderCoercions co1 co2 =
 
 combineCasts_maybe :: DynFlags -> CoreExpr -> Maybe CoreExpr
 combineCasts_maybe dflags origE@(Cast (Cast e coA) coB) =
-    if isReflexiveCo coA
-      then Just $ Cast e coB -- TODO: Figure out why this 'if' is needed
-      else trace ("combineCasts_maybe: " ++ showPpr dflags (coercionKind coA, coercionKind coB)) $
-            case orderCoercions coA coB of
-              Just (coA', coB') -> Just $ Cast e (mkTransCo coA' coB')
-              Nothing -> trace ("combineCasts_maybe: *** coercions do not match ***") $ Just e
+  case orderCoercions coA coB of
+    Just (coA', coB') -> Just $ Cast e (mkTransCo coA' coB')
+    Nothing ->
+      error "combineCasts_maybe: *** coercions do not match ***"
+      -- trace "combineCasts_maybe: *** coercions do not match ***" $ Just e
 combineCasts_maybe _ _ = Nothing
 
 combineCasts :: DynFlags -> CoreExpr -> CoreExpr
@@ -1063,12 +1072,21 @@ substCoreAlt v e alt = let (con, vs, rhs) = alt
 -- | Beta-reduce as many lambda-binders as possible.
 betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])
 betaReduceAll (Lam v body) (a:as) = betaReduceAll (substCoreExpr v a body) as
-betaReduceAll (Cast (Lam v body) co) (a:as)
-  | Just (argTy, resTy) <- splitFunCo_maybe co =
-      let (remaining, args) = betaReduceAll (substCoreExpr v a body) as
-      in case splitFunCo_maybe co of
-           Just (coA, coB) -> (Cast remaining coB, as)
-           Nothing -> (Cast remaining resTy, as)
+betaReduceAll e@(Cast (Lam v body) co) (a:as) =
+  case splitFunCo_maybe co of
+    Just (coA, coB) ->
+      let (remaining, args) = betaReduceAll (Lam (setVarType v (coercionRKind coA)) (Cast body coB)) (Cast a coA:as)
+      in (remaining, as)
+    Nothing ->
+      (e, as)
+      -- let (remaining, args) = betaReduceAll (Lam v body) (a:as)
+      -- in (Cast remaining co, as) -- TODO: Does this make sense?
+
+  -- | Just (argTy, resTy) <- splitFunCo_maybe co =
+  --     let (remaining, args) = betaReduceAll (substCoreExpr v a body) as
+  --     in case splitFunCo_maybe co of
+  --          Just (coA, coB) -> (Cast remaining coB, as)
+  --          Nothing -> (Cast remaining resTy, as)
 betaReduceAll e            as     = (e,as)
 
 -- getLamInCasts :: CoreExpr -> Maybe (Id, CoreExpr, Coercion)
@@ -1139,7 +1157,12 @@ freeVarsType = tyVarsOfType
 
 -- | Find all free variables in a coercion.
 freeVarsCoercion :: Coercion -> VarSet
-freeVarsCoercion = tyCoVarsOfCo
+freeVarsCoercion co =
+  let vars = tyCoVarsOfCo co
+  in vars
+  -- if not (isEmptyVarSet vars)
+  --   then trace ("freeVarsCoercion: " ++ showSDocUnsafe (ppr vars)) vars
+  --   else vars
 
 -- This function is copied from GHC, which defines but doesn't expose it.
 -- A 'let' can bind a type variable, and idRuleVars assumes

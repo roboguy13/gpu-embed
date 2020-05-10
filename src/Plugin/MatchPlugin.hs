@@ -40,6 +40,8 @@ import           Inst
 
 import           Pair
 
+import           Coercion
+
 import qualified Data.Kind as Kind
 
 import           Control.Monad
@@ -339,6 +341,7 @@ isVar _ = False
 
 -- Mark for further transformation
 mark0 :: HasCallStack => ModGuts -> Expr Var -> MatchM (Expr Var)
+mark0 _ e@(Coercion {}) = return e
 mark0 guts x = do
   dflags <- getDynFlags
   expTyCon <- lift $ findTyConTH guts ''GPUExp
@@ -852,7 +855,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 let transformUnrepParent = targetParentOfFnApp dflags unrepId (applyWhen (isDictNotClassApp dflags) (unfoldAndReduceDict guts dflags))
 
-                let newExpr''0 = Data.transform (whileRight (castFloatAppEither dflags)) . Data.transform transformUnrepParent $ onAppFun (tryUnfoldAndReduceDict guts dflags) $ Data.transform (caseInlineT dflags) newExpr'
+                let newExpr''0 = {- Data.transform (whileRight (castFloatAppEither dflags)) . -} Data.transform transformUnrepParent $ onAppFun (tryUnfoldAndReduceDict guts dflags) $ Data.transform (caseInlineT dflags) newExpr'
 
                 newExpr''1 <- Data.transformM (elimRepUnrep guts) $ Data.transform betaReduce newExpr''0
 
@@ -983,6 +986,9 @@ applyUnrep guts e = do
 -- | rep (unrep x)  ==>  x
 elimRepUnrep :: ModGuts -> CoreExpr -> MatchM CoreExpr
 elimRepUnrep guts (Cast e co) = elimRepUnrep_co guts (Just co) e
+-- elimRepUnrep guts (Cast e co) = do
+--   e' <- elimRepUnrep_co guts Nothing e
+--   return $ Cast e' co
 elimRepUnrep guts expr = elimRepUnrep_co guts Nothing expr
 
 elimRepUnrep_co :: ModGuts -> Maybe Coercion -> CoreExpr -> MatchM CoreExpr
@@ -991,8 +997,8 @@ elimRepUnrep_co guts coA_M expr@(Var r :@ Type{} :@ dict :@ arg) =
   where
     go0 e =
       case e of
-        (Var u :@ Type{} :@ x) -> go u Nothing x
-        (Cast (Var u :@ Type{} :@ x) coB) -> go u (Just coB) x
+        Var u :@ Type{} :@ x -> go u Nothing x
+        Cast (Var u :@ Type{} :@ x) coB -> go u (Just coB) x
         _ -> return expr
 
     go u coB_M x = do
@@ -1000,6 +1006,9 @@ elimRepUnrep_co guts coA_M expr@(Var r :@ Type{} :@ dict :@ arg) =
 
       repId <- lift $ findIdTH guts 'rep
       unrepId <- lift $ findIdTH guts 'unrep
+
+      -- liftIO $ putStrLn $ "coA_M free vars: " ++ showPpr dflags (freeVarsCoercion <$> coA_M)
+      -- liftIO $ putStrLn $ "coB_M free vars: " ++ showPpr dflags (freeVarsCoercion <$> coB_M)
 
       co_M <- case (coA_M, coB_M) of
                 (Nothing, Nothing)   -> do
@@ -1012,11 +1021,38 @@ elimRepUnrep_co guts coA_M expr@(Var r :@ Type{} :@ dict :@ arg) =
                   return $ Just coB
                 (Just coA, Just coB) -> do
                   liftIO $ putStrLn $ "Casting AB... " ++ showPpr dflags (coercionKind coA, coercionKind coB)
-                  return $ Just coA --(composeCos coA coB)
+                  case orderCoercions coA coB of
+                    Just (coA', coB') -> return $ Just (composeCos coA' coB')
+                    Nothing -> do -- TODO: Why does this happen? Does coB need a GPUExp wrapping (in both sides)?
+                      repTyCon <- lift $ findTypeTH guts ''GPUExp
+                      let coB''0 = mkAppCo' (mkReflCo (coercionRole coB) repTyCon) coB
+                          coB''  = coB''0 --downgradeRole (coercionRole coA) (coercionRole coB''0) coB''0
+                          composed = composeCos coA coB''
+
+                      -- error $ "elimRepUnrep_co: orderCoercions: " ++ showPpr dflags (coercionKind coA, coercionKind coB)
+                      -- return $ Just coA --error "elimRepUnrep_co: orderCoercions"
+
+                      liftIO $ putStrLn $ "Coercion roles: " ++ showPpr dflags (coercionRole coA, coercionRole coB'', coercionRole composed)
+                      return $ Just composed
 
       if r == repId && u == unrepId
         then return $ coerceMaybe co_M x
         else return $ coerceMaybe co_M expr
+
+    mkAppCo' coA coB =
+      mkTransAppCo
+        (coercionRole coA)
+        coA
+        (coercionLKind coA)
+        (coercionRKind coA)
+
+        (coercionRole coB)
+        coB
+        (coercionLKind coB)
+        (coercionRKind coB)
+
+        (coercionRole coA)
+
 
     composeCos = mkTransCo
 
@@ -1702,4 +1738,68 @@ bindsOnlyPass_match :: (CoreProgram -> MatchM CoreProgram) -> ModGuts -> MatchM 
 bindsOnlyPass_match pass guts
   = do { binds' <- pass (mg_binds guts)
        ; return (guts { mg_binds = binds' }) }
+
+-- Taken from an older version of Coercion in the GHC API:
+
+-- | Like 'mkAppCo', but allows the second coercion to be other than
+-- nominal. See Note [mkTransAppCo]. Role r3 cannot be more stringent
+-- than either r1 or r2.
+mkTransAppCo :: Role         -- ^ r1
+             -> Coercion     -- ^ co1 :: ty1a ~r1 ty1b
+             -> Type         -- ^ ty1a
+             -> Type         -- ^ ty1b
+             -> Role         -- ^ r2
+             -> Coercion     -- ^ co2 :: ty2a ~r2 ty2b
+             -> Type         -- ^ ty2a
+             -> Type         -- ^ ty2b
+             -> Role         -- ^ r3
+             -> Coercion     -- ^ :: ty1a ty2a ~r3 ty1b ty2b
+mkTransAppCo r1 co1 ty1a ty1b r2 co2 ty2a ty2b r3
+-- How incredibly fiddly! Is there a better way??
+  = case (r1, r2, r3) of
+      (_,                _,                Phantom)
+        -> mkPhantomCo kind_co (mkAppTy ty1a ty2a) (mkAppTy ty1b ty2b)
+        where -- ty1a :: k1a -> k2a
+              -- ty1b :: k1b -> k2b
+              -- ty2a :: k1a
+              -- ty2b :: k1b
+              -- ty1a ty2a :: k2a
+              -- ty1b ty2b :: k2b
+              kind_co1 = mkKindCo co1        -- :: k1a -> k2a ~N k1b -> k2b
+              kind_co  = mkNthCo Nominal 1 kind_co1  -- :: k2a ~N k2b
+
+      (_,                _,                Nominal)
+        -> --ASSERT( r1 == Nominal && r2 == Nominal )
+           mkAppCo co1 co2
+      (Nominal,          Nominal,          Representational)
+        -> mkSubCo (mkAppCo co1 co2)
+      (_,                Nominal,          Representational)
+        -> --ASSERT( r1 == Representational )
+           mkAppCo co1 co2
+      (Nominal,          Representational, Representational)
+        -> go (mkSubCo co1)
+      (_               , _,                Representational)
+        -> --ASSERT( r1 == Representational && r2 == Representational )
+           go co1
+  where
+    go co1_repr
+      | Just (tc1b, tys1b) <- splitTyConApp_maybe ty1b
+      , nextRole ty1b == r2
+      = (mkAppCo co1_repr (mkNomReflCo ty2a)) `mkTransCo`
+        (mkTyConAppCo Representational tc1b
+           (zipWith mkReflCo (tyConRolesRepresentational tc1b) tys1b
+            ++ [co2]))
+
+      | Just (tc1a, tys1a) <- splitTyConApp_maybe ty1a
+      , nextRole ty1a == r2
+      = (mkTyConAppCo Representational tc1a
+           (zipWith mkReflCo (tyConRolesRepresentational tc1a) tys1a
+            ++ [co2]))
+        `mkTransCo`
+        (mkAppCo co1_repr (mkNomReflCo ty2b))
+
+      | otherwise
+      = pprPanic "mkTransAppCo" (vcat [ ppr r1, ppr co1, ppr ty1a, ppr ty1b
+                                      , ppr r2, ppr co2, ppr ty2a, ppr ty2b
+                                      , ppr r3 ])
 
