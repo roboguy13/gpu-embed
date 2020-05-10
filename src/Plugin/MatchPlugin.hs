@@ -806,7 +806,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                           _ -> Nothing
 
 
-                liftIO $ putStrLn $ "repUnfolding = {" ++ showPpr dflags repUnfolding ++ "}"
+                -- liftIO $ putStrLn $ "repUnfolding = {" ++ showPpr dflags repUnfolding ++ "}"
 
                 let (fn, restArgs) = betaReduceAll
                                        repUnfolding
@@ -846,91 +846,22 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 let fnE = Data.transform letNonRecSubst
                             $ whileRight (unfoldAndReduceDict_either guts dflags) simplE'
 
-                unreppedArgs <- mapM (applyUnrep guts <=< mark) args
+                unreppedArgs <- mapM (applyUnrep guts <=< mark) markedArgs --args
                 unrepId <- lift $ findIdTH guts 'unrep
 
-                let (newExpr, remainingArgs) = betaReduceAll fnE [mkApps constr' unreppedArgs]
-                let newExpr' = (Data.transform betaReduce . Data.transform letNonRecSubst)
-                              $ caseInlineT dflags (mkApps newExpr remainingArgs)
+                -- let (newExpr, remainingArgs) = betaReduceAll fnE [mkApps constr' unreppedArgs]
 
-                let transformUnrepParent = targetParentOfFnApp dflags unrepId (applyWhen (isDictNotClassApp dflags) (unfoldAndReduceDict guts dflags))
+                let fnE' = Data.transform betaReduce $ Data.transform letNonRecSubst $ Data.transform betaReduce $ Data.transform (tryUnfoldAndReduceDict guts dflags) fnE
+                let (newExpr, remainingArgs) = betaReduceAll fnE' [mkApps constr' unreppedArgs]
 
-                let newExpr''0 = {- Data.transform (whileRight (castFloatAppEither dflags)) . -} Data.transform transformUnrepParent $ onAppFun (tryUnfoldAndReduceDict guts dflags) $ Data.transform (caseInlineT dflags) newExpr'
+                let newExpr'
+                      = Data.transform (caseInlineT dflags)
+                      $ Data.transform betaReduce
+                      $ Data.transform (maybeApply (fmap (tryUnfoldAndReduceDict guts dflags) . replaceVarId_maybe constructFnId constructUnfolding))
+                      $ newExpr
 
-                newExpr''1 <- Data.transformM (elimRepUnrep guts) $ Data.transform betaReduce newExpr''0
-
-                liftIO $ putStrLn $ "constructUnfolding = " ++ showPpr dflags constructUnfolding
-
-                -- Unfold a 'construct'
-                let newExpr''2
-                      =
-                        Data.transform betaReduce $ Data.transform (tryCastFloatApp dflags) $ caseInlineT dflags $ Data.transform betaReduce $ Data.transform (maybeApply (fmap betaReduce . unfoldTheFn_maybe guts dflags constructFnId))
-                        $ Data.transform betaReduce $ targetLastAppArg (Data.transform letNonRecSubst . Data.transform caseInlineDefault . betaReduce . onAppFun (tryUnfoldAndReduceDict guts dflags)) $ Data.transform (maybeApply (fmap (Data.transform letNonRecSubst . tryUnfoldAndReduceDict guts dflags . caseInlineT dflags) . onScrutinee_maybe (unfoldAndReduceDict_maybe guts dflags)))
-                        $ targetAppArgs betaReduce
-                        $ betaReduce
-                        $ targetAppArgs betaReduce
-                        $ Data.transform
-                          (maybeApply (fmap (Data.transform (tryUnfoldAndReduceDict guts dflags) . betaReduce) . unfoldTheFn_maybe guts dflags constructFnId))
-                          $ Data.transform letNonRecSubst newExpr''1
-
-                fromFnId <- lift $ findIdTH guts 'from
-
-                -- Unfold a 'from'
-                let newExpr''3
-                        =
-                          Data.transform (caseInline dflags) $
-                          Data.transform betaReduce $
-                          Data.transform (maybeApply (fmap (unfoldAndReduceDict guts dflags . caseInline dflags) . onScrutinee_maybe (unfoldAndReduceDict_maybe guts dflags))) $
-                          Data.transform betaReduce $
-                          Data.transform (maybeApply (unfoldTheFn_maybe guts dflags fromFnId)) $
-                          newExpr''2
-
-                -- Unfold a 'construct'
-                let newExpr''4
-                        =
-                          Data.transform betaReduce $
-                          Data.transform (caseInline dflags) $
-                          Data.transform (maybeApply (onScrutinee_maybe (unfoldAndReduceDict_maybe guts dflags))) $
-                          Data.transform betaReduce $
-                          Data.transform (maybeApply (unfoldTheFn_maybe guts dflags constructFnId)) $
-                          newExpr''3
-
-                -- Unfold another 'construct'
-                -- TODO: Automate these 'construct' unfolding steps
-                -- (including the next 'let')
-                let newExpr''5
-                        =
-                          Data.transform (caseInline dflags) $
-                          Data.transform betaReduce $
-                          Data.transform (maybeApply (fmap (tryUnfoldAndReduceDict guts dflags) . caseInline_maybe dflags)) $
-                          Data.transform betaReduce $
-                          Data.transform (maybeApply (unfoldTheFn_maybe guts dflags constructFnId)) $
-                          newExpr''4
-
-                let newExpr''6
-                      =
-                          Data.transform (combineCasts dflags) $
-
-                          Data.transform (caseInline dflags) $
-                          Data.transform betaReduce $
-                          Data.transform (maybeApply (fmap (tryUnfoldAndReduceDict guts dflags) . caseInline_maybe dflags)) $
-                          Data.transform betaReduce $
-                          Data.transform (maybeApply (unfoldTheFn_maybe guts dflags constructFnId)) $
-
-                          Data.transform (caseInline dflags) $
-                          Data.transform betaReduce $
-                          Data.transform (maybeApply (fmap (tryUnfoldAndReduceDict guts dflags) . caseInline_maybe dflags)) $
-                          Data.transform betaReduce $
-                          Data.transform (maybeApply (unfoldTheFn_maybe guts dflags constructFnId)) $
-                          newExpr''5
-
-                liftIO $ putStrLn $ "before elim: " ++ showPpr dflags newExpr''6
-
-                newExpr'' <- Data.transformM (targetCastM (elimRepUnrep guts)) $ newExpr''6
-
-                liftIO $ putStrLn $ "===converting to==> " ++ showPpr dflags newExpr''
-
-                return newExpr''
+                error (showPpr dflags newExpr')
+                -- error (showPpr dflags (newExpr, remainingArgs))
 
         go expr@(_ :@ _)
           | Nothing <- getConstructorApp_maybe expr

@@ -810,6 +810,17 @@ targetTheFnApp fn t e =
     Just e' -> e'
     _ -> e
 
+replaceVarId :: Id -> CoreExpr -> CoreExpr -> CoreExpr
+replaceVarId i new e =
+  case replaceVarId_maybe i new e of
+    Just e' -> e'
+    _ -> e
+
+replaceVarId_maybe :: Id -> CoreExpr -> CoreExpr -> Maybe CoreExpr
+replaceVarId_maybe i new (Var v)
+  | v == i = Just new
+replaceVarId_maybe _ _ _ = Nothing
+
 -- | Apply to f in (((...((f x0 x1 ... xN) y0) ...) yM) y(M-1))
 descendAppLhs :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
 descendAppLhs t (App a@(App _ _) arg) = App (descendAppLhs t a) arg
