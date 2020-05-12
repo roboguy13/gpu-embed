@@ -293,15 +293,6 @@ transformExprMaybe guts currName recName primMap e = do
         else return expr
     go expr = return expr
 
-untilNothingM :: Monad m => (a -> m (Maybe a)) -> a -> m a
-untilNothingM f = go
-  where
-    go x = do
-      fx <- f x
-      case fx of
-        Just r  -> go r
-        Nothing -> return x
-
 transformExpr :: ModGuts -> Var -> Maybe Var -> [(Id, CoreExpr)] -> Expr Var -> MatchM (Expr Var)
 transformExpr guts currName recNameM primMap =
   {- transformApps guts <=< -} untilNothingM (transformExprMaybe guts currName recNameM primMap)
@@ -877,10 +868,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- typeableC <- lift $ findClassTH guts ''Typeable
 
                 let elimConstructThen t
-                      -- = Data.transform betaReduce
-                      -- . Data.transform caseInlineDefault
-                      = Data.transform
-                          (maybeApply
+                      = repeatTransform
+                          (id
                             (upOneLevel_maybe (t . betaReduce)
                               (fmap caseInlineDefault .
                                (upOneLevel_maybe (Just
@@ -924,11 +913,13 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                                       . betaReduce)
                                     (onAppFun_maybe unfoldAndReduceDict_maybe'))))
 
-                -- TODO: Recursively call elimConstruct until it makes no
-                -- changes
-                let newExpr'0 = elimConstruct $ elimConstruct $ elimConstruct newExpr
+                -- TODO: Make sure this recursively calls elimConstruct
+                -- properly (enough times)
+                let newExpr'0 = untilNothing elimConstruct newExpr
                 let newExpr'
-                      = Data.transform (maybeApply (combineCasts_maybe dflags)) $ newExpr'0
+                      = Data.transform (caseInline dflags)
+                        $ Data.transform betaReduce 
+                        $ Data.transform (maybeApply (combineCasts_maybe dflags)) $ newExpr'0
 
                 -- error (showPpr dflags (Data.transform(unfoldAndBetaReduce guts dflags (idIsFrom internalTypeableModule)) newExpr'0))
 
@@ -1004,9 +995,10 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 (co', ty') <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [ty]])
 
-                traceM $ "The coercion co' = " ++ showPpr dflags co'
 
-                let constructedResult = constructRepFn :@ Type ty :@ dict1 :@ dict2 :@ (Cast (removeCasts r) (mkSymCo co'))
+                let constructedResult = Data.transform betaReduce (constructRepFn :@ Type ty :@ dict1 :@ dict2 :@ (Cast (removeCasts r) (mkSymCo co')))
+
+                -- traceM $ "constructedResult = {" ++ showPpr dflags constructedResult ++ "}"
 
 
                 -- error (showPpr dflags r)

@@ -6,6 +6,8 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Deep.GHCUtils where
 
@@ -70,10 +72,13 @@ import qualified Data.Set as Set
 
 import           Control.Monad
 import           Control.Monad.Identity
+import           Control.Monad.Writer
 
 import           Control.Arrow (first, second)
 
 import           Control.Applicative
+
+import           Data.Monoid
 
 
 import           Data.Char
@@ -1125,6 +1130,47 @@ untilNothing f x =
   case f x of
     Nothing -> x
     Just x' -> untilNothing f x'
+
+untilNothingM :: Monad m => (a -> m (Maybe a)) -> a -> m a
+untilNothingM f = go
+  where
+    go x = do
+      fx <- f x
+      case fx of
+        Just r  -> go r
+        Nothing -> return x
+
+-- | Repeatedly apply Data.transform. Give back 'Nothing' if no transforms
+-- were performed.
+repeatTransform :: forall a. Data a => (a -> Maybe a) -> a -> Maybe a
+repeatTransform f x0 =
+  let (r, Any changed) = runWriter $ go x0
+  in
+    if changed
+      then Just r
+      else Nothing
+  where
+    go :: a -> Writer Any a
+    go x = do
+      let (r, Any changed) = runWriter $ Data.transformM f' x
+
+      tell (Any changed)
+
+      if changed
+        then pure r
+        else pure x
+
+      -- if changed
+      --   then go r
+      --   else pure x
+
+    f' :: a -> Writer Any a
+    f' x =
+      let r = f x
+      in
+      case r of
+        Just x' -> tell (Any True) >> pure x'
+        Nothing -> pure x
 
 transform_either :: Data b => (b -> Either a b) -> b -> Maybe b
 transform_either f x0 =
