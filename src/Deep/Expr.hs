@@ -14,12 +14,13 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE RoleAnnotations #-}
 
 module Deep.Expr where
 
 import           Data.Void
 import           Data.Proxy
-import           Data.Constraint (Constraint)
+import           Data.Constraint (Constraint, Dict(..))
 
 import           Data.Bifunctor
 
@@ -37,6 +38,7 @@ import           Data.Typeable
 import           Data.Char
 
 import           GHC.Prim
+import           Data.Coerce
 
 -- Idea: Represent a pattern match of a particular type as
 --    KnownSymbol name => Proxy name -> MatchType name
@@ -73,7 +75,9 @@ import           GHC.Prim
 
 -- | The function this contains just is used to provide a semantics for
 -- interpreting a GPUExp
+-- type role SumMatch nominal nominal
 newtype SumMatch  a b = MkSumMatch  { runSumMatch  :: a -> b }
+-- type role ProdMatch nominal nominal
 newtype ProdMatch a b = MkProdMatch { runProdMatch :: a -> b }
 
 -- Done (case ... of A -> x; B -> y)  ==>  (case ... of A -> Done x; B -> Done y)
@@ -83,6 +87,7 @@ data Iter a b
   deriving (Functor, Generic)
 
 -- | NOTE: The unique identifiers start at 1
+-- type role Name nominal
 newtype Name a = Name { getNameIdent :: Int } deriving (Eq, Show)
 
 getNameUniq :: Name a -> Int
@@ -177,9 +182,9 @@ data GPUExp t where
   LeftExp :: forall a b. GPUExp a -> GPUExp (Either a b)
   RightExp :: forall a b. GPUExp b -> GPUExp (Either a b)
 
-  PairExp :: GPUExp a -> GPUExp b -> GPUExp (a, b)
-  FstExp :: GPUExp (a, b) -> GPUExp a
-  SndExp :: GPUExp (a, b) -> GPUExp b
+  PairExp :: forall a b. GPUExp a -> GPUExp b -> GPUExp (a, b)
+  FstExp :: forall a b. GPUExp (a, b) -> GPUExp a
+  SndExp :: forall a b. GPUExp (a, b) -> GPUExp b
 
   StepExp :: forall a b. GPUExp b -> GPUExp (Iter a b)
   DoneExp :: forall a b. GPUExp a -> GPUExp (Iter a b)
@@ -197,6 +202,8 @@ data GPUExp t where
 
   Construct :: a -> GPUExp a
   ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
+
+  CastExp :: forall (a :: *) (b :: *). a ~ b => GPUExp a -> GPUExp b -- Inspiration from a mailing list posting from Conal Elliott
 
 tailRecApp :: forall a b. (GPURep a, GPURep b) => GPUExp (b -> Iter a b) -> GPUExp b -> GPUExp a
 tailRecApp body = App (TailRec body)
@@ -247,6 +254,7 @@ transformE tr0 = tr
     go e@(CharLit _) = e
     go e@UnitExp = e
     go e@(ConstructRep _) = e
+    go (CastExp x) = CastExp (tr (coerce x))
 
 transformEA :: forall a m. Monad m
   => (forall r. GPUExp r -> m (GPUExp r)) -> GPUExp a -> m (GPUExp a)
@@ -295,6 +303,12 @@ transformEA tr0 = tr
     go e@(CharLit _) = pure e
     go e@UnitExp = pure e
     go e@(ConstructRep _) = pure e
+    go (CastExp x) = CastExp <$> tr (coerce x)
+
+-- convertE :: Coercible a b => GPUExp a -> GPUExp b
+-- convertE (CaseExp x f) = CaseExp x (convertE f)
+-- convertE (SumMatchExp x y) = SumMatchExp _ _
+
 
 -- foldEM :: forall a b m. Monad m => (forall x. GPUExp x -> b -> m b) -> b -> GPUExp a -> m b
 -- foldEM f z = go
@@ -602,8 +616,12 @@ the = id
 the_repr :: GPUExp a -> GPUExp a
 the_repr = id
 
+-- coerceWith :: Dict (Coercible a b) -> a -> b
+-- coerceWith Dict x = coerce x
+
 -- Should this just produce an error?
 sumMatchAbs :: forall s t. (GPURepTy (GPURepTy s) ~ GPURepTy s, GPURep s) => Env -> GPUExp (SumMatch (GPURepTy s) t) -> s -> t
+-- sumMatchAbs env (CastExp d e) = sumMatchAbs env (coerceWith d e)
 sumMatchAbs env (SumMatchExp p q) =
   \x0 ->
     let x = rep' x0
@@ -616,6 +634,7 @@ sumMatchAbs env (OneSumMatch f) =
     prodMatchAbs env f . rep'
 
 prodMatchAbs :: GPURep s => Env -> GPUExp (ProdMatch s t) -> s -> t
+-- prodMatchAbs env (CastExp e) = prodMatchAbs env (coerce e)
 prodMatchAbs env (ProdMatchExp f) =
   \pair ->
     case pair of
@@ -698,6 +717,7 @@ gpuAbsEnv env (Lam (name :: Name a) (body :: GPUExp b)) = \(arg :: a) ->
 
 gpuAbsEnv env (App f x) = gpuAbsEnv env f (gpuAbsEnv env x)
 gpuAbsEnv env (CharLit c) = c
+gpuAbsEnv env (CastExp x) = gpuAbsEnv env (coerce x)
 
 class Canonical t where
   type GenericOp t :: (* -> *) -> (* -> *) -> * -> *

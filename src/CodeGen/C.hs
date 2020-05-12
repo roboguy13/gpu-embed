@@ -202,6 +202,7 @@ getFVs = (`execState` []) . go
     go (CharLit {}) = pure ()
     go UnitExp = pure ()
     go (ConstructRep x) = go x
+    go (CastExp x) = go x
 
 
 -- | Precondition: The maximum unique of all the variables must be
@@ -254,6 +255,7 @@ getVarCount = getMax . execWriter . go
     go (CharLit {}) = pure ()
     go UnitExp = pure ()
     go (ConstructRep x) = go x
+    go (CastExp x) = go x
 
 collectLambdas :: GPUExp a -> [SomeLambda]
 collectLambdas = execWriter . go
@@ -299,6 +301,7 @@ collectLambdas = execWriter . go
     go (CharLit {}) = pure ()
     go UnitExp = pure ()
     go (ConstructRep x) = go x
+    go (CastExp x) = go x
 
 mkLambda :: Bool -> SomeName -> GPUExp a -> SomeLambda
 mkLambda isTailRec (SomeName argName) body =
@@ -1086,6 +1089,7 @@ genExp (Ord x) resultName = do
     , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , "*(int*)(" <> resultName <> ".value) = *(int*)(" <> xName <> ".value);"
     ]
+genExp (CastExp x) resultName = genExp x resultName
 
 genExp (FromEnum x) resultName = error "genExp: TODO: implement FromEnum"
 
@@ -1096,6 +1100,7 @@ genExp EmptyMatch _ = error "genExp: EmptyMatch"
 
 
 genCaseExp :: CName -> GPUExp (SumMatch a r) -> CName -> CodeGen CCode
+genCaseExp s (CastExp x) resultName = genCaseExp s x resultName
 genCaseExp s (OneSumMatch p) resultName = genProdMatch s p resultName
 genCaseExp s (SumMatchExp x y) resultName = do
   s' <- freshCName
@@ -1150,6 +1155,7 @@ pairCdr depth p =
 
 -- | Get argument uniques for each lambda and also the innermost lambda
 getProdMatchLams :: GPUExp (ProdMatch a r) -> CodeGen (Either ([Int], SomeLambda) (GPUExp r))
+getProdMatchLams (CastExp x) = getProdMatchLams x
 getProdMatchLams (OneProdMatch (Lam (Name n) _)) = do
   lam <- lookupLambda n
   return $ Left ([n], lam)

@@ -102,6 +102,8 @@ import           Data.List
 
 import           CoreOpt
 
+-- import           Data.Typeable.Internal
+
 import Debug.Trace
 
 data PluginState =
@@ -334,12 +336,12 @@ isExprTy expTyCon ty =
     Nothing -> False
     Just (t, _) -> t == expTyCon
 
--- whenNotExprTyped :: ModGuts -> CoreExpr -> MatchM CoreExpr -> MatchM CoreExpr
--- whenNotExprTyped guts e m = do
---   eType <- hasExprType guts e
---   if eType
---     then return e
---     else m
+whenNotExprTyped :: ModGuts -> CoreExpr -> MatchM CoreExpr -> MatchM CoreExpr
+whenNotExprTyped guts e m = do
+  eType <- hasExprType guts e
+  if eType
+    then return e
+    else m
 
 isVar :: Expr a -> Bool
 isVar (Var _) = True
@@ -369,8 +371,6 @@ markAny guts x = do
   if isDict x
     then return x
     else do
-      varId <- lift $ findIdTH guts 'Expr.Var
-
       let xTy = exprType x
 
       externalizeName <- lift $ findIdTH guts 'externalize
@@ -648,6 +648,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
               runIterId <- lift $ findIdTH guts 'runIter
 
               tailRecAppId <- lift $ findIdTH guts 'tailRecApp
+              dflags <- getDynFlags
+
 
               markedX <- mark x
               markedY <- mark y
@@ -682,6 +684,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                typeableDictA <- lift $ buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, tyA'])
                typeableDictB <- lift $ buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, tyB'])
 
+
                fromIntegralConstrId <- lift $ findIdTH guts 'FromIntegral
 
                return (Var fromIntegralConstrId :@ tyA :@ tyB :@ typeableDictA :@ typeableDictB :@ dictA :@ dictB :@ markedX)
@@ -714,23 +717,31 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
             not (hasExprTy expr) = do
               markedX <- mark x
               markedY <- mark y
+
+              -- dflags <- getDynFlags
+              -- traceM $ "builtin transformed: " ++ showPpr dflags f
+
               return (b :@ ty :@ dict :@ markedX :@ markedY)
 
-        go expr@(Var f :@ tyA@(Type{}) :@ tyB@(Type{}) :@ x :@ y)
+        go expr@(Var f :@ (Type tyA0) :@ (Type tyB0) :@ x :@ y)
           | Just b <- builtin f,
             not (hasExprTy expr) = do
               markedX <- mark x
               markedY <- mark y
-              return (b :@ tyA :@ tyB :@ markedX :@ markedY)
+
+              tyA <- lift $ normaliseType' guts tyA0
+              tyB <- lift $ normaliseType' guts tyB0
+
+              return (b :@ Type tyA :@ Type tyB :@ markedX :@ markedY)
 
         go expr@(Var f :@ tyA@(Type{}) :@ tyB@(Type{}) :@ x)
           | Just b <- builtin f,
             not (hasExprTy expr) = do
               dflags <- getDynFlags
-              liftIO $ putStrLn ""
-              liftIO $ putStrLn $ "---------- builtin: " ++ showPpr dflags b
-              liftIO $ putStrLn $ "---------- arg:     " ++ showPpr dflags x
-              liftIO $ putStrLn ""
+              -- liftIO $ putStrLn ""
+              -- liftIO $ putStrLn $ "---------- builtin: " ++ showPpr dflags b
+              -- liftIO $ putStrLn $ "---------- arg:     " ++ showPpr dflags x
+              -- liftIO $ putStrLn ""
               markedX <- mark x
               return (b :@ tyA :@ tyB :@ markedX)
 
@@ -861,6 +872,10 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 let fnE' = Data.transform betaReduce $ Data.transform letNonRecSubst $ Data.transform betaReduce $ Data.transform (tryUnfoldAndReduceDict guts dflags) fnE
                 let (newExpr, remainingArgs) = betaReduceAll fnE' [mkApps constr' unreppedArgs]
 
+                let internalTypeableModule = Module baseUnitId (mkModuleName "Data.Typeable.Internal")
+
+                -- typeableC <- lift $ findClassTH guts ''Typeable
+
                 let elimConstructThen t
                       -- = Data.transform betaReduce
                       -- . Data.transform caseInlineDefault
@@ -868,7 +883,19 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                           (maybeApply
                             (upOneLevel_maybe (t . betaReduce)
                               (fmap caseInlineDefault .
-                               (upOneLevel_maybe (Just . (\e -> Data.transform (simpleOptExpr dflags) $ Data.transform letNonRecSubst $ Data.transform betaReduce $ (onAppFunId getUnfolding') $ Data.transform letNonRecSubst $ simpleOptExpr dflags (onVar getUnfolding' e))
+                               (upOneLevel_maybe (Just
+                                                      . (\e -> id--Data.transform (simpleOptExpr dflags)
+                                                               -- $ Data.transform (onAppWhen (appFunFromModule internalTypeableModule) (simpleOptExpr dflags))
+                                                               $ Data.transform letNonRecSubst
+                                                               $ Data.transform betaReduce
+                                                               $ (onAppFunId getUnfolding')
+                                                               $ Data.transform letNonRecSubst
+                                                               -- $ Data.transform (onAppWhen (appFunFromModule internalTypeableModule) (simpleOptExpr dflags))
+                                                               -- $ Data.transform (unfoldAndBetaReduce guts dflags (idIsFrom internalTypeableModule))
+                                                               -- $ occurAnalyseExpr
+                                                               $ simpleOptExpr dflags
+                                                               $ onVar getUnfolding'
+                                                               $ e)
                                                       . Data.transform (caseInline dflags)
                                                       . Data.transform betaReduce)
                                                 (onAppFun_maybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId)))))))
@@ -881,15 +908,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                           (Just
                           . descendIntoCasts
                               (maybeApply
-                                (upOneLevel_maybe (--(fmap (\e -> trace ("inner = {" ++ showPpr dflags e ++ "}") e))
-                                  -- (upOneLevel_maybe (Just . Data.transform (maybeApply 
-                                  --       -- (upOneLevel_maybe (upOneLevel_maybe (Just . (\e -> trace ("inner = {" ++ showPpr dflags e ++ "}") e)) Just) 
-                                  --                                                  {-  . Data.transform (caseInline dflags)
-                                  --       . Data.transform (onScrutinee tryUnfoldAndReduceDict')
-                                  --       . Data.transform (caseInline dflags)
-                                  --       . Data.transform betaReduce -}
-                                  --         -- )
-                                  --         (replaceVarId_maybe fromId (getUnfolding' fromId)))
+                                (upOneLevel_maybe (
                                         Just
                                       . Data.transform (caseInline dflags)
                                       . Data.transform betaReduce
@@ -907,13 +926,97 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 -- TODO: Recursively call elimConstruct until it makes no
                 -- changes
+                let newExpr'0 = elimConstruct $ elimConstruct $ elimConstruct newExpr
                 let newExpr'
-                      = elimConstruct $ elimConstruct $ elimConstruct newExpr
+                      = Data.transform (maybeApply (combineCasts_maybe dflags)) $ newExpr'0
+
+                -- error (showPpr dflags (Data.transform(unfoldAndBetaReduce guts dflags (idIsFrom internalTypeableModule)) newExpr'0))
 
                 newExpr'' <- Data.transformM (elimRepUnrep guts) newExpr'
 
-                error (showPpr dflags newExpr'')
+                expType <- lift $ findTypeTH guts ''GPUExp
+                externalizeId <- lift $ findIdTH guts 'externalize
+                castExpId <- lift $ findIdTH guts 'CastExp
+
+
+                let newExpr'''
+                      = Data.transform
+                          (maybeApply
+                            (upOneLevel_maybe
+                              (fixExtCast dflags expType castExpId)
+                              (\e0 ->
+                                let r = getAny . execWriter $
+                                          (descendIntoCastsM
+                                            (\e ->
+                                              case (e, collectArgs e) of
+                                                (App {}, (Var fn, _)) -> do
+                                                  if fn == externalizeId
+                                                    then tell (Any True)
+                                                    else return ()
+                                                  return e
+                                                _ -> return e
+                                            )) e0
+                                in if r then Just e0 else Nothing))) newExpr''
+
+                -- newExpr''' <- Data.transformM (maybeApplyM (onCast_maybe mark)) newExpr''
+
+                let (constructRepFn, [Type ty, dict1, dict2, constructRepArg]) = collectArgs newExpr'''
+
+                    -- Normalize types
+                constructRepArg' <- lift $ Data.transformM (maybeApplyM (onCast_maybe
+                                      (\e@(Cast x co) -> do
+                                          if coercionRole co == Representational
+                                            then return $ Cast x co
+                                            else do
+                                              (co', ty') <- normaliseTypeCo_role guts (coercionRole co) (exprType e)
+                                              -- traceM ("coercion transformed: " ++ showPpr dflags (coercionKind co) ++ " ===> " ++ showPpr dflags ty')
+                                              return (Cast x co'))))
+                                      constructRepArg
+
+                -- mark newExpr''
+
+                -- error (showPpr dflags newExpr''')
+                -- error (showPpr dflags constructRepArg')
+
+                typeableClass <- lift $ findTyConTH guts ''Typeable
+                -- error (showPpr dflags typeableClass)
+
+                -- result <- Data.transformM (fixVarTypeable guts dflags) $ Data.transform etaReduce (constructRepFn :@ ty :@ dict1 :@ dict2 :@ constructRepArg')
+
+                -- traceM $ "original: {" ++ showPpr dflags expr ++ "}"
+                -- traceM $ "newExpr: {" ++ showPpr dflags newExpr ++ "}"
+                -- traceM $ "modified newExpr: {" ++ showPpr dflags newExpr'0 ++ "}"
+
+                    -- Normalize type arguments of 'ConstructRep' and remove some out-of-date coercions
+                r <- descendIntoCastsM (\e -> do
+                        let (constrFn, constrArgs0) = collectArgs e
+
+                        constrArgs <- lift $ mapM (onTypeM (normaliseType' guts)) constrArgs0
+
+                        let (Type constrResultTy:_) = constrArgs
+
+                        let resultTyCo = mkReflCo Nominal constrResultTy
+
+                        let constrArgs' = map (onCoercion (const resultTyCo)) constrArgs -- TODO: Make sure this works in the general case
+
+                        return (mkApps constrFn constrArgs')
+                        ) constructRepArg'
+
+                (co', ty') <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [ty]])
+
+                traceM $ "The coercion co' = " ++ showPpr dflags co'
+
+                let constructedResult = constructRepFn :@ Type ty :@ dict1 :@ dict2 :@ (Cast (removeCasts r) (mkSymCo co'))
+
+
+                -- error (showPpr dflags r)
+
+                -- error (showPpr dflags constructedResult)
+                return constructedResult
+
                 -- error (showPpr dflags (newExpr, remainingArgs))
+                -- return newExpr'''
+
 
         go expr@(_ :@ _)
           | Nothing <- getConstructorApp_maybe expr
@@ -959,7 +1062,53 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 mkExprApps guts markedNewF newArgs
 
 
+        -- go e0@(Cast e co0) = whenNotExprTyped guts e0 $ do
+        --   liftIO $ putStrLn "Handling Cast..."
+        --   expType <- lift $ findTypeTH guts ''GPUExp
+
+        --   let expTypeRefl = mkReflCo (coercionRole co0) expType
+
+        --   markedE <- mark e
+
+        --   let co = mkAppCo expTypeRefl co0
+
+        --   return (Cast markedE co)
+
         go expr = return expr
+
+-- TODO: Figure out why this is needed in the first place. It seems to be
+-- caused by a simpleOptExpr call in the constructor transformation code.
+fixVarTypeable :: ModGuts -> DynFlags -> CoreExpr -> MatchM CoreExpr
+fixVarTypeable guts dflags e@(App {}) = do
+  varId <- lift $ findIdTH guts 'Expr.Var
+  typeableTyCon <- lift $ findTyConTH guts ''Typeable
+
+  let (fnE, args) = collectArgs e
+
+  case fnE of
+    Var fn
+      | fn == varId ->
+          case args of
+            [Type ty, _dictE@(App{}), arg] -> do
+              typeType <- lift $ findTypeTH guts ''Kind.Type
+              typeableDict <- lift $ buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, ty])
+              return (mkApps fnE [Type ty, typeableDict, arg])
+            _ -> return e
+    _ -> return e
+fixVarTypeable _ _ e = return e
+
+
+-- | Fix casts around 'externalize' calls
+-- TODO: Check this
+fixExtCast :: DynFlags -> Type -> Id -> CoreExpr -> Maybe CoreExpr
+fixExtCast dflags expType castExpId e0@(Cast e co0) = Just e --Just $ Cast e co0
+  -- normaliseTypeCo_role guts (coercionRole co0) 
+  -- let co = promoteCoercion co0 --setNominalRole_maybe (coercionRole co0) co0
+  -- in
+  -- trace ("coercion input/output: " ++ showPpr dflags (coercionLKind co0, coercionRKind co0)) $
+  -- -- trace (showPpr dflags co0 ++ " ===promoting to===> " ++ showPpr dflags co) $
+  -- Just (Var castExpId :@ Type (coercionLKind co) :@ Type (coercionRKind co) :@ mkEqBox co0 :@ e)
+fixExtCast _ _ _ _ = Nothing
 
 applyUnrep :: ModGuts -> CoreExpr -> MatchM CoreExpr
 applyUnrep guts e = do
@@ -1001,10 +1150,10 @@ elimRepUnrep_co guts coA_M expr@(Var r :@ Type{} :@ dict :@ arg) =
                 (Nothing, Nothing)   -> do
                   return Nothing
                 (Just coA, Nothing)  -> do
-                  liftIO $ putStrLn $ "Casting A... " ++ showPpr dflags coA
+                  liftIO $ putStrLn $ "Casting A... " ++ showPpr dflags (coercionKind coA)
                   return $ Just coA
                 (Nothing, Just coB)  -> do
-                  liftIO $ putStrLn $ "Casting B... " ++ showPpr dflags coB
+                  liftIO $ putStrLn $ "Casting B... " ++ showPpr dflags (coercionKind coB)
                   return $ Just coB
                 (Just coA, Just coB) -> do
                   liftIO $ putStrLn $ "Casting AB... " ++ showPpr dflags (coercionKind coA, coercionKind coB)
@@ -1012,7 +1161,7 @@ elimRepUnrep_co guts coA_M expr@(Var r :@ Type{} :@ dict :@ arg) =
                     Just (coA', coB') -> return $ Just (composeCos coA' coB')
                     Nothing -> do -- TODO: Why does this happen? Does coB need a GPUExp wrapping (in both sides)?
                       repTyCon <- lift $ findTypeTH guts ''GPUExp
-                      let coB''0 = mkAppCo' (mkReflCo (coercionRole coB) repTyCon) coB
+                      let coB''0 = mkAppCo (mkReflCo (coercionRole coB) repTyCon) coB
                           coB''  = coB''0 --downgradeRole (coercionRole coA) (coercionRole coB''0) coB''0
                           composed = composeCos coA coB''
 
@@ -1026,21 +1175,6 @@ elimRepUnrep_co guts coA_M expr@(Var r :@ Type{} :@ dict :@ arg) =
         then return $ coerceMaybe co_M x
         else return $ coerceMaybe co_M expr
 
-    mkAppCo' coA coB =
-      mkTransAppCo
-        (coercionRole coA)
-        coA
-        (coercionLKind coA)
-        (coercionRKind coA)
-
-        (coercionRole coB)
-        coB
-        (coercionLKind coB)
-        (coercionRKind coB)
-
-        (coercionRole coA)
-
-
     composeCos = mkTransCo
 
 elimRepUnrep_co _guts co_M expr = return $ coerceMaybe co_M expr
@@ -1048,6 +1182,7 @@ elimRepUnrep_co _guts co_M expr = return $ coerceMaybe co_M expr
 -- elimRepUnrep_co _guts Nothing expr = return expr
 -- elimRepUnrep_co _guts (Just co) expr = return $ Cast expr co
 
+-- TODO: Check this
 coerceMaybe :: Maybe Coercion -> Expr a -> Expr a
 coerceMaybe Nothing e = e
 coerceMaybe (Just co) e = Cast e co
@@ -1183,7 +1318,6 @@ transformSumMatch guts mark scrutinee wild resultTy alts@(alt1@(DataAlt dataAlt1
   let scrTyNormRepTy = mkTyConApp repTyTyCon [scrTyNorm]
 
   (scrTyNormRepTyCo, _) <- lift $ normaliseTypeCo guts scrTyNormRepTy
-
 
   return (Var caseExpId
            :@ Type scrTy
@@ -1427,7 +1561,11 @@ transformLams guts mark e0 = Data.transformM go e0
         typeType <- findTypeTH guts ''Kind.Type
         typeableDict <- buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, varTy'])
 
-        return (Var varName :@ Type varTy' :@ typeableDict :@ nameInt)
+        let result = Var varName :@ Type varTy' :@ typeableDict :@ nameInt
+
+        liftIO $ putStrLn $ "var result = " ++ showPpr dflags result
+
+        return result
     subst0 _ _ expr = return expr
 
 
@@ -1458,6 +1596,7 @@ abstractOver guts v e = do
   iHash <- lift $ findIdTH guts 'GHC.Types.I#
 
   dflags <- getDynFlags
+  -- error (showPpr dflags typeableDict)
 
   let origTy = varType v
       newTy = mkTyConApp expTyCon [origTy]
@@ -1480,7 +1619,13 @@ abstractOver guts v e = do
   -- unreppedVar <- applyUnrep guts (Var varId :@ Type origTy :@ typeableDict :@ nameVal)
   -- let markedSubstE' = substCoreExpr v' unreppedVar markedE'
 
-  let markedSubstE' = substCoreExpr v' (Var varId :@ Type origTy :@ typeableDict :@ nameVal) markedE'
+  let varExp = Data.transform (tryUnfoldAndReduceDict guts dflags) $ Data.transform letNonRecSubst (Var varId :@ Type origTy :@ typeableDict :@ nameVal)
+
+  -- varExp <- applyUnrep guts varExp0
+
+  traceM $ "varExp = " ++ showPpr dflags varExp
+
+  let markedSubstE' = substCoreExpr v' varExp markedE'
   -- liftIO $ putStrLn $ "markedSubstE' = " ++ showPpr dflags markedSubstE'
 
   return (Var lamId :@ Type origTy :@ Type eTy' :@ repDict :@ typeableDict :@ nameVal
@@ -1720,11 +1865,34 @@ mkEqBox co =
     k = tcTypeKind ty1
     Pair ty1 ty2 = coercionKind co
 
+mkEqBoxRepr :: TcCoercion -> CoreExpr
+mkEqBoxRepr co =
+    Var (dataConWorkId eqDataCon) :@ Type k :@ Type ty1 :@ Type ty2 :@ Coercion co
+  where
+    k = mkReprPrimEqPred ty1 ty2 --tcTypeKind ty1
+    Pair ty1 ty2 = coercionKind co
+
 -- Modified from CoreMonad
 bindsOnlyPass_match :: (CoreProgram -> MatchM CoreProgram) -> ModGuts -> MatchM ModGuts
 bindsOnlyPass_match pass guts
   = do { binds' <- pass (mg_binds guts)
        ; return (guts { mg_binds = binds' }) }
+
+mkAppCo' :: Coercion -> Coercion -> Coercion
+mkAppCo' coA coB =
+      mkTransAppCo
+        (coercionRole coA)
+        coA
+        (coercionLKind coA)
+        (coercionRKind coA)
+
+        (coercionRole coB)
+        coB
+        (coercionLKind coB)
+        (coercionRKind coB)
+
+        (coercionRole coA)
+
 
 -- Taken from an older version of Coercion in the GHC API:
 

@@ -59,6 +59,7 @@ import           VarSet
 import           Encoding
 
 import           CoreOpt
+import           OccurAnal
 
 import           ErrUtils
 
@@ -83,7 +84,7 @@ import qualified Data.Generics.Uniplate.DataOnly as Data
 
 import           Data.Data (Data)
 
-import           Data.Maybe (fromMaybe)
+import           Data.Maybe (fromMaybe, isNothing)
 
 import Debug.Trace
 
@@ -147,10 +148,16 @@ normaliseType' :: ModGuts -> Type -> CoreM Type
 normaliseType' guts = fmap snd . normaliseTypeCo guts
 
 normaliseTypeCo :: ModGuts -> Type -> CoreM (Coercion, Type)
-normaliseTypeCo guts ty =
+normaliseTypeCo guts ty = normaliseTypeCo_role guts Nominal ty
+
+
+normaliseTypeCo_role :: ModGuts -> Role -> Type -> CoreM (Coercion, Type)
+normaliseTypeCo_role guts role ty =
   runTcM guts . fmap fst . runTcS $ do
     famInstEnvs <- getFamInstEnvs
-    return (normaliseType famInstEnvs Nominal ty)
+    return (normaliseType famInstEnvs role ty)
+
+
 
 {-
 -- TODO: This is a stop-gap measure. Try to figure out why some of the
@@ -745,6 +752,18 @@ onAppFun = maybeApply . onAppFun_maybe . (Just .)
 onAppFunId :: (Id -> CoreExpr) -> CoreExpr -> CoreExpr
 onAppFunId = maybeApply . onAppFunId_maybe . (Just .)
 
+onTypeM :: Applicative m => (Type -> m Type) -> CoreExpr -> m CoreExpr
+onTypeM f (Type ty) = Type <$> f ty
+onTypeM _ e = pure e
+
+onCoercion :: (Coercion -> Coercion) -> CoreExpr -> CoreExpr
+onCoercion f (Coercion co) = Coercion (f co)
+onCoercion _ e = e
+
+removeCasts :: CoreExpr -> CoreExpr
+removeCasts (Cast e _) = removeCasts e
+removeCasts e = e
+
 descendIntoCastsM :: Applicative f => (CoreExpr -> f CoreExpr) -> CoreExpr -> f CoreExpr
 descendIntoCastsM f (Cast e co) = Cast <$> descendIntoCastsM f e <*> pure co
 descendIntoCastsM f e = f e
@@ -921,7 +940,7 @@ upOneLevel_maybe p q (Tick tick e0) = do
   p (Tick tick e)
 
 upOneLevel_maybe _ _ _ = Nothing
-  
+
 
 bindApply_maybe :: (CoreExpr -> Maybe CoreExpr) -> CoreBind -> Maybe CoreBind
 bindApply_maybe f (NonRec n e) = NonRec <$> pure n <*> f e
@@ -943,6 +962,10 @@ altsApply_maybe f = go False
       case f body of
         Nothing -> (alt:)                      <$> go foundJust alts
         Just body' -> ((con, conArgs, body'):) <$> go True      alts
+
+onCast_maybe :: (CoreExpr -> r) -> CoreExpr -> Maybe r
+onCast_maybe f e@(Cast {}) = Just $ f e
+onCast_maybe _ _ = Nothing
 
 atLeastOneJust :: Maybe a -> Maybe b -> Bool
 atLeastOneJust Nothing Nothing = False
@@ -990,6 +1013,12 @@ maybeApply f x0 =
   case f x0 of
     Just x -> x
     _      -> x0
+
+maybeApplyM :: Applicative m => (a -> Maybe (m a)) -> a -> m a
+maybeApplyM f x0 =
+  case f x0 of
+    Just x -> x
+    _      -> pure x0
 
 -- targetParentOfFnAppMaybe :: Maybe Id -> (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
 -- targetParentOfFnAppMaybe Nothing   _ e = e
@@ -1142,11 +1171,14 @@ orderCoercions co1 co2 =
 
 combineCasts_maybe :: DynFlags -> CoreExpr -> Maybe CoreExpr
 combineCasts_maybe dflags origE@(Cast (Cast e coA) coB) =
-  case orderCoercions coA coB of
-    Just (coA', coB') -> Just $ Cast e (mkTransCo coA' coB')
-    Nothing ->
-      error "combineCasts_maybe: *** coercions do not match ***"
-      -- trace "combineCasts_maybe: *** coercions do not match ***" $ Just e
+  if coercionRole coA /= coercionRole coB
+    then error "combineCasts_maybe: *** coercion roles do not match ***"
+    else
+      case orderCoercions coA coB of
+        Just (coA', coB') -> Just $ Cast e (mkTransCo coA' coB')
+        Nothing ->
+          error $ "combineCasts_maybe: *** coercions do not match ***: " ++ showPpr dflags (coercionKind coA, coercionKind coB)
+          -- trace "combineCasts_maybe: *** coercions do not match ***" $ Just e
 combineCasts_maybe _ _ = Nothing
 
 combineCasts :: DynFlags -> CoreExpr -> CoreExpr
@@ -1169,6 +1201,52 @@ letNonRecSubst :: CoreExpr -> CoreExpr
 letNonRecSubst (Let (NonRec v rhs) body) =
    substCoreExpr v rhs body
 letNonRecSubst expr = expr
+
+onVarWhen :: (Id -> Bool) -> (Id -> CoreExpr) -> CoreExpr -> CoreExpr
+onVarWhen p t (Var v)
+  | p v = t v
+onVarWhen _ _ e = e
+
+onAppWhen :: (CoreExpr -> Bool) -> (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+onAppWhen p t e@(App {})
+  | p e = t e
+onAppWhen _ _ e = e
+
+appFunFromModule :: Module -> CoreExpr -> Bool
+appFunFromModule mod e@(App {}) =
+  let (fnE, args) = collectArgs e
+  in
+  case fnE of
+    Var fn ->
+      let r = idIsFrom mod fn
+      in
+        -- (if r then trace ("appFunFromModule: " ++ showSDocUnsafe (ppr fn)) else id)
+               r
+    _ -> False
+appFunFromModule _ _ = False
+
+unfoldAndBetaReduce_maybe :: ModGuts -> DynFlags -> (Id -> Bool) -> CoreExpr -> Maybe CoreExpr
+unfoldAndBetaReduce_maybe guts dflags p e0@(App {}) =
+  let (fnE, args) = collectArgs e0
+  in
+  case fnE of
+    Type {} -> Nothing
+    Var fn
+      | p fn && isNothing (isDataConId_maybe fn) {- && safe_to_inline (idOccInfo fn) -} -> trace ("unfoldAndBetaReduce firing: " ++ showPpr dflags fnE) $
+          Just $ occurAnalyseExpr $ (mkApps (getUnfolding guts dflags fn) args)
+    _ -> Nothing
+unfoldAndBetaReduce_maybe _ _ _ _ = Nothing
+
+unfoldAndBetaReduce :: ModGuts -> DynFlags -> (Id -> Bool) -> CoreExpr -> CoreExpr
+unfoldAndBetaReduce guts dflags = maybeApply . unfoldAndBetaReduce_maybe guts dflags
+
+etaReduce_maybe :: CoreExpr -> Maybe CoreExpr
+etaReduce_maybe (Lam v (App f (Var v')))
+  | v == v' = Just f
+etaReduce_maybe _ = Nothing
+
+etaReduce :: CoreExpr -> CoreExpr
+etaReduce = maybeApply etaReduce_maybe
 
  -- | Substitute all occurrences of a variable with an expression, in an expression.
 substCoreExpr :: Var -> CoreExpr -> (CoreExpr -> CoreExpr)
@@ -1508,3 +1586,11 @@ decomposeFunCo_maybe r co
     Pair s1t1 s2t2 = coercionKind co
     all_ok = isFunTy s1t1 && isFunTy s2t2
 
+-- From  CoreOpt:
+    -- Unconditionally safe to inline
+safe_to_inline :: OccInfo -> Bool
+safe_to_inline (IAmALoopBreaker {}) = False
+safe_to_inline IAmDead              = True
+safe_to_inline occ@(OneOcc {})      =  not (occ_in_lam occ)
+                                    && occ_one_br occ
+safe_to_inline (ManyOccs {})        = False
