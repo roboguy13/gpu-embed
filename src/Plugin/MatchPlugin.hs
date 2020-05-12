@@ -1004,7 +1004,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- error (showPpr dflags r)
 
                 -- error (showPpr dflags constructedResult)
-                return constructedResult
+                return $ simpleOptExpr dflags $ Data.transform betaReduce $ Data.transform letNonRecSubst $ Data.transform (maybeApply (combineCasts_maybe dflags)) $ constructedResult
 
                 -- error (showPpr dflags (newExpr, remainingArgs))
                 -- return newExpr'''

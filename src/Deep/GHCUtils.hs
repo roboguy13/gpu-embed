@@ -1316,7 +1316,12 @@ betaReduceAll e@(Cast (Lam v body) co) (a:as) =
       let (remaining, args) = betaReduceAll (Lam (setVarType v (coercionRKind coA)) (Cast body coB)) (Cast a coA:as)
       in (remaining, as)
     Nothing ->
-      (e, as)
+        -- TODO: Make sure this does, in fact, mean it's either a constraint or a forall
+        -- TODO: Make sure this works in those cases ^
+      betaReduceAll (substCoreExpr v a body) as
+      -- error $ "betaReduceAll: " ++ showSDocUnsafe (ppr (coercionKind co))
+      -- (e, as)
+
       -- let (remaining, args) = betaReduceAll (Lam v body) (a:as)
       -- in (Cast remaining co, as) -- TODO: Does this make sense?
 
