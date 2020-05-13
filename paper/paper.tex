@@ -95,6 +95,8 @@
 \acmISBN{978-1-4503-XXXX-X/18/06}
 
 
+\citestyle{acmauthoryear}
+
 %%
 %% Submission ID.
 %% Use this when submitting an article to a sponsored event. You'll
@@ -116,6 +118,7 @@
 
 %%
 %% end of the preamble, start of the body of the document source.
+
 \begin{document}
 
 %%
@@ -434,6 +437,8 @@ intListSum t =
   exist?
 \end{todo}
 
+Any data type with a \ttt{Generic} instance 
+
 \subsection{\ttt{E}, \ttt{ERep}, \ttt{ERepTy}}
 
 There are three interconnected foundational parts: \ttt{E}, \ttt{ERep} and
@@ -671,7 +676,8 @@ Likewise for \ttt{ProdMatch a b} values.
   Expand the explanation in this section
 \end{todo}
 
-Tail recursion is given a direct-style representation using a simple sum type.
+Tail recursion is given a direct-style representation using a simple sum type,
+using the technique described in~\cite{Grebe:2017:RSD:3136040.3136048}.
 
 Consider a tail recursive function of the type \ttt{f :: a -> b}. Each recursive
 call can be seen as a simple "update" of the values of the arguments, since
@@ -711,11 +717,7 @@ runIter f = go
 This technique can be contrasted with the more traditional trampolining
 technique for implementing tail recursion. Conventional trampolining uses a
 sum type of the result type and a thunk with the code necessary to continue
-execution.
-
-\begin{todo}
-  Cite "Trampolined Style" (S. E. Gantz, D. P. Friedman, M. Ward; 1999)
-\end{todo}
+execution.~\cite{Ganz:99:Trampolined}
 
 In the technique presented here, we do not need to allocate thunks or closures.
 We actually do not to use higher-order functions at all in this tail recursion
@@ -735,11 +737,6 @@ data E t where
                   -> E (b -> a)
   ...
 \end{lstlisting}
-
-\begin{todo}
-  Cite "Rewriting a Shallow DSL using a GHC Compiler Extension"
-  (2017; Grebe, Young, Gill)
-\end{todo}
 
 \section{Representing lambdas}
 This representation of pattern matching depends on the ability to bring
@@ -1190,12 +1187,18 @@ macroDef name args theLines =
 
 \clearpage
 
-\section{Citations and Bibliographies}
+% \section{Citations and Bibliographies}
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{paper}
+
+% \begin{todo}
+%   Fill in
+% \end{todo}
 
 
-\begin{todo}
-  Fill in
-\end{todo}
+
+
 
 % The use of \BibTeX\ for the preparation and formatting of one's
 % references is strongly recommended. Authors' names should be complete

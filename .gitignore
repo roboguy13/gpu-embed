@@ -8,6 +8,8 @@
 *.aux
 *.out
 *.pdf
+*.bbl
+*.blg
 dist
 dist-newstyle
 a.out.dSYM
