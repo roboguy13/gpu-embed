@@ -240,7 +240,7 @@ for this is that control flow constructs which are typically \textit{outside} th
 such as pattern matching and tail recursion, can make it challenging to "look inside"
 the lambda.
 \begin{todo}
-  Add brief summary of relationship to lambdas
+  Maybe add brief summary of relationship to lambdas?
 \end{todo}
 
 The following contributions are made by this paper:
@@ -262,6 +262,9 @@ most of their attention to sections 2, 3 and 6.
 
 \subsection{Motivation}
 
+\begin{todo}
+  Write
+\end{todo}
 
 \subsection{Overview}
 
@@ -673,7 +676,8 @@ Likewise for \ttt{ProdMatch a b} values.
 
 \section{Representing tail recursion}
 \begin{todo}
-  Expand the explanation in this section
+  Is the explanation in this section sufficient since we cite the Haskino paper,
+  which describes how the tail recursion transformation was used in that project?
 \end{todo}
 
 Tail recursion is given a direct-style representation using a simple sum type,
@@ -737,11 +741,6 @@ data E t where
                   -> E (b -> a)
   ...
 \end{lstlisting}
-
-\begin{todo}
-  Cite "Rewriting a Shallow DSL using a GHC Compiler Extension"
-  (2017; Grebe, Young, Gill)
-\end{todo}
 
 \section{Representing lambdas}
 This representation of pattern matching depends on the ability to bring
@@ -852,7 +851,7 @@ See Appendix A for more implementation details of \ttt{absEnv}.
 
 \section{C Backend}
 \begin{todo}
-  Expand this section
+  Should this section be expanded?
 \end{todo}
 
 The C backend makes use of a small EDSL for generating C code. See
