@@ -273,6 +273,18 @@ returnChanged x = do
   changed
   return x
 
+-- -- TODO: Figure out why this is needed to mitigate an out-of-scope type variable issue in a coercion
+-- removeExpVarOnlyCoercion :: DynFlags -> Coercion -> Coercion
+-- removeExpVarOnlyCoercion dflags = Data.transform go
+--   where
+--     go co
+--       | Just (ty, role) <- isReflCo_maybe co
+--       , Just (tyF, tyArg) <- splitAppTy_maybe ty
+--       , isTyVarTy tyArg
+--         = trace ("coercion type var: " ++ showPpr dflags tyArg) co
+--     go co = co
+
+
 -- | 'Nothing' indicates that no changes were made
 transformExprMaybe :: ModGuts -> Var -> Maybe Var -> [(Id, CoreExpr)] -> Expr Var -> MatchM (Maybe (Expr Var))
 transformExprMaybe guts currName recName primMap e = do
@@ -295,8 +307,10 @@ transformExprMaybe guts currName recName primMap e = do
     go expr = return expr
 
 transformExpr :: ModGuts -> Var -> Maybe Var -> [(Id, CoreExpr)] -> Expr Var -> MatchM (Expr Var)
-transformExpr guts currName recNameM primMap =
-  {- transformApps guts <=< -} untilNothingM (transformExprMaybe guts currName recNameM primMap)
+transformExpr guts currName recNameM primMap e = do
+  dflags <- lift getDynFlags
+  {- Data.transform (onCoercion (removeExpVarOnlyCoercion dflags)) <$> -}
+  untilNothingM (transformExprMaybe guts currName recNameM primMap) e
 
 
 -- XXX: The delineation marker probably has to be floated in (or maybe the
@@ -976,7 +990,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 let (constructRepFn, [Type ty, dict1, dict2, constructRepArg]) = collectArgs newExpr'''
 
-                traceM $ "constructRepArg = {" ++ showPpr dflags constructRepArg ++ "}"
+                -- traceM $ "constructRepArg = {" ++ showPpr dflags constructRepArg ++ "}"
 
                     -- Normalize types
                 constructRepArg' <- lift $ Data.transformM (maybeApplyM (onCast_maybe
@@ -1007,18 +1021,19 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                     -- Normalize type arguments of 'ConstructRep' and remove some out-of-date coercions
                 r0 <- descendIntoCastsM (\e -> do
                         let (constrFn, constrArgs0) = collectArgs e
-                        traceM $ "constrFn = " ++ showPpr dflags (simpleOptExpr dflags constrFn)
+                        -- traceM $ "constrFn = " ++ showPpr dflags (simpleOptExpr dflags constrFn)
 
-                        constrArgs <- lift $ mapM (onTypeM (normaliseType' guts)) constrArgs0
+                        constrArgs <- lift $ mapM (onTypeM (\x -> do r <- normaliseType' guts x; trace ("normalise result = " ++ showPpr dflags r) (return r))) constrArgs0
 
                         let (Type constrResultTy:_) = constrArgs
 
                         let resultTyCo = mkReflCo Nominal constrResultTy
+                        -- traceM $ "resultTyCo = " ++ showPpr dflags resultTyCo
 
                         let constrArgs' = map (onCoercion (const resultTyCo)) constrArgs -- TODO: Make sure this works in the general case
 
                         return (mkApps constrFn constrArgs')
-                        ) constructRepArg'
+                        ) (removeCasts constructRepArg')
 
                 -- let r0 = constructRepArg'
 
@@ -1027,7 +1042,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- (co', ty') <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [ty]])
 
 
-                traceM $ "r = {"  ++ showPpr dflags r ++ "}"
+                -- traceM $ "r = {"  ++ showPpr dflags r ++ "}"
                 -- traceM $ "co' = {" ++ showPpr dflags co' ++ "}"
 
                 typeType <- lift $ findTypeTH guts ''Kind.Type
@@ -1040,13 +1055,17 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 (co', ty') <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [ty]])
                 (co'', ty'') <- lift $ normaliseTypeCo_role guts Representational (exprType r')
                 -- error $ showPpr dflags (exprType r', coercionKind co', coercionKind co'')
+                let theCo = mkTransCo co'' (mkSymCo co')
 
-                let constructedResult = (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ Cast r' (mkTransCo co'' (mkSymCo co')))
+                let constructedResult = (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ Cast r' theCo)
 
-                traceM $ "constructRepFn = " ++ showPpr dflags constructRepFn
-                traceM $ "dict1' = " ++ showPpr dflags dict1'
-                traceM $ "dict2' = " ++ showPpr dflags dict2'
+                -- traceM $ "constructRepFn = " ++ showPpr dflags constructRepFn
+                -- traceM $ "dict1' = " ++ showPpr dflags dict1'
+                -- traceM $ "dict2' = " ++ showPpr dflags dict2'
                 traceM $ "constructedResult = {" ++ showPpr dflags constructedResult ++ "}"
+                -- traceM $ "theCo = {" ++ showPpr dflags theCo ++ "}"
+                -- traceM $ "co'' = {" ++ showPpr dflags co'' ++ "}"
+                -- traceM $ "mkSymCo co' = {" ++ showPpr dflags (mkSymCo co') ++ "}"
                 -- error "debug"
                 return constructedResult
 
@@ -1125,7 +1144,7 @@ fixConstructorCast guts dflags e0@(Cast (app@(App {})) co0)
   | (Var fn, args) <- collectArgs app
   -- , trace ("might fix: " ++ showPpr dflags fn) True
   , Just _ <- isDataConId_maybe fn
-  = do 
+  = do
        let ty = coercionLKind co0
 
        expTyCon <- lift $ findTyConTH guts ''GPUExp

@@ -157,10 +157,16 @@ normaliseTypeCo guts ty = normaliseTypeCo_role guts Nominal ty
 
 
 normaliseTypeCo_role :: ModGuts -> Role -> Type -> CoreM (Coercion, Type)
-normaliseTypeCo_role guts role ty =
-  runTcM guts . fmap fst . runTcS $ do
+normaliseTypeCo_role guts role ty = do
+  (r, env) <- runTcM guts . runTcS $ do
     famInstEnvs <- getFamInstEnvs
     return (normaliseType famInstEnvs role ty)
+
+  when (not (isEmptyEvBindMap env)) $ traceM $ "normalise env(" ++ showSDocUnsafe (ppr ty) ++ ") = {" ++ showSDocUnsafe (ppr env) ++ "}"
+
+  -- traceM $ "normalise coercion: " ++ showSDocUnsafe (ppr (fst r))
+
+  return r
 
 
 
