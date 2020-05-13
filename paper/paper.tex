@@ -260,6 +260,9 @@ The following contributions are made by this paper:
 Readers who are primarily interested only in the encoding of pattern matching itself can direct
 most of their attention to sections 2, 3 and 6.
 
+\subsection{Motivation}
+
+
 \subsection{Overview}
 
 In this EDSL, the type representing values in the expression language is \ttt{E
@@ -411,33 +414,17 @@ isEmpty t =
       Nil -> True
       Cons x xs -> False))
 
-intListSum_helper :: (Int, IntList) -> Int
-intListSum_helper p =
+intListSum :: (Int, IntList) -> Int
+intListSum p =
   internalize (externalize
     (case p of
        (acc, t) ->
          case t of
            Nil -> acc
            Cons x xs ->
-             intListSum_helper
+             intListSum
                (x+acc, xs)))
-
-intListSum :: IntList -> Int
-intListSum t =
-  internalize (externalize
-    (intListSum_helper (0, t)))
 \end{lstlisting}
-
-
-\subsection{GHC Generics \ttt{Rep}}
-
-\begin{todo}
-  This section is to talk about the details of GHC's generic \ttt{Rep} representation
-  and how it is converted to the representation in this paper. Should this section
-  exist?
-\end{todo}
-
-Any data type with a \ttt{Generic} instance 
 
 \subsection{\ttt{E}, \ttt{ERep}, \ttt{ERepTy}}
 
@@ -450,6 +437,19 @@ of the given type. This canonical form can be immediately constructed in the EDS
 Canonical form types crucially include \ttt{Either} and \ttt{(,)}, which
 allow all combinations of basic sum types and product types to be encoded, in the
 manner described at the beginning of Section 2.
+
+With GHC Generics, any data type \ttt{T} with a \ttt{Generic} instance has a
+corresponding \ttt{Rep T} type, which gives a generic representation of \ttt{T}.
+Conversion between values of this type and values of the original type \ttt{T} is
+given by the functions \ttt{to} and \ttt{from}. The generic representation \ttt{Rep T}
+can be traversed by functions which operate solely on the structure of the data type.
+This generic representation contains additional metadata which we do not need.
+However, we can automatically generate a \ttt{ERep} instance for any type which
+has a \ttt{Generic} instance.
+
+As \ttt{Generic} instances are automatically generated, this provides a simple mechanism
+to automaticly generate \ttt{ERep} instances.
+
 
 This information is brought into the \ttt{E} type via the constructor
 \ttt{ConstructRep}. The \ttt{E} also contains constructors representing \ttt{Either}
@@ -738,6 +738,11 @@ data E t where
   ...
 \end{lstlisting}
 
+\begin{todo}
+  Cite "Rewriting a Shallow DSL using a GHC Compiler Extension"
+  (2017; Grebe, Young, Gill)
+\end{todo}
+
 \section{Representing lambdas}
 This representation of pattern matching depends on the ability to bring
 function values into the expression language. This is accomplished
@@ -865,18 +870,9 @@ The following \ttt{struct}s provide the C representation for Haskell expressions
 \begin{lstlisting}
 typedef enum var_type_tag {
   EXPR_INT
-, EXPR_FLOAT
-, EXPR_DOUBLE
-, EXPR_CHAR
-, EXPR_BOOL
-, EXPR_CLOSURE
-, EXPR_EITHER_LEFT
-, EXPR_EITHER_RIGHT
 , EXPR_PAIR
+...
 , EXPR_UNIT
-, EXPR_STEP
-, EXPR_DONE
-, EXPR_UNBOXED
 } var_type_tag;
 
 typedef enum semantic_type_tag {
@@ -1074,10 +1070,14 @@ transformation will terminate.
 \section{Related Work}
 \begin{todo}
   Cite and compare/contrast with pattern matching technique described in section
-  3.3 of "Unembedding Domain-Specific Languages" (2009; Atkey, Lindley, Yallop)
+  3.3 of "Unembedding Domain-Specific Languages" (2009; Atkey, Lindley, Yallop)~\cite{Atkey:09:Unembedding}
 \end{todo}
 
-\clearpage
+
+% \section{Citations and Bibliographies}
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{paper}
 
 \appendix
 \section{Additional Code for Standard Haskell Semantics Implementation}
@@ -1182,16 +1182,6 @@ macroDef name args theLines =
     , "  } while (0);"
     ]
 \end{lstlisting}
-
-
-
-\clearpage
-
-% \section{Citations and Bibliographies}
-
-\bibliographystyle{ACM-Reference-Format}
-\bibliography{paper}
-
 % \begin{todo}
 %   Fill in
 % \end{todo}
