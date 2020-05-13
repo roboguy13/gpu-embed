@@ -1,6 +1,6 @@
 all: paper.pdf
 
-paper.pdf: paper.tex paper.aux
+paper.pdf: paper.tex paper.bib
 	pdflatex paper.tex
 	bibtex paper.aux
 	pdflatex paper.tex

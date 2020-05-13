@@ -4,5 +4,5 @@ all:
 
 paper: paper/paper.pdf
 
-paper/paper.pdf: paper/paper.tex
+paper/paper.pdf: paper/paper.tex paper/paper.bib
 	(cd paper && make)

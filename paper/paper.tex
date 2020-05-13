@@ -1072,6 +1072,16 @@ transformation will terminate.
   3.3 of "Unembedding Domain-Specific Languages" (2009; Atkey, Lindley, Yallop)~\cite{Atkey:09:Unembedding}
 \end{todo}
 
+A similar EDSL-oriented representation of pattern matching is given in
+~\cite[Section~3.3]{Atkey:09:Unembedding}. In that paper, patterns were given their own
+representation which allows for compound patterns. This is useful in the context
+of that work, as the programmer works directly with these patterns.
+
+In the present paper, however, the representation is generated automatically by
+a compiler plugin. As a result of GHC's desugared Core (which does not have
+compound patterns), there is no need to directly express compound patterns at
+the representation-level.
+
 
 % \section{Citations and Bibliographies}
 
