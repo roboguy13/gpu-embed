@@ -1318,6 +1318,7 @@ betaReduceAll e@(Cast (Lam v body) co) (a:as) =
     Nothing ->
         -- TODO: Make sure this does, in fact, mean it's either a constraint or a forall
         -- TODO: Make sure this works in those cases ^
+        -- TODO: Should there be a Cast here?
       betaReduceAll (substCoreExpr v a body) as
       -- error $ "betaReduceAll: " ++ showSDocUnsafe (ppr (coercionKind co))
       -- (e, as)

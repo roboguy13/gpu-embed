@@ -49,6 +49,7 @@ import qualified Data.Kind as Kind
 import           Control.Monad
 import           Control.Monad.Writer hiding (pass, Alt)
 import           Control.Monad.State
+import           Control.Applicative
 
 import           Data.Foldable
 
@@ -788,6 +789,9 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 constructFnId <- lift $ findIdTH guts 'construct
                 fromId <- lift $ findIdTH guts 'from
 
+                let tryUnfoldAndReduceDict' = tryUnfoldAndReduceDict guts dflags
+                let unfoldAndReduceDict_maybe' = unfoldAndReduceDict_maybe guts dflags
+
                 let constr' = mkApps (Var constr) (tys ++ dicts)
                 let constr'Type = exprType constr'
 
@@ -817,11 +821,15 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 -- liftIO $ putStrLn $ "repUnfolding = {" ++ showPpr dflags repUnfolding ++ "}"
 
-                let (fn, restArgs) = betaReduceAll
+                let (fn0, restArgs) = betaReduceAll
                                        repUnfolding
                                          [ Type (exprType expr)
                                          , repDictExpr
                                          ]
+
+                let unfoldAndReduceDictT = Data.transform tryUnfoldAndReduceDict'
+
+                let fn = caseInline dflags $ onScrutinee (betaReduce . onAppFun tryUnfoldAndReduceDict') $ Data.transform letNonRecSubst fn0
 
                 let repFn1 = caseInline dflags $ Data.transform letNonRecSubst fn
                     (repFnE, _) = collectArgs repFn1
@@ -831,15 +839,19 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                         Var f -> Just f
                         _ -> Nothing
 
-                let expr2' = Data.transform letNonRecSubst fn
-
                 let e' =
-                         onScrutinee (unfoldAndReduceDict guts dflags)
+                         -- onScrutinee (Data.transform tryUnfoldAndReduceDict') $
+                         onScrutinee (tryUnfoldAndReduceDict guts dflags)
+                         --     $ tryUnfoldAndReduceDict'
+                             $ Data.transform (caseInline dflags)
                              $ Data.transform letNonRecSubst fn
 
-                let e'' =
+                let e'' = -- Data.transform letNonRecSubst $ Data.transform betaReduce $ Data.transform tryUnfoldAndReduceDict' $
                       onScrutinee (Data.transform (tryUnfoldAndReduceDict guts dflags)) $
                         Data.transform (caseInline dflags) $ onScrutinee (Data.transform betaReduce) e'
+
+                let (repFnName, _) = collectArgs e''
+                traceM $ "repFnName = " ++ showPpr dflags repFnName
 
                 let (Var dictFn, dictArgs) = collectArgs e''
 
@@ -850,6 +862,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
 
                 let simplE' = reduceConstruct e''
+
+
 
 
                 let fnE = Data.transform letNonRecSubst
@@ -889,8 +903,6 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                                                       . Data.transform betaReduce)
                                                 (onAppFun_maybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId)))))))
 
-                let tryUnfoldAndReduceDict' = tryUnfoldAndReduceDict guts dflags
-                let unfoldAndReduceDict_maybe' = unfoldAndReduceDict_maybe guts dflags
 
                 let elimConstruct
                       = elimConstructThen
@@ -949,9 +961,22 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                                             )) e0
                                 in if r then Just e0 else Nothing))) newExpr''
 
+                -- traceM $ "repUnfolding = " ++ showPpr dflags repUnfolding
+                -- traceM $ "fn = {" ++ showPpr dflags fn ++ "}"
+                -- traceM $ "e' = {" ++ showPpr dflags e' ++ "}"
+                -- traceM $ "e'' = {" ++ showPpr dflags (e'') ++ "}"
+                --
+                -- traceM $ "expr = {" ++ showPpr dflags expr ++ "}"
+                --
+                -- traceM $ "fnE = {" ++ showPpr dflags fnE ++ "}"
+                -- traceM $ "restArgs = {" ++ showPpr dflags restArgs ++ "}"
+                -- traceM $ "newExpr = {" ++ showPpr dflags newExpr ++ "}"
+
                 -- newExpr''' <- Data.transformM (maybeApplyM (onCast_maybe mark)) newExpr''
 
                 let (constructRepFn, [Type ty, dict1, dict2, constructRepArg]) = collectArgs newExpr'''
+
+                traceM $ "constructRepArg = {" ++ showPpr dflags constructRepArg ++ "}"
 
                     -- Normalize types
                 constructRepArg' <- lift $ Data.transformM (maybeApplyM (onCast_maybe
@@ -964,6 +989,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                                               return (Cast x co'))))
                                       constructRepArg
 
+                -- traceM $ "constructRepArg' = {" ++ showPpr dflags constructRepArg' ++ "}"
                 -- mark newExpr''
 
                 -- error (showPpr dflags newExpr''')
@@ -979,8 +1005,9 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- traceM $ "modified newExpr: {" ++ showPpr dflags newExpr'0 ++ "}"
 
                     -- Normalize type arguments of 'ConstructRep' and remove some out-of-date coercions
-                r <- descendIntoCastsM (\e -> do
+                r0 <- descendIntoCastsM (\e -> do
                         let (constrFn, constrArgs0) = collectArgs e
+                        traceM $ "constrFn = " ++ showPpr dflags (simpleOptExpr dflags constrFn)
 
                         constrArgs <- lift $ mapM (onTypeM (normaliseType' guts)) constrArgs0
 
@@ -993,18 +1020,43 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                         return (mkApps constrFn constrArgs')
                         ) constructRepArg'
 
+                -- let r0 = constructRepArg'
+
+                let r = r0 --Data.transform (simpleOptExpr dflags) r0
+
+                -- (co', ty') <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [ty]])
+
+
+                traceM $ "r = {"  ++ showPpr dflags r ++ "}"
+                -- traceM $ "co' = {" ++ showPpr dflags co' ++ "}"
+
+                typeType <- lift $ findTypeTH guts ''Kind.Type
+                typeableTyCon <- lift $ findTyConTH guts ''Typeable
+                dict1' <- Data.descendM (fixConstructorCast guts dflags) =<< lift (buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, ty]))
+                dict2' <- Data.descendM (fixConstructorCast guts dflags) =<< lift (buildDictionaryT guts (mkTyConApp repTyCon [ty]))
+
+                r' <- Data.descendM (fixConstructorCast guts dflags) r
+
                 (co', ty') <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [ty]])
+                (co'', ty'') <- lift $ normaliseTypeCo_role guts Representational (exprType r')
+                -- error $ showPpr dflags (exprType r', coercionKind co', coercionKind co'')
 
+                let constructedResult = (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ Cast r' (mkTransCo co'' (mkSymCo co')))
 
-                let constructedResult = Data.transform betaReduce (constructRepFn :@ Type ty :@ dict1 :@ dict2 :@ (Cast (removeCasts r) (mkSymCo co')))
+                traceM $ "constructRepFn = " ++ showPpr dflags constructRepFn
+                traceM $ "dict1' = " ++ showPpr dflags dict1'
+                traceM $ "dict2' = " ++ showPpr dflags dict2'
+                traceM $ "constructedResult = {" ++ showPpr dflags constructedResult ++ "}"
+                -- error "debug"
+                return constructedResult
 
-                -- traceM $ "constructedResult = {" ++ showPpr dflags constructedResult ++ "}"
 
 
                 -- error (showPpr dflags r)
 
+
                 -- error (showPpr dflags constructedResult)
-                return $ simpleOptExpr dflags $ Data.transform betaReduce $ Data.transform letNonRecSubst $ Data.transform (maybeApply (combineCasts_maybe dflags)) $ constructedResult
+                -- return $ Data.transform letNonRecSubst $ simpleOptExpr dflags $ Data.transform betaReduce $ Data.transform letNonRecSubst $ Data.transform (maybeApply (combineCasts_maybe dflags)) $ constructedResult
 
                 -- error (showPpr dflags (newExpr, remainingArgs))
                 -- return newExpr'''
@@ -1067,6 +1119,48 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
         --   return (Cast markedE co)
 
         go expr = return expr
+
+fixConstructorCast :: ModGuts -> DynFlags -> CoreExpr -> MatchM CoreExpr
+fixConstructorCast guts dflags e0@(Cast (app@(App {})) co0)
+  | (Var fn, args) <- collectArgs app
+  -- , trace ("might fix: " ++ showPpr dflags fn) True
+  , Just _ <- isDataConId_maybe fn
+  = do 
+       let ty = coercionLKind co0
+
+       expTyCon <- lift $ findTyConTH guts ''GPUExp
+       repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
+       case splitTyConApp_maybe ty of
+         Just (tyF, [tyArg])
+           | tyF == expTyCon -> do
+             (co', _) <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [tyArg]])
+             -- traceM $ "Fixed coercion kind: " ++ showPpr dflags (coercionKind co')
+             traceM $ "Fixed constructor: " ++ showPpr dflags fn
+             args' <- mapM (Data.descendM (fixConstructorCast guts dflags)) args
+             return $ Cast (mkApps (Var fn) args) (mkSymCo co')
+         _ -> return e0
+
+fixConstructorCast guts dflags e0@(Cast (Var x) co0)
+  | Just _ <- isDataConId_maybe x
+  = do
+       let ty = coercionLKind co0
+
+       expTyCon <- lift $ findTyConTH guts ''GPUExp
+       repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
+       case splitTyConApp_maybe ty of
+         Just (tyF, [tyArg])
+           | tyF == expTyCon -> do
+             (co', _) <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [tyArg]])
+             -- traceM $ "Fixed coercion kind: " ++ showPpr dflags (coercionKind co')
+             traceM $ "Fixed constructor: " ++ showPpr dflags x
+             -- traceM $ "  ^--------------> " ++ showPpr dflags co'
+             -- traceM $ "  ^--------------> " ++ showPpr dflags (exprType (Var x), ty, tyArg, coercionKind co')
+             -- traceM $ ""
+             return $ Var x
+             -- return $ Cast (Var x) (mkSymCo co')
+         _ -> return e0
+
+fixConstructorCast _ _ e = return e
 
 -- TODO: Figure out why this is needed in the first place. It seems to be
 -- caused by a simpleOptExpr call in the constructor transformation code.
