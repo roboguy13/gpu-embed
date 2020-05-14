@@ -941,7 +941,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 -- TODO: Make sure this recursively calls elimConstruct
                 -- properly (enough times)
-                let newExpr'0 = untilNothing elimConstruct newExpr
+                -- let newExpr'0 = untilNothing elimConstruct newExpr
+                newExpr'0 <- {- lift . (Data.transformM (onCoercionM (normaliseCoercion guts)) <=< Data.transformM (onTypeM (normaliseType' guts))) $ -} return $ untilNothing elimConstruct newExpr
                 let newExpr'
                       = Data.transform (caseInline dflags)
                         $ Data.transform betaReduce
@@ -1076,6 +1077,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- traceM $ "co'' = {" ++ showPpr dflags co'' ++ "}"
                 -- traceM $ "mkSymCo co' = {" ++ showPpr dflags (mkSymCo co') ++ "}"
                 -- error "debug"
+                -- Data.transformM (fixConstructorCast guts dflags) constructedResult
                 return constructedResult
 
 
@@ -1152,30 +1154,29 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 -- normaliseConstructorType guts dflags e0@(Var v)
 --   | Just _ <- isDataConId_maybe fn
 --     = do
-        
 
 fixConstructorCast :: ModGuts -> DynFlags -> CoreExpr -> MatchM CoreExpr
-fixConstructorCast guts dflags e0@(Cast (app@(App {})) co0)
-  | (Var fn, args) <- collectArgs app
-  -- , trace ("might fix: " ++ showPpr dflags fn) True
-  , Just _ <- isDataConId_maybe fn
-  = do
-       let ty = coercionLKind co0
+-- fixConstructorCast guts dflags e0@(Cast (app@(App {})) co0)
+--   | (Var fn, args) <- collectArgs app
+--   -- , trace ("might fix: " ++ showPpr dflags fn) True
+--   , Just _ <- isDataConId_maybe fn
+--   = do
+--        let ty = coercionLKind co0
 
-       expTyCon <- lift $ findTyConTH guts ''GPUExp
-       repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
-       case splitTyConApp_maybe ty of
-         Just (tyF, [tyArg])
-           | tyF == expTyCon -> do
-             (co', _) <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [tyArg]])
-             traceM $ "Fixed coercion kind: " ++ showPpr dflags (coercionKind co')
-             traceM $ "Fixed constructor: " ++ showPpr dflags fn
-             -- traceM $ "  ^--------------> " ++ showPpr dflags (coercionKind (mkSymCo co'))
-             args' <- mapM (Data.descendM (fixConstructorCast guts dflags)) args
+--        expTyCon <- lift $ findTyConTH guts ''GPUExp
+--        repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
+--        case splitTyConApp_maybe ty of
+--          Just (tyF, [tyArg])
+--            | tyF == expTyCon -> do
+--              (co', _) <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [tyArg]])
+--              traceM $ "Fixed coercion kind: " ++ showPpr dflags (coercionKind co')
+--              traceM $ "Fixed constructor: " ++ showPpr dflags fn
+--              -- traceM $ "  ^--------------> " ++ showPpr dflags (coercionKind (mkSymCo co'))
+--              args' <- mapM (Data.descendM (fixConstructorCast guts dflags)) args
 
-             -- return app
-             return $ Cast (mkApps (Var fn) args') (mkSymCo co')
-         _ -> return e0
+--              -- return app
+--              return $ Cast (mkApps (Var fn) args') (mkSymCo co')
+--          _ -> return e0
 
 fixConstructorCast guts dflags e0@(Cast (Var x) co0)
   | Just _ <- isDataConId_maybe x
@@ -1194,10 +1195,10 @@ fixConstructorCast guts dflags e0@(Cast (Var x) co0)
              -- traceM $ "  ^--------------> " ++ showPpr dflags (exprType (Var x), ty, tyArg, coercionKind co')
              -- traceM $ ""
 
-             return $ Var x
+             -- return $ Var x
              -- return $ e0
 
-             -- return $ Cast (Var x) (mkSymCo co')
+             return $ Cast (Var x) (mkSymCo co')
          _ -> return e0
 
 fixConstructorCast _ _ e = return e
@@ -1247,14 +1248,15 @@ repToExternalize guts e = error "repToExternalize unimplemented"
 
 -- | rep (unrep x)  ==>  x
 elimRepUnrep :: ModGuts -> CoreExpr -> MatchM CoreExpr
-elimRepUnrep guts (Cast e co) = elimRepUnrep_co guts (Just co) e
+elimRepUnrep guts expr0@(Cast e co) = elimRepUnrep_co guts (Just co) origType e
+  where origType = exprType expr0
 -- elimRepUnrep guts (Cast e co) = do
 --   e' <- elimRepUnrep_co guts Nothing e
 --   return $ Cast e' co
-elimRepUnrep guts expr = elimRepUnrep_co guts Nothing expr
+elimRepUnrep guts expr = elimRepUnrep_co guts Nothing (exprType expr) expr
 
-elimRepUnrep_co :: ModGuts -> Maybe Coercion -> CoreExpr -> MatchM CoreExpr
-elimRepUnrep_co guts coA_M expr@(Var r :@ Type{} :@ dict :@ arg) =
+elimRepUnrep_co :: ModGuts -> Maybe Coercion -> Type -> CoreExpr -> MatchM CoreExpr
+elimRepUnrep_co guts coA_M origType expr@(Var r :@ Type{} :@ dict :@ arg) =
   go0 arg
   where
     go0 e =
@@ -1272,46 +1274,53 @@ elimRepUnrep_co guts coA_M expr@(Var r :@ Type{} :@ dict :@ arg) =
       -- liftIO $ putStrLn $ "coA_M free vars: " ++ showPpr dflags (freeVarsCoercion <$> coA_M)
       -- liftIO $ putStrLn $ "coB_M free vars: " ++ showPpr dflags (freeVarsCoercion <$> coB_M)
 
-      co_M <- case (coA_M, coB_M) of
-                (Nothing, Nothing)   -> do
-                  return Nothing
-                (Just coA, Nothing)  -> do
-                  liftIO $ putStrLn $ "Casting A... " ++ showPpr dflags (coercionKind coA)
-                  return $ Just coA
-                (Nothing, Just coB0)  -> do
-                  -- repTyCon <- lift $ findTypeTH guts ''GPUExp
-                  -- let Just coB = setNominalRole_maybe (coercionRole coB0) coB0
-                  -- let coB' = mkAppCo (mkReflCo (coercionRole coB) repTyCon) coB
+      -- co_M <- case (coA_M, coB_M) of
+      --           (Nothing, Nothing)   -> do
+      --             return Nothing
+      --           (Just coA, Nothing)  -> do
+      --             liftIO $ putStrLn $ "Casting A... " ++ showPpr dflags (coercionKind coA)
+      --             return $ Just coA
+      --           (Nothing, Just coB0)  -> do
+      --             -- repTyCon <- lift $ findTypeTH guts ''GPUExp
+      --             -- let Just coB = setNominalRole_maybe (coercionRole coB0) coB0
+      --             -- let coB' = mkAppCo (mkReflCo (coercionRole coB) repTyCon) coB
 
-                  liftIO $ putStrLn $ "Casting B... " ++ showPpr dflags (coercionKind coB0)
-                  -- liftIO $ putStrLn $ "coB0: " ++ showPpr dflags coB0
-                  -- liftIO $ putStrLn $ "^----------> " ++ showPpr dflags (coercionRole coB)
-                  -- liftIO $ putStrLn $ "^----------> " ++ showPpr dflags (coercionRole coB')
+      --             liftIO $ putStrLn $ "Casting B... " ++ showPpr dflags (coercionKind coB0)
+      --             -- liftIO $ putStrLn $ "coB0: " ++ showPpr dflags coB0
+      --             -- liftIO $ putStrLn $ "^----------> " ++ showPpr dflags (coercionRole coB)
+      --             -- liftIO $ putStrLn $ "^----------> " ++ showPpr dflags (coercionRole coB')
 
-                  return $ Nothing --Just coB'
-                (Just coA, Just coB) -> do
-                  liftIO $ putStrLn $ "Casting AB... " ++ showPpr dflags (coercionKind coA, coercionKind coB)
-                  case orderCoercions coA coB of
-                    Just (coA', coB') -> return $ Just (composeCos coA' coB')
-                    Nothing -> do -- TODO: Why does this happen? Does coB need a GPUExp wrapping (in both sides)?
-                      repTyCon <- lift $ findTypeTH guts ''GPUExp
-                      let coB''0 = mkAppCo (mkReflCo (coercionRole coB) repTyCon) coB
-                          coB''  = coB''0 --downgradeRole (coercionRole coA) (coercionRole coB''0) coB''0
-                          composed = composeCos coA coB''
+      --             return $ Nothing --Just coB'
+      --           (Just coA, Just coB) -> do
+      --             liftIO $ putStrLn $ "Casting AB... " ++ showPpr dflags (coercionKind coA, coercionKind coB)
+      --             case orderCoercions coA coB of
+      --               Just (coA', coB') -> return $ Just (composeCos coA' coB')
+      --               Nothing -> do -- TODO: Why does this happen? Does coB need a GPUExp wrapping (in both sides)?
+      --                 repTyCon <- lift $ findTypeTH guts ''GPUExp
+      --                 let coB''0 = mkAppCo (mkReflCo (coercionRole coB) repTyCon) coB
+      --                     coB''  = coB''0 --downgradeRole (coercionRole coA) (coercionRole coB''0) coB''0
+      --                     composed = composeCos coA coB''
 
-                      -- error $ "elimRepUnrep_co: orderCoercions: " ++ showPpr dflags (coercionKind coA, coercionKind coB)
-                      -- return $ Just coA --error "elimRepUnrep_co: orderCoercions"
+      --                 -- error $ "elimRepUnrep_co: orderCoercions: " ++ showPpr dflags (coercionKind coA, coercionKind coB)
+      --                 -- return $ Just coA --error "elimRepUnrep_co: orderCoercions"
 
-                      liftIO $ putStrLn $ "Coercion roles: " ++ showPpr dflags (coercionRole coA, coercionRole coB'', coercionRole composed)
-                      return $ Just composed
+      --                 liftIO $ putStrLn $ "Coercion roles: " ++ showPpr dflags (coercionRole coA, coercionRole coB'', coercionRole composed)
+      --                 return $ Just composed
+
+      -- Var (dataConWorkId eqDataCon) :@ Type k :@ Type ty1 :@ Type ty2 :@ Coercion co
+      -- k = tcTypeKind ty1
+
+      let newCo = buildCoercion (exprType x) origType
+      let co_M = Just $ downgradeRole Representational (coercionRole newCo) newCo
+      -- traceM $ "newCo = {" ++ showPpr dflags newCo ++ "}"
 
       if r == repId && u == unrepId
         then return $ coerceMaybe co_M x
-        else return $ coerceMaybe co_M expr
+        else return $ coerceMaybe coA_M expr
 
     composeCos = mkTransCo
 
-elimRepUnrep_co _guts co_M expr = return $ coerceMaybe co_M expr
+elimRepUnrep_co _guts co_M _ expr = return $ coerceMaybe co_M expr
 
 -- elimRepUnrep_co _guts Nothing expr = return expr
 -- elimRepUnrep_co _guts (Just co) expr = return $ Cast expr co

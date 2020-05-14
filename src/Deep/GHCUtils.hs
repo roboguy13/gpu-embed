@@ -169,6 +169,11 @@ normaliseTypeCo_role guts role ty = do
   return r
 
 
+normaliseCoercion :: ModGuts -> Coercion -> CoreM Coercion
+normaliseCoercion guts co = do
+  (co', ty) <- normaliseTypeCo_role guts (coercionRole co) (coercionRKind co)
+  return (mkTransCo co co')
+
 
 {-
 -- TODO: This is a stop-gap measure. Try to figure out why some of the
@@ -774,6 +779,10 @@ onType _ e = e
 onCoercion :: (Coercion -> Coercion) -> CoreExpr -> CoreExpr
 onCoercion f (Coercion co) = Coercion (f co)
 onCoercion _ e = e
+
+onCoercionM :: Applicative m => (Coercion -> m Coercion) -> CoreExpr -> m CoreExpr
+onCoercionM f (Coercion co) = Coercion <$> f co
+onCoercionM _ e = pure e
 
 removeCasts :: CoreExpr -> CoreExpr
 removeCasts (Cast e _) = removeCasts e
