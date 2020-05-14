@@ -882,7 +882,7 @@ replaceVarId i new e =
 
 replaceVarId_maybe :: Id -> CoreExpr -> CoreExpr -> Maybe CoreExpr
 replaceVarId_maybe i new (Var v)
-  | v == i = Just new
+  | v == i = trace ("replacing " ++ showSDocUnsafe (ppr v) ++ " ====> {" ++ showSDocUnsafe (ppr new) ++ "}") $ Just new
 replaceVarId_maybe _ _ _ = Nothing
 
 -- | Apply to f in (((...((f x0 x1 ... xN) y0) ...) yM) y(M-1))
@@ -1240,7 +1240,14 @@ combineCasts_maybe dflags origE@(Cast (Cast e coA) coB) =
     then error "combineCasts_maybe: *** coercion roles do not match ***"
     else
       case orderCoercions coA coB of
-        Just (coA', coB') -> Just $ Cast e (mkTransCo coA' coB')
+        Just (coA', coB') ->
+          if eqType (coercionLKind coB') (coercionRKind coB')
+            then Just $ Cast e coA'
+            else trace ("combineCasts_maybe: coB' = {" ++ showPpr dflags coB' ++ "}") $
+                 trace ("^-------------------------->" ++ showPpr dflags (coercionLKind coB', coercionRKind coB')) $
+                 trace ("===========================>" ++ showPpr dflags (getCoVar_maybe coB')) $
+                 -- trace ("===========================>" ++ showPpr dflags (buildCoercion (coercionLKind coB') (coercionRKind coB'))) $
+                 Just $ Cast e (mkTransCo coA' coB')
         Nothing ->
           error $ "combineCasts_maybe: *** coercions do not match ***: " ++ showPpr dflags (coercionKind coA, coercionKind coB)
           -- trace "combineCasts_maybe: *** coercions do not match ***" $ Just e
@@ -1326,10 +1333,26 @@ substCoreAlt v e alt = let (con, vs, rhs) = alt
                            (subst', vs')  = substBndrs subst vs
                         in (con, vs', substExpr (text "alt-rhs") subst' rhs)
 
+-- For use with trace-style functions
+whenId :: Bool -> (a -> a) -> a -> a
+whenId b f x
+  | b = f x
+  | otherwise = x
+
 -- | Beta-reduce as many lambda-binders as possible.
 betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])
-betaReduceAll (Lam v body) (a:as) = betaReduceAll (substCoreExpr v a body) as
+betaReduceAll e0@(Lam v body) (a:as) =
+  whenId (isTyCoVar v) (trace ("betaReduceAll: v = " ++ showSDocUnsafe (ppr v) ++ " ===> " ++ showSDocUnsafe (ppr a))) $
+  whenId (isTyCoVar v) (trace ("------------------------------------")) $
+  let (r, as') = betaReduceAll (substCoreExpr v a body) as
+  in
+    whenId (isTyCoVar v) (trace ("<------------ " ++ showSDocUnsafe (ppr e0))) $
+    whenId (isTyCoVar v) (trace ("^-----------> " ++ showSDocUnsafe (ppr r))) $
+    (r, as')
 betaReduceAll e@(Cast (Lam v body) co) (a:as) =
+  trace ("betaReduceAll: Cast: v = " ++ showSDocUnsafe (ppr v)) $
+  trace ("betaReduceAll: coercion = " ++ showSDocUnsafe (ppr co)) $
+  trace ("------------------------------------") $
   case splitFunCo_maybe co of
     Just (coA, coB) ->
       let (remaining, args) = betaReduceAll (Lam (setVarType v (coercionRKind coA)) (Cast body coB)) (Cast a coA:as)
@@ -1338,7 +1361,7 @@ betaReduceAll e@(Cast (Lam v body) co) (a:as) =
         -- TODO: Make sure this does, in fact, mean it's either a constraint or a forall
         -- TODO: Make sure this works in those cases ^
         -- TODO: Should there be a Cast here?
-      trace ("betaReduceAll: coercion kind = " ++ showSDocUnsafe (ppr (coercionKind co))) $
+      -- trace ("betaReduceAll: coercion kind = " ++ showSDocUnsafe (ppr (coercionKind co))) $
       case splitForAllCo_maybe co of
         Just (tyVar, coA, coB) ->
           betaReduceAll (Lam (setVarType v (coercionRKind coA)) (Cast body coB)) (Cast a coA:as)
@@ -1460,10 +1483,22 @@ isSatisfiablePred ty = case getClassPredTys_maybe ty of
     Just (_, tys@(_:_)) -> all isTyVarTy tys
     _                   -> isTyVarTy ty
 
-caseInlineDefault :: CoreExpr -> CoreExpr
-caseInlineDefault (Case e wild ty [(DEFAULT, _, rhs)]) =
-  substInto (Just (wild, e)) rhs
-caseInlineDefault e = e
+-- TODO: This seems to be the out-of-scope coercion variable culprit.
+caseInlineDefault :: DynFlags -> CoreExpr -> CoreExpr
+caseInlineDefault dflags e0@(Case e wild ty [alt@(DEFAULT, _, rhs)]) = e0
+    -- trace ("DEFAULT wild = " ++ showSDocUnsafe (ppr wild)) $
+    -- let r = wrapLet (Just (wild, e)) rhs --substCoreAlt wild e alt--simpleOptExpr dflags e0 --caseInline dflags e0
+    -- in
+    --   trace ("DEFAULT subst r = " ++ showSDocUnsafe (ppr r)) $
+    --   r
+caseInlineDefault _ e = e
+-- caseInlineDefault (Case e wild ty [(DEFAULT, _, rhs)]) =
+--   trace ("DEFAULT wild = " ++ showSDocUnsafe (ppr wild)) $
+--   let r = substInto (Just (wild, e)) rhs
+--   in
+--     -- trace ("DEFAULT subst r = " ++ showSDocUnsafe (ppr r)) $
+--     r
+-- caseInlineDefault e = e
 
 -- Adapted from CoreOpt and given a name (in the GHC API):
 caseInlineT :: DynFlags -> CoreExpr -> CoreExpr
@@ -1493,22 +1528,25 @@ caseInline0 dflags subst expr = go expr
     in_scope_env = (in_scope, simpleUnfoldingFun)
 
     go (Case e b ty as)
+        -- | trace ("wild name = " ++ showPpr dflags b) True
+        -- | trace ("as = " ++ showPpr dflags (map (\(_, x, _) -> x) as)) True
         | not (varUnique b `elemVarSetByKey` altFvs)
         , Just lit <- exprIsLiteral_maybe in_scope_env e'
         , Just (altcon, bs, rhs) <- findAlt (LitAlt lit) as
-        = caseInline0 dflags subst rhs
+        = caseInline0 dflags subst' rhs
 
         -- See Note [Getting the map/coerce RULE to work]
         -- | isDeadBinder b
         | not (varUnique b `elemVarSetByKey` altFvs)
         , Just (con, _tys, es) <- exprIsConApp_maybe in_scope_env e'
         , Just (altcon, bs, rhs) <- findAlt (DataAlt con) as
-        = case altcon of
-            DEFAULT -> caseInline0 dflags subst rhs --go rhs
-            _       -> foldr substInto (caseInline0 dflags env' rhs) mb_prs
-              where
-                (env', mb_prs) = mapAccumL simple_out_bind subst $
+        = let (env', mb_prs) = mapAccumL simple_out_bind subst' $
                                  zipEqual "simpleOptExpr" bs es
+              subst' = extendSubst subst b e
+          in
+            case altcon of
+              DEFAULT -> caseInline0 dflags env' rhs --go rhs
+              _       -> foldr substInto (caseInline0 dflags env' rhs) mb_prs
 
          -- Note [Getting the map/coerce RULE to work]
         -- | isDeadBinder b
@@ -1518,10 +1556,10 @@ caseInline0 dflags subst expr = go expr
         , (Var fun, _args) <- collectArgs e
         , fun `hasKey` coercibleSCSelIdKey
            -- without this last check, we get #11230
-        = caseInline0 dflags subst rhs --go rhs
+        = caseInline0 dflags subst' rhs --go rhs
 
         | otherwise
-        = Case e' b' (CoreSubst.substTy subst ty)
+        = Case e' b' (CoreSubst.substTy subst' ty)
                      (map (go_alt subst') as)
       where
          altFvs = unionVarSets $ map (\(_, _, rhs) -> exprFreeVars rhs) as
@@ -1539,9 +1577,9 @@ substInto :: Maybe (Id, CoreExpr) -> CoreExpr -> CoreExpr
 substInto Nothing body = body
 substInto (Just (b, r)) body = substCoreExpr b r body
 
--- wrapLet :: Maybe (Id,CoreExpr) -> CoreExpr -> CoreExpr
--- wrapLet Nothing      body = body
--- wrapLet (Just (b,r)) body = Let (NonRec b r) body
+wrapLet :: Maybe (Id,CoreExpr) -> CoreExpr -> CoreExpr
+wrapLet Nothing      body = body
+wrapLet (Just (b,r)) body = Let (NonRec b r) body
 
 simpleUnfoldingFun :: IdUnfoldingFun
 simpleUnfoldingFun id
