@@ -1315,6 +1315,12 @@ unfoldAndBetaReduce guts dflags = maybeApply . unfoldAndBetaReduce_maybe guts df
 etaReduce_maybe :: CoreExpr -> Maybe CoreExpr
 etaReduce_maybe (Lam v (App f (Var v')))
   | v == v' = Just f
+etaReduce_maybe (Lam v (App f (Cast (Var v') co)))
+  | v == v' =
+      let (argTy, restTy) = splitFunTy (exprType f)
+          co' = mkFunCo (coercionRole co) co (mkReflCo (coercionRole co) restTy)
+      in
+      Just $ Cast f co'
 etaReduce_maybe _ = Nothing
 
 etaReduce :: CoreExpr -> CoreExpr
@@ -1333,6 +1339,25 @@ substCoreAlt v e alt = let (con, vs, rhs) = alt
                            (subst', vs')  = substBndrs subst vs
                         in (con, vs', substExpr (text "alt-rhs") subst' rhs)
 
+caseFloatApp :: CoreExpr -> CoreExpr
+caseFloatApp (App (Case s b wild alts) v) =
+  let newAlts = mapAlts (`App` v) alts
+  in Case s b (coreAltsType newAlts) newAlts
+    -- captures    <- appT (liftM (map mkVarSet) caseAltVarsT) (arr freeVarsExpr) (flip (map . intersectVarSet))
+    -- bndrCapture <- appT caseBinderIdT (arr freeVarsExpr) elemVarSet
+    -- appT ((if not bndrCapture then idR else alphaCaseBinderR Nothing)
+    --       >>> caseAllR idR idR idR (\i -> if isEmptyVarSet (captures !! i) then idR else alphaAltR)
+    --      )
+    --       idR
+    --       (\(Case s b _ alts) v -> let newAlts = mapAlts (`App` v) alts
+    --                                 in Case s b (coreAltsType newAlts) newAlts)
+caseFloatApp e = e
+
+-- From hermit's HERMIT.Core:
+-- | Map a function over the RHS of each case alternative.
+mapAlts :: (CoreExpr -> CoreExpr) -> [CoreAlt] -> [CoreAlt]
+mapAlts f alts = [ (ac, vs, f e) | (ac, vs, e) <- alts ]
+
 -- For use with trace-style functions
 whenId :: Bool -> (a -> a) -> a -> a
 whenId b f x
@@ -1342,17 +1367,17 @@ whenId b f x
 -- | Beta-reduce as many lambda-binders as possible.
 betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])
 betaReduceAll e0@(Lam v body) (a:as) =
-  whenId (isTyCoVar v) (trace ("betaReduceAll: v = " ++ showSDocUnsafe (ppr v) ++ " ===> " ++ showSDocUnsafe (ppr a))) $
-  whenId (isTyCoVar v) (trace ("------------------------------------")) $
+  -- whenId (isTyCoVar v) (trace ("betaReduceAll: v = " ++ showSDocUnsafe (ppr v) ++ " ===> " ++ showSDocUnsafe (ppr a))) $
+  -- whenId (isTyCoVar v) (trace ("------------------------------------")) $
   let (r, as') = betaReduceAll (substCoreExpr v a body) as
   in
-    whenId (isTyCoVar v) (trace ("<------------ " ++ showSDocUnsafe (ppr e0))) $
-    whenId (isTyCoVar v) (trace ("^-----------> " ++ showSDocUnsafe (ppr r))) $
+    -- whenId (isTyCoVar v) (trace ("<------------ " ++ showSDocUnsafe (ppr e0))) $
+    -- whenId (isTyCoVar v) (trace ("^-----------> " ++ showSDocUnsafe (ppr r))) $
     (r, as')
 betaReduceAll e@(Cast (Lam v body) co) (a:as) =
-  trace ("betaReduceAll: Cast: v = " ++ showSDocUnsafe (ppr v)) $
-  trace ("betaReduceAll: coercion = " ++ showSDocUnsafe (ppr co)) $
-  trace ("------------------------------------") $
+  -- trace ("betaReduceAll: Cast: v = " ++ showSDocUnsafe (ppr v)) $
+  -- trace ("betaReduceAll: coercion = " ++ showSDocUnsafe (ppr co)) $
+  -- trace ("------------------------------------") $
   case splitFunCo_maybe co of
     Just (coA, coB) ->
       let (remaining, args) = betaReduceAll (Lam (setVarType v (coercionRKind coA)) (Cast body coB)) (Cast a coA:as)

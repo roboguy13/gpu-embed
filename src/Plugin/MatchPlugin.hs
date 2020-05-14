@@ -898,7 +898,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 let elimConstructThen t
                       = repeatTransform
                           (id
-                            (upOneLevel_maybe (t . betaReduce)
+                            (upOneLevel_maybe (t . Data.transform (maybeApply (combineCasts_maybe dflags)). Data.transform betaReduce . Data.transform etaReduce . Data.transform betaReduce . caseFloatApp)
                               (fmap (caseInlineDefault dflags) .
                                (upOneLevel_maybe (Just
                                                       . (\e -> id--Data.transform (simpleOptExpr dflags)
