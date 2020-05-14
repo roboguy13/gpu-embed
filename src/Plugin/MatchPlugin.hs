@@ -910,7 +910,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                                                                -- $ Data.transform (onAppWhen (appFunFromModule internalTypeableModule) (simpleOptExpr dflags))
                                                                -- $ Data.transform (unfoldAndBetaReduce guts dflags (idIsFrom internalTypeableModule))
                                                                -- $ occurAnalyseExpr
-                                                               $ simpleOptExpr dflags
+                                                               -- $ simpleOptExpr dflags
                                                                $ onVar getUnfolding'
                                                                $ e)
                                                       . Data.transform (caseInline dflags)
@@ -944,7 +944,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 let newExpr'0 = untilNothing elimConstruct newExpr
                 let newExpr'
                       = Data.transform (caseInline dflags)
-                        $ Data.transform betaReduce 
+                        $ Data.transform betaReduce
                         $ Data.transform (maybeApply (combineCasts_maybe dflags)) $ newExpr'0
 
                 -- error (showPpr dflags (Data.transform(unfoldAndBetaReduce guts dflags (idIsFrom internalTypeableModule)) newExpr'0))
@@ -956,24 +956,26 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 castExpId <- lift $ findIdTH guts 'CastExp
 
 
-                let newExpr'''
-                      = Data.transform
-                          (maybeApply
-                            (upOneLevel_maybe
-                              (fixExtCast dflags expType castExpId)
-                              (\e0 ->
-                                let r = getAny . execWriter $
-                                          (descendIntoCastsM
-                                            (\e ->
-                                              case (e, collectArgs e) of
-                                                (App {}, (Var fn, _)) -> do
-                                                  if fn == externalizeId
-                                                    then tell (Any True)
-                                                    else return ()
-                                                  return e
-                                                _ -> return e
-                                            )) e0
-                                in if r then Just e0 else Nothing))) newExpr''
+                let newExpr''' = newExpr''
+
+                -- let newExpr'''
+                --       = Data.transform
+                --           (maybeApply
+                --             (upOneLevel_maybe
+                --               (fixExtCast dflags expType castExpId)
+                --               (\e0 ->
+                --                 let r = getAny . execWriter $
+                --                           (descendIntoCastsM
+                --                             (\e ->
+                --                               case (e, collectArgs e) of
+                --                                 (App {}, (Var fn, _)) -> do
+                --                                   if fn == externalizeId
+                --                                     then tell (Any True)
+                --                                     else return ()
+                --                                   return e
+                --                                 _ -> return e
+                --                             )) e0
+                --                 in if r then Just e0 else Nothing))) newExpr''
 
                 -- traceM $ "repUnfolding = " ++ showPpr dflags repUnfolding
                 -- traceM $ "fn = {" ++ showPpr dflags fn ++ "}"
@@ -988,20 +990,25 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 -- newExpr''' <- Data.transformM (maybeApplyM (onCast_maybe mark)) newExpr''
 
-                let (constructRepFn, [Type ty, dict1, dict2, constructRepArg]) = collectArgs newExpr'''
+                traceM $ "newExpr''' = {" ++ showPpr dflags newExpr''' ++ "}"
+                -- let constructRepFn = newExpr'''
+                -- let (constructRepFn, [Type ty, dict1, dict2, constructRepArg]) = collectArgs newExpr'''
+
+                -- let (constructRepFn, args) = collectArgs newExpr'''
+                --     constructArg = last args
 
                 -- traceM $ "constructRepArg = {" ++ showPpr dflags constructRepArg ++ "}"
 
-                    -- Normalize types
-                constructRepArg' <- lift $ Data.transformM (maybeApplyM (onCast_maybe
-                                      (\e@(Cast x co) -> do
-                                          if coercionRole co == Representational
-                                            then return $ Cast x co
-                                            else do
-                                              (co', ty') <- normaliseTypeCo_role guts (coercionRole co) (exprType e)
-                                              -- traceM ("coercion transformed: " ++ showPpr dflags (coercionKind co) ++ " ===> " ++ showPpr dflags ty')
-                                              return (Cast x co'))))
-                                      constructRepArg
+                    -- -- Normalize types
+                -- constructRepArg' <- lift $ Data.transformM (maybeApplyM (onCast_maybe
+                    --                   (\e@(Cast x co) -> do
+                    --                       if coercionRole co == Representational
+                    --                         then return $ Cast x co
+                    --                         else do
+                    --                           (co', ty') <- normaliseTypeCo_role guts (coercionRole co) (exprType e)
+                    --                           -- traceM ("coercion transformed: " ++ showPpr dflags (coercionKind co) ++ " ===> " ++ showPpr dflags ty')
+                    --                           return (Cast x co'))))
+                    --                   constructRepArg
 
                 -- traceM $ "constructRepArg' = {" ++ showPpr dflags constructRepArg' ++ "}"
                 -- mark newExpr''
@@ -1019,25 +1026,25 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- traceM $ "modified newExpr: {" ++ showPpr dflags newExpr'0 ++ "}"
 
                     -- Normalize type arguments of 'ConstructRep' and remove some out-of-date coercions
-                r0 <- descendIntoCastsM (\e -> do
-                        let (constrFn, constrArgs0) = collectArgs e
-                        -- traceM $ "constrFn = " ++ showPpr dflags (simpleOptExpr dflags constrFn)
+                -- r0 <- descendIntoCastsM (\e -> do
+                --         let (constrFn, constrArgs0) = collectArgs e
+                --         -- traceM $ "constrFn = " ++ showPpr dflags (simpleOptExpr dflags constrFn)
 
-                        constrArgs <- lift $ mapM (onTypeM (\x -> do r <- normaliseType' guts x; trace ("normalise result = " ++ showPpr dflags r) (return r))) constrArgs0
+                --         constrArgs <- lift $ mapM (onTypeM (\x -> do r <- normaliseType' guts x; trace ("normalise result = " ++ showPpr dflags r) (return r))) constrArgs0
 
-                        let (Type constrResultTy:_) = constrArgs
+                --         let (Type constrResultTy:_) = constrArgs
 
-                        let resultTyCo = mkReflCo Nominal constrResultTy
-                        -- traceM $ "resultTyCo = " ++ showPpr dflags resultTyCo
+                --         let resultTyCo = mkReflCo Nominal constrResultTy
+                --         -- traceM $ "resultTyCo = " ++ showPpr dflags resultTyCo
 
-                        let constrArgs' = map (onCoercion (const resultTyCo)) constrArgs -- TODO: Make sure this works in the general case
+                --         let constrArgs' = map (onCoercion (const resultTyCo)) constrArgs -- TODO: Make sure this works in the general case
 
-                        return (mkApps constrFn constrArgs')
-                        ) (removeCasts constructRepArg')
+                --         return (mkApps constrFn constrArgs')
+                --         ) (removeCasts constructRepArg')
 
                 -- let r0 = constructRepArg'
 
-                let r = r0 --Data.transform (simpleOptExpr dflags) r0
+                -- let r = constructRepArg --constructRepArg' --r0 --Data.transform (simpleOptExpr dflags) r0
 
                 -- (co', ty') <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [ty]])
 
@@ -1047,17 +1054,19 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 typeType <- lift $ findTypeTH guts ''Kind.Type
                 typeableTyCon <- lift $ findTyConTH guts ''Typeable
-                dict1' <- Data.descendM (fixConstructorCast guts dflags) =<< lift (buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, ty]))
-                dict2' <- Data.descendM (fixConstructorCast guts dflags) =<< lift (buildDictionaryT guts (mkTyConApp repTyCon [ty]))
+                -- dict1' <- {- Data.descendM (fixConstructorCast guts dflags) =<< -} lift (buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, ty]))
+                -- dict2' <- {- Data.descendM (fixConstructorCast guts dflags) =<< -} lift (buildDictionaryT guts (mkTyConApp repTyCon [ty]))
 
-                r' <- Data.descendM (fixConstructorCast guts dflags) r
+                -- r' <- Data.descendM ((fixConstructorCast guts dflags)) r
 
-                (co', ty') <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [ty]])
-                (co'', ty'') <- lift $ normaliseTypeCo_role guts Representational (exprType r')
+                -- (co', ty') <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [ty]])
+                -- (co'', ty'') <- lift $ normaliseTypeCo_role guts Representational (exprType r')
+
                 -- error $ showPpr dflags (exprType r', coercionKind co', coercionKind co'')
-                let theCo = mkTransCo co'' (mkSymCo co')
+                -- let theCo = mkTransCo co'' (mkSymCo co')
 
-                let constructedResult = (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ Cast r' theCo)
+                constructedResult <- return newExpr''' --return (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ Cast r' theCo)
+                -- let constructedResult = (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ r')
 
                 -- traceM $ "constructRepFn = " ++ showPpr dflags constructRepFn
                 -- traceM $ "dict1' = " ++ showPpr dflags dict1'
@@ -1139,6 +1148,12 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
         go expr = return expr
 
+-- normaliseConstructorType :: ModGuts -> DynFlags -> CoreExpr -> MatchM CoreExpr
+-- normaliseConstructorType guts dflags e0@(Var v)
+--   | Just _ <- isDataConId_maybe fn
+--     = do
+        
+
 fixConstructorCast :: ModGuts -> DynFlags -> CoreExpr -> MatchM CoreExpr
 fixConstructorCast guts dflags e0@(Cast (app@(App {})) co0)
   | (Var fn, args) <- collectArgs app
@@ -1153,10 +1168,13 @@ fixConstructorCast guts dflags e0@(Cast (app@(App {})) co0)
          Just (tyF, [tyArg])
            | tyF == expTyCon -> do
              (co', _) <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [tyArg]])
-             -- traceM $ "Fixed coercion kind: " ++ showPpr dflags (coercionKind co')
+             traceM $ "Fixed coercion kind: " ++ showPpr dflags (coercionKind co')
              traceM $ "Fixed constructor: " ++ showPpr dflags fn
+             -- traceM $ "  ^--------------> " ++ showPpr dflags (coercionKind (mkSymCo co'))
              args' <- mapM (Data.descendM (fixConstructorCast guts dflags)) args
-             return $ Cast (mkApps (Var fn) args) (mkSymCo co')
+
+             -- return app
+             return $ Cast (mkApps (Var fn) args') (mkSymCo co')
          _ -> return e0
 
 fixConstructorCast guts dflags e0@(Cast (Var x) co0)
@@ -1175,7 +1193,10 @@ fixConstructorCast guts dflags e0@(Cast (Var x) co0)
              -- traceM $ "  ^--------------> " ++ showPpr dflags co'
              -- traceM $ "  ^--------------> " ++ showPpr dflags (exprType (Var x), ty, tyArg, coercionKind co')
              -- traceM $ ""
+
              return $ Var x
+             -- return $ e0
+
              -- return $ Cast (Var x) (mkSymCo co')
          _ -> return e0
 
@@ -1257,9 +1278,17 @@ elimRepUnrep_co guts coA_M expr@(Var r :@ Type{} :@ dict :@ arg) =
                 (Just coA, Nothing)  -> do
                   liftIO $ putStrLn $ "Casting A... " ++ showPpr dflags (coercionKind coA)
                   return $ Just coA
-                (Nothing, Just coB)  -> do
-                  liftIO $ putStrLn $ "Casting B... " ++ showPpr dflags (coercionKind coB)
-                  return $ Just coB
+                (Nothing, Just coB0)  -> do
+                  -- repTyCon <- lift $ findTypeTH guts ''GPUExp
+                  -- let Just coB = setNominalRole_maybe (coercionRole coB0) coB0
+                  -- let coB' = mkAppCo (mkReflCo (coercionRole coB) repTyCon) coB
+
+                  liftIO $ putStrLn $ "Casting B... " ++ showPpr dflags (coercionKind coB0)
+                  -- liftIO $ putStrLn $ "coB0: " ++ showPpr dflags coB0
+                  -- liftIO $ putStrLn $ "^----------> " ++ showPpr dflags (coercionRole coB)
+                  -- liftIO $ putStrLn $ "^----------> " ++ showPpr dflags (coercionRole coB')
+
+                  return $ Nothing --Just coB'
                 (Just coA, Just coB) -> do
                   liftIO $ putStrLn $ "Casting AB... " ++ showPpr dflags (coercionKind coA, coercionKind coB)
                   case orderCoercions coA coB of
@@ -1807,10 +1836,11 @@ primMapTH =
   ,('Done, 'DoneExp)
   ,('Step, 'StepExp)
 
-  ,('(), 'UnitExp)
-  ,('Left, 'LeftExp)
-  ,('Right, 'RightExp)
-  ,('(,), 'PairExp)
+  -- ,('(), 'UnitExp)
+  -- ,('Left, 'LeftExp)
+  -- ,('Right, 'RightExp)
+  -- ,('(,), 'PairExp)
+
   ]
 
 getGPUExprNamedsFrom :: [(TH.Name, Named)] -> TH.Name -> Named

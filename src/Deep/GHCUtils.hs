@@ -767,6 +767,10 @@ onTypeM :: Applicative m => (Type -> m Type) -> CoreExpr -> m CoreExpr
 onTypeM f (Type ty) = Type <$> f ty
 onTypeM _ e = pure e
 
+onType :: (Type -> Type) -> CoreExpr -> CoreExpr
+onType f (Type ty) = Type $ f ty
+onType _ e = e
+
 onCoercion :: (Coercion -> Coercion) -> CoreExpr -> CoreExpr
 onCoercion f (Coercion co) = Coercion (f co)
 onCoercion _ e = e
@@ -1320,12 +1324,24 @@ betaReduceAll e@(Cast (Lam v body) co) (a:as) =
   case splitFunCo_maybe co of
     Just (coA, coB) ->
       let (remaining, args) = betaReduceAll (Lam (setVarType v (coercionRKind coA)) (Cast body coB)) (Cast a coA:as)
-      in (remaining, as)
+      in (remaining, args)
     Nothing ->
         -- TODO: Make sure this does, in fact, mean it's either a constraint or a forall
         -- TODO: Make sure this works in those cases ^
         -- TODO: Should there be a Cast here?
-      betaReduceAll (substCoreExpr v a body) as
+      trace ("betaReduceAll: coercion kind = " ++ showSDocUnsafe (ppr (coercionKind co))) $
+      case splitForAllCo_maybe co of
+        Just (tyVar, coA, coB) ->
+          betaReduceAll (Lam (setVarType v (coercionRKind coA)) (Cast body coB)) (Cast a coA:as)
+        _ -> --error $ "betaReduceAll: " ++ showSDocUnsafe (ppr (coercionLKind co, coercionRKind co))
+          let (coA, coB) = decomposeFunCo (coercionRole co) co
+          in
+            betaReduceAll (Lam (setVarType v (coercionRKind coA)) (Cast body coB)) (Cast a coA:as)
+          -- case a of
+          --   Type ty ->
+          --     let substTyVar = substTy (extendTvSubst emptyTCvSubst tyVar a)
+          --     betaReduceAll (substCoreExpr v a (Data.transform (onType tySubst) body)) as
+          --   _ -> error "betaReduceAll"
       -- error $ "betaReduceAll: " ++ showSDocUnsafe (ppr (coercionKind co))
       -- (e, as)
 
