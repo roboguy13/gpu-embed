@@ -8,6 +8,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module Deep.GHCUtils where
 
@@ -431,7 +432,7 @@ initTcFromModGuts hsc_env guts hsc_src keep_rn_syntax do_this
 
         -- OK, here's the business end!
         maybe_res <- initTcRnIf 'a' hsc_env gbl_env lcl_env $
-                     do { r <- tryM do_this
+                     do { r <- TcRnMonad.tryM do_this
                         ; case r of
                           Right res -> return (Just res)
                           Left _    -> return Nothing } ;
@@ -747,6 +748,14 @@ onVar_maybe _ e = Nothing
 
 onVar :: (Id -> CoreExpr) -> CoreExpr -> CoreExpr
 onVar = maybeApply  . onVar_maybe
+
+onVarFromClass :: Name -> (Id -> CoreExpr) -> CoreExpr -> CoreExpr
+onVarFromClass cName f (Var v)
+  | Just cName' <- fmap className (isClassOpId_maybe v)
+  , cName' == cName =
+      trace ("onVarFromClass: v = " ++ showSDocUnsafe (ppr v)) $
+      f v
+onVarFromClass _ _ e = e
 
 -- | Transform the function position of a collection of Apps:
 -- f :@ x0 :@ x1 :@ ... :@ xN    ==>    (t f) :@ x0 :@ x1 :@ ... :@ xN
@@ -1102,7 +1111,7 @@ castFloatAppEither dflags (App (Cast e1 co) e2) =
             -- TyConAppCo _r t [c1, c2] ->
             --     if isFunTyCon t
             --       then trace "castFloatApp firing" $ return $ Cast (App e1 (Cast e2 (modifyRole (SymCo c1)))) (modifyRole c2)
-            --       else Left "caseFloatAppEither"
+            --       else Left "castFloatAppEither"
 
 -- #if __GLASGOW_HASKELL__ > 710
 --             ForAllCo{} -> Left "castFloatAppR: ForAllCo TODO"
@@ -1110,10 +1119,10 @@ castFloatAppEither dflags (App (Cast e1 co) e2) =
 
             ForAllCo t kc c2 -> -- TODO: Does this work as expected with the newer GHC API?
                 case e2 of
-                  Type x' -> --trace ("caseFloatApp forallco: { " ++ showPpr dflags (t, kc, c2) ++ "\n}\n") $
+                  Type x' -> --trace ("castFloatApp forallco: { " ++ showPpr dflags (t, kc, c2) ++ "\n}\n") $
                     -- return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') (modifyRole c2)))
                     Left "" --return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') (modifyRole c2)))
-                  _ -> Left "caseFloatAppEither"
+                  _ -> Left "castFloatAppEither"
 
 -- #endif
             _ ->
@@ -1122,9 +1131,9 @@ castFloatAppEither dflags (App (Cast e1 co) e2) =
                   let coA' = mkSymCo (modifyRole coA)
                       coB' = mkSymCo (modifyRole coB)
                   in
-                    -- trace ("caseFloatApp decomposeFun modified: " ++ showPpr dflags (coA', coB')) $
-                    -- trace ("caseFloatApp coA' free vars: " ++ showPpr dflags (freeVarsCoercion coA')) $
-                    -- trace ("caseFloatApp coB' free vars: " ++ showPpr dflags (freeVarsCoercion coB')) $
+                    -- trace ("castFloatApp decomposeFun modified: " ++ showPpr dflags (coA', coB')) $
+                    -- trace ("castFloatApp coA' free vars: " ++ showPpr dflags (freeVarsCoercion coA')) $
+                    -- trace ("castFloatApp coB' free vars: " ++ showPpr dflags (freeVarsCoercion coB')) $
                     Right $ Cast (App e1 (Cast e2 coA')) coB'
                 Nothing -> Left "castFloatAppEither: decomposeFunCo_maybe gave Nothing"
                 -- Right $ Cast (App e1 (Cast e2 coA)) coB
@@ -1271,7 +1280,8 @@ dFunExpr _ = error "dFunExpr: not a DFunUnfolding"
 -- | @Let (NonRec v e) body@ ==> @body[e/v]@
 letNonRecSubst :: CoreExpr -> CoreExpr
 letNonRecSubst (Let (NonRec v rhs) body) =
-   substCoreExpr v rhs body
+  -- trace ("letNonRecSubst: v = " ++ showSDocUnsafe (ppr v)) $
+  substCoreExpr v rhs body
 letNonRecSubst expr = expr
 
 onVarWhen :: (Id -> Bool) -> (Id -> CoreExpr) -> CoreExpr -> CoreExpr
@@ -1314,9 +1324,9 @@ unfoldAndBetaReduce guts dflags = maybeApply . unfoldAndBetaReduce_maybe guts df
 
 etaReduce_maybe :: CoreExpr -> Maybe CoreExpr
 etaReduce_maybe (Lam v (App f (Var v')))
-  | v == v' = Just f
+  | v == v' && not (v `elemVarSet` localFreeVarsExpr f) = Just f
 etaReduce_maybe (Lam v (App f (Cast (Var v') co)))
-  | v == v' =
+  | v == v' && not (v `elemVarSet` localFreeVarsExpr f) =
       let (argTy, restTy) = splitFunTy (exprType f)
           co' = mkFunCo (coercionRole co) co (mkReflCo (coercionRole co) restTy)
       in
@@ -1339,10 +1349,16 @@ substCoreAlt v e alt = let (con, vs, rhs) = alt
                            (subst', vs')  = substBndrs subst vs
                         in (con, vs', substExpr (text "alt-rhs") subst' rhs)
 
+-- | ((case s wild of { P ... -> f; ... }) v)   ==>   case s wild of { P ... -> f v; ... }
 caseFloatApp :: CoreExpr -> CoreExpr
-caseFloatApp (App (Case s b wild alts) v) =
-  let newAlts = mapAlts (`App` v) alts
-  in Case s b (coreAltsType newAlts) newAlts
+caseFloatApp e0@(App (Case s b wild alts) v) =
+  let vFVs = freeVarsExpr v
+      altsFVs = foldr unionVarSet emptyVarSet $ map (mkVarSet . altVars) alts
+      newAlts = mapAlts (`App` v) alts
+  in
+    if isEmptyVarSet (intersectVarSet vFVs altsFVs)
+      then Case s b (coreAltsType newAlts) newAlts
+      else e0
     -- captures    <- appT (liftM (map mkVarSet) caseAltVarsT) (arr freeVarsExpr) (flip (map . intersectVarSet))
     -- bndrCapture <- appT caseBinderIdT (arr freeVarsExpr) elemVarSet
     -- appT ((if not bndrCapture then idR else alphaCaseBinderR Nothing)
@@ -1353,10 +1369,25 @@ caseFloatApp (App (Case s b wild alts) v) =
     --                                 in Case s b (coreAltsType newAlts) newAlts)
 caseFloatApp e = e
 
+-- f (case s wild of { P ... -> e; ... })   ==>   case s wild of { P ... -> f e; ... }
+caseFloatArg :: CoreExpr -> CoreExpr
+caseFloatArg e0@(App f (Case s b wild alts)) =
+  let fFVs = freeVarsExpr f
+      altsFVs = foldr unionVarSet emptyVarSet $ map (mkVarSet . altVars) alts
+      newAlts = mapAlts (f `App`) alts
+  in
+    if isEmptyVarSet (intersectVarSet fFVs altsFVs)
+      then Case s b (coreAltsType newAlts) newAlts
+      else e0
+caseFloatArg e = e
+
 -- From hermit's HERMIT.Core:
 -- | Map a function over the RHS of each case alternative.
 mapAlts :: (CoreExpr -> CoreExpr) -> [CoreAlt] -> [CoreAlt]
 mapAlts f alts = [ (ac, vs, f e) | (ac, vs, e) <- alts ]
+-- | List the variables bound by a case alternative.
+altVars :: CoreAlt -> [Var]
+altVars (_,vs,_) = vs
 
 -- For use with trace-style functions
 whenId :: Bool -> (a -> a) -> a -> a
@@ -1367,6 +1398,7 @@ whenId b f x
 -- | Beta-reduce as many lambda-binders as possible.
 betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])
 betaReduceAll e0@(Lam v body) (a:as) =
+  -- trace ("betaReduceAll: v = " ++ showSDocUnsafe (ppr v)) $
   -- whenId (isTyCoVar v) (trace ("betaReduceAll: v = " ++ showSDocUnsafe (ppr v) ++ " ===> " ++ showSDocUnsafe (ppr a))) $
   -- whenId (isTyCoVar v) (trace ("------------------------------------")) $
   let (r, as') = betaReduceAll (substCoreExpr v a body) as
@@ -1529,14 +1561,14 @@ caseInlineDefault _ e = e
 caseInlineT :: DynFlags -> CoreExpr -> CoreExpr
 caseInlineT dflags = Data.transform (caseInline dflags)
 
--- TODO: Make sure this works (I believe it does)
-caseInline_maybe :: DynFlags -> CoreExpr -> Maybe CoreExpr
-caseInline_maybe dflags expr0@(Case _ wild0 _ _) =
-  case caseInline dflags expr0 of
-    expr1@(Case _ wild1 _ _)
-      | wild1 == wild0 -> Nothing
-    expr1              -> Just expr1
-caseInline_maybe _ _ = Nothing
+-- -- TODO: Make sure this works (I believe it does)
+-- caseInline_maybe :: DynFlags -> CoreExpr -> Maybe CoreExpr
+-- caseInline_maybe dflags expr0@(Case _ wild0 _ _) =
+--   case caseInline dflags expr0 of
+--     expr1@(Case _ wild1 _ _)
+--       | wild1 == wild0 -> Nothing
+--     expr1              -> Just expr1
+-- caseInline_maybe _ _ = Nothing
 
 caseInline :: DynFlags -> CoreExpr -> CoreExpr
 caseInline dflags expr =
@@ -1554,7 +1586,7 @@ caseInline0 dflags subst expr = go expr
 
     go (Case e b ty as)
         -- | trace ("wild name = " ++ showPpr dflags b) True
-        -- | trace ("as = " ++ showPpr dflags (map (\(_, x, _) -> x) as)) True
+        -- , trace ("as = " ++ showPpr dflags (map (\(_, x, _) -> x) as)) True
         | not (varUnique b `elemVarSetByKey` altFvs)
         , Just lit <- exprIsLiteral_maybe in_scope_env e'
         , Just (altcon, bs, rhs) <- findAlt (LitAlt lit) as
@@ -1740,3 +1772,79 @@ safe_to_inline IAmDead              = True
 safe_to_inline occ@(OneOcc {})      =  not (occ_in_lam occ)
                                     && occ_one_br occ
 safe_to_inline (ManyOccs {})        = False
+
+{-
+-- From hermit HERMIT.Dictionary.Local.Case:
+-- | Case of Known Constructor.
+--   Eliminate a case if the scrutinee is a data constructor.
+--   If first argument is True, perform substitution in RHS, if False, build let expressions.
+caseReduceDataconR :: forall c m. ( MonadCatch m, MonadUnique m )
+                   => Bool -> Rewrite c m CoreExpr
+caseReduceDataconR subst = prefixFailMsg "Case reduction failed: " $
+                           withPatFailExc (strategyFailure (wrongExprForm "Case e v t alts")) go
+    where
+        go :: Rewrite c m CoreExpr
+        go = do
+            Case e bndr _ alts <- idR
+            let in_scope = mkInScopeSet (localFreeVarsExpr e)
+            case exprIsConApp_maybe (in_scope, idUnfolding) e of
+                Nothing                -> fail "head of scrutinee is not a data constructor."
+                Just (dc, univTys, es) -> case findAlt (DataAlt dc) alts of
+                    Nothing             -> fail "no matching alternative."
+                    Just (dc', vs, rhs) -> -- dc' is either DEFAULT or dc
+                        -- NB: It is possible that es contains one or more existentially quantified types.
+                        let fvss    = map freeVarsExpr $ map Type univTys ++ es
+                            shadows = [ v | (v,n) <- zip vs [1..], any (elemVarSet v) (drop n fvss) ]
+                        in if | any (elemVarSet bndr) fvss -> alphaCaseBinderR Nothing >>> go
+                              | null shadows               -> do let binds = zip (bndr : vs) (e : es)
+                                                                 return $ if subst
+                                                                          then foldr (uncurry substCoreExpr) rhs binds
+                                                                          else flip mkCoreLets rhs $ map (uncurry NonRec) binds
+                              | otherwise                  -> caseOneR (fail "scrutinee") (fail "binder") (fail "type") (\ _ -> acceptR (\ (dc'',_,_) -> dc'' == dc') >>> alphaAltVarsR shadows) >>> go
+-- WARNING: The alpha-renaming to avoid variable capture has not been tested.  We need testing infrastructure!
+
+-- | Constructs a common error message.
+--   Argument 'String' should be the desired form of the expression.
+wrongExprForm :: String -> String
+wrongExprForm form = "Expression does not have the form: " ++ form
+
+-- | Alpha rename a case binder.  Optionally takes a suggested new name.
+alphaCaseBinderR :: (MonadCatch m, MonadUnique m)
+                 => Maybe String -> Rewrite c m CoreExpr
+alphaCaseBinderR mn = setFailMsg (wrongFormForAlpha "Case e i ty alts") $
+                     do i  <- caseBinderIdT
+                        i' <- extractT (cloneVarAvoidingT i mn [i])
+                        caseAnyR idR (return i') idR (\ _ -> replaceVarR i i')
+
+-- | Rewrite one child of an expression of the form: @Case@ 'CoreExpr' 'Id' 'Type' ['CoreAlt']
+caseOneR :: (MonadCatch m)
+         => Rewrite c m CoreExpr
+         -> Rewrite c m Id
+         -> Rewrite c m Type
+         -> (Int -> Rewrite c m CoreAlt)
+         -> Rewrite c m CoreExpr
+caseOneR re rw rty ralts = unwrapOneR $ caseAllR (wrapOneR re) (wrapOneR rw) (wrapOneR rty) (wrapOneR . ralts)
+{-# INLINE caseOneR #-}
+
+-- | Rename the specified variables in a case alternative.
+alphaAltVarsR :: (MonadCatch m, MonadUnique m)
+              => [Var] -> Rewrite c m CoreAlt
+alphaAltVarsR vs =
+  do bs <- arr altVars
+     alphaAltVarsWithR (zip (repeat Nothing) (bs `intersect` vs))
+
+
+wrongFormForAlpha :: String -> String
+wrongFormForAlpha s = "Cannot alpha-rename, " ++ wrongExprForm s
+
+-- | Return the case binder.
+caseBinderIdT :: (Monad m) => Transform c m CoreExpr Id
+caseBinderIdT = caseT mempty idR mempty (\ _ -> idR) (\ () i () _ -> i)
+
+cloneVarAvoidingT :: (MonadUnique m) => Var -> Maybe String -> [Var] -> Transform c m CoreTC Var
+cloneVarAvoidingT v mn vs =
+  do vvs <- visibleVarsT
+     let nameModifier = freshNameGenAvoiding mn (extendVarSetList vvs vs)
+     constT (cloneVarH nameModifier v)
+-}
+
