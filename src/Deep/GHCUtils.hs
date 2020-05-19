@@ -1600,7 +1600,7 @@ caseInline0 dflags subst expr = go expr
         = let (env', mb_prs) = mapAccumL simple_out_bind subst' $
                                  zipEqual "simpleOptExpr" bs es
               subst' = extendSubst subst b e
-          in
+          in --trace ("second case: " ++ showPpr dflags b) $
             case altcon of
               DEFAULT -> caseInline0 dflags env' rhs --go rhs
               _       -> foldr substInto (caseInline0 dflags env' rhs) mb_prs
@@ -1616,11 +1616,11 @@ caseInline0 dflags subst expr = go expr
         = caseInline0 dflags subst' rhs --go rhs
 
         | otherwise
-        = Case e' b' (CoreSubst.substTy subst' ty)
+        = Case e' b' (CoreSubst.substTy subst ty)
                      (map (go_alt subst') as)
       where
          altFvs = unionVarSets $ map (\(_, _, rhs) -> exprFreeVars rhs) as
-         e' = caseInline0 dflags subst' e --go e
+         e' = go e
          (subst', b') = subst_opt_bndr subst b
     go e = substExpr (text "caseInline0.go") subst e
 

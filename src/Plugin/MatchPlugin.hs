@@ -896,95 +896,86 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- typeableC <- lift $ findClassTH guts ''Typeable
 
                 typeableTyCon <- lift $ findTyConTH guts ''Typeable
-                let elimConstructThen t
-                      = repeatTransform
-                          (id
-                            (upOneLevel_maybe (t
-                                                 -- . Data.transform betaReduce
-                                                 -- . Data.transform letNonRecSubst
-                                                 -- . Data.transform (caseInline dflags)
-                                                 . Data.transform (onScrutinee (Data.transform tryUnfoldAndReduceDict'))
-                                                 . Data.transform (replaceVarId fromId (getUnfolding' fromId))
+                -- let elimConstructThen t
+                --       = repeatTransform
+                --           (id
+                --             (upOneLevel_maybe (t
+                --                                  -- . Data.transform betaReduce
+                --                                  -- . Data.transform letNonRecSubst
+                --                                  -- . Data.transform (caseInline dflags)
+                --                                  . Data.transform (onScrutinee (Data.transform tryUnfoldAndReduceDict'))
+                --                                  . Data.transform (replaceVarId fromId (getUnfolding' fromId))
 
-                                                 . Data.transform betaReduce
-                                                 . Data.transform letNonRecSubst
-                                                 . Data.transform (onScrutinee (Data.transform (onAppFun tryUnfoldAndReduceDict')))
-                                                 . Data.transform betaReduce
-                                                 . Data.transform letNonRecSubst
-                                                 . Data.transform etaReduce
-                                                 . Data.transform (combineCasts dflags)
-                                                 . Data.transform (onVarFromClass (tyConName repTyCon) getUnfolding')
+                --                                  . Data.transform betaReduce
+                --                                  . Data.transform letNonRecSubst
+                --                                  . Data.transform (onScrutinee (Data.transform (onAppFun tryUnfoldAndReduceDict')))
+                --                                  . Data.transform betaReduce
+                --                                  . Data.transform letNonRecSubst
+                --                                  . Data.transform etaReduce
+                --                                  . Data.transform (combineCasts dflags)
+                --                                  . Data.transform (onVarFromClass (tyConName repTyCon) getUnfolding')
 
-                                                 . Data.transform caseFloatArg
-                                                 . Data.transform (caseInline dflags)
-                                                 -- . Data.transform (simpleOptExpr dflags)
-                                                 . Data.transform (maybeApply (combineCasts_maybe dflags))
-                                                 . Data.transform betaReduce
-                                                 . Data.transform etaReduce
-                                                 . Data.transform betaReduce
-                                                 . caseFloatApp)
-                              (fmap (caseInlineDefault dflags) .
-                               (upOneLevel_maybe (Just
-                                                      . (\e -> id--Data.transform (simpleOptExpr dflags)
-                                                               -- $ Data.transform (onAppWhen (appFunFromModule internalTypeableModule) (simpleOptExpr dflags))
-                                                               $ Data.transform caseFloatArg
-                                                               $ Data.transform letNonRecSubst
-                                                               $ Data.transform betaReduce
-                                                               $ (onAppFunId getUnfolding')
-                                                               $ Data.transform letNonRecSubst
-                                                               -- $ Data.transform (onAppWhen (appFunFromModule internalTypeableModule) (simpleOptExpr dflags))
-                                                               -- $ Data.transform (unfoldAndBetaReduce guts dflags (idIsFrom internalTypeableModule))
-                                                               -- $ occurAnalyseExpr
-                                                               -- $ simpleOptExpr dflags
-                                                               $ onVar getUnfolding'
-                                                               $ e)
-                                                      . Data.transform (caseInline dflags)
-                                                      . Data.transform betaReduce)
-                                                (onAppFun_maybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId)))))))
+                --                                  . Data.transform caseFloatArg
+                --                                  . Data.transform (caseInline dflags)
+                --                                  -- . Data.transform (simpleOptExpr dflags)
+                --                                  . Data.transform (maybeApply (combineCasts_maybe dflags))
+                --                                  . Data.transform betaReduce
+                --                                  . Data.transform etaReduce
+                --                                  . Data.transform betaReduce
+                --                                  . caseFloatApp)
+                --               (fmap (caseInlineDefault dflags) .
+                --                (upOneLevel_maybe (Just
+                --                                       . (\e -> id--Data.transform (simpleOptExpr dflags)
+                --                                                -- $ Data.transform (onAppWhen (appFunFromModule internalTypeableModule) (simpleOptExpr dflags))
+                --                                                $ Data.transform caseFloatArg
+                --                                                $ Data.transform letNonRecSubst
+                --                                                $ Data.transform betaReduce
+                --                                                $ (onAppFunId getUnfolding')
+                --                                                $ Data.transform letNonRecSubst
+                --                                                -- $ Data.transform (onAppWhen (appFunFromModule internalTypeableModule) (simpleOptExpr dflags))
+                --                                                -- $ Data.transform (unfoldAndBetaReduce guts dflags (idIsFrom internalTypeableModule))
+                --                                                -- $ occurAnalyseExpr
+                --                                                -- $ simpleOptExpr dflags
+                --                                                $ onVar getUnfolding'
+                --                                                $ e)
+                --                                       . Data.transform (caseInline dflags)
+                --                                       . Data.transform betaReduce)
+                --                                 (onAppFun_maybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId)))))))
 
 
-                let elimConstruct
-                      = elimConstructThen
-                          (Just
-                          . descendIntoCasts
-                              (maybeApply
-                                (upOneLevel_maybe (
-                                        Just
-                                      . Data.transform (caseInline dflags)
-                                      . Data.transform betaReduce
-                                      . Data.transform (maybeApply $
-                                            fmap tryUnfoldAndReduceDict'
-                                          . fmap (caseInline dflags)
-                                          . fmap (onScrutinee tryUnfoldAndReduceDict')
-                                          . (upOneLevel_maybe (Just . betaReduce)
-                                              (upOneLevel_maybe (Just . betaReduce)
-                                                (replaceVarId_maybe fromId (getUnfolding' fromId)))))
+                -- let elimConstruct
+                --       = elimConstructThen
+                --           (Just
+                --           . descendIntoCasts
+                --               (maybeApply
+                --                 (upOneLevel_maybe (
+                --                         Just
+                --                       . Data.transform (caseInline dflags)
+                --                       . Data.transform betaReduce
+                --                       . Data.transform (maybeApply $
+                --                             fmap tryUnfoldAndReduceDict'
+                --                           . fmap (caseInline dflags)
+                --                           . fmap (onScrutinee tryUnfoldAndReduceDict')
+                --                           . (upOneLevel_maybe (Just . betaReduce)
+                --                               (upOneLevel_maybe (Just . betaReduce)
+                --                                 (replaceVarId_maybe fromId (getUnfolding' fromId)))))
 
-                                      . (Data.transform (caseInline dflags))
-                                      . betaReduce)
-                                    (onAppFun_maybe unfoldAndReduceDict_maybe'))))
-
-                -- error $ showPpr dflags newExpr
+                --                       . (Data.transform (caseInline dflags))
+                --                       . betaReduce)
+                --                     (onAppFun_maybe unfoldAndReduceDict_maybe'))))
 
                 -- TODO: Make sure this recursively calls elimConstruct
                 -- properly (enough times)
                 -- let newExpr'0 = untilNothing elimConstruct newExpr
-                newExpr'0 <- return $ untilNothing (fmap (id) . elimConstruct) newExpr
-                let newExpr'1 = Data.transform (maybeApply (combineCasts_maybe dflags)) $ newExpr'0
+                -- newExpr'0 <- return $ untilNothing (fmap (id) . elimConstruct) newExpr
+                -- let newExpr'1 = Data.transform (maybeApply (combineCasts_maybe dflags)) $ newExpr'0
+
+                -- error $ showPpr dflags $ collectArgs newExpr
+                -- let (_constructRepId, [tyExpr, dict1, dict2, arg]) = collectArgs newExpr
+
                 let newExpr'
                       = Data.transform (caseInline dflags)
-                        $ Data.transform betaReduce
-                        $ Data.transform (onScrutinee (descendIntoCasts $ onAppFun (\x -> trace ("onAppFun: " ++ showPpr dflags x) $ tryUnfoldAndReduceDict' x)))
-                        $ untilNothing elimConstruct
-                        $ Data.transform (caseInline dflags)
-                        $ Data.transform betaReduce
-                        $ Data.transform (maybeApply (combineCasts_maybe dflags))
-                        $ Data.transform betaReduce
-                        $ Data.transform (onScrutinee tryUnfoldAndReduceDict')
-                        $ untilNothing elimConstruct
-                        $ Data.transform (caseInline dflags)
-                        $ Data.transform betaReduce
-                        $ newExpr'1
+                        $ newExpr
 
                 -- traceM $ "newExpr'0 = {" ++ showPpr dflags newExpr'0 ++ "}"
 
@@ -994,12 +985,18 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 newExpr'' <- Data.transformM (elimRepUnrep guts) newExpr'
 
+                -- error (showPpr dflags newExpr'')
+
                 expType <- lift $ findTypeTH guts ''GPUExp
                 externalizeId <- lift $ findIdTH guts 'externalize
                 castExpId <- lift $ findIdTH guts 'CastExp
 
+                let elimConstruct = Data.transform (caseInline dflags)
+                                  . Data.transform betaReduce
+                                  . Data.transform (replaceVarId constructFnId (getUnfolding' constructFnId))
 
-                let newExpr''' = newExpr''
+
+                let newExpr''' = Data.transform elimConstruct newExpr''
 
                 -- TODO: Note: the out-of-scope coercion type variable gets
                 -- introduced somewhere between newExpr and newExpr'0
@@ -1008,7 +1005,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- traceM $ "newExpr''' = {" ++ showPpr dflags newExpr''' ++ "}"
 
 
-                constructedResult <- return newExpr''' --return (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ Cast r' theCo)
+                constructedResult <- return newExpr'''
+                -- constructedResult <- return (Var constructRepId :@ tyExpr :@ dict1 :@ dict2 :@  newExpr''') --return (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ Cast r' theCo)
                 -- let constructedResult = (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ r')
 
                 -- traceM $ "constructRepFn = " ++ showPpr dflags constructRepFn
@@ -1023,6 +1021,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 -- Data.transformM (fixConstructorCast guts dflags) constructedResult
 
+                traceM $ "args = " ++ showPpr dflags (length (snd (collectArgs constructedResult)))
                 traceM $ "constructedResult = {" ++ showPpr dflags constructedResult ++ "}"
                 -- error "debug"
 
