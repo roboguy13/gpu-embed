@@ -23,6 +23,7 @@
 %%
 %% The first command in your LaTeX source must be the \documentclass command.
 \documentclass[sigplan,screen]{acmart}
+\usepackage[switch]{lineno}
 \usepackage{booktabs}
 \usepackage{listings}
 \usepackage{tcolorbox}
@@ -38,6 +39,10 @@
 \tikzstyle{process} = [rectangle, minimum width=3cm, text width=0.3*\columnwidth, minimum height=1cm, text centered, draw=black, fill=orange!30]
 \tikzstyle{decision} = [diamond, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=green!30]
 \tikzstyle{arrow} = [thick,->,>=stealth]
+
+
+% \renewcommand{\linenumberfont}{\color{blue}}
+\renewcommand\linenumberfont{\normalfont\tiny\sffamily\color{red}}
 
 \lstset{language=haskell, deletekeywords={abs},basicstyle=\ttfamily}
 
@@ -248,6 +253,7 @@
 %% information and builds the first part of the formatted document.
 \maketitle
 
+\linenumbers
 \section{Introduction}
 
 Embedded domain specific languages (EDSLs) have long been an effective
@@ -294,25 +300,26 @@ the transformation performed by the Core plugin are described in Section 8.
   Expand?
 \end{todo}
 
-A major benefit of the Haskell language is that you can often derive an
-implementation from a specification, either partially or fully. When it is not
-possible to fully derive an implementation from a specification, it is often
-easier to check an implementation against a specification, due in part to the
-management of side effects in Haskell. This is more difficult to do in
-imperative languages like C or CUDA (as they provide no restrictions on where
-side effects can occur).
+A major benefit of the Haskell language is that it is frequently possible derive
+a Haskell implementation from a specification, either partially or fully. When
+it is not possible to fully derive an implementation from a specification, it is
+often easier to check a Haskell implementation against a specification than it
+is in many imperative languages due, in part, to the management of side effects
+in Haskell. This is more difficult to do using an imperative language such as C,
+as they provide no restrictions on where side effects can occur.
 
-Using Haskell EDSLs that allow the use of powerful language features like
-pattern matching, these advantages can be brought to other domains where it is
-currently either difficult or impossible to use Haskell.
+Haskell EDSLs that support powerful language features like pattern matching
+allow these advantages to be brought to problem domains where it is currently
+either difficult or impossible to use a language that has these benefits.
 
 \begin{todo}
-  Cite examples. Conal Elliott's last two papers (the one about convolutions and
-  the latest one about automatic differentiation), would probably be good
-  examples of this in Haskell.
+  Cite examples where Haskell implementations have been derived specifications.
+  Conal Elliott's latest two papers (as of May 2020),
+  \cite{Elliott-2018-ad-icfp} and \cite{Elliott2019-convolution-extended}, would
+  be good examples of this.
 
-  A paper which describes a Haskell implementation of a specification given as
-  an operational semantics would also be a good example.
+  A paper which describes a Haskell implementation derived from an operational
+  semantics would also be a good example.
 \end{todo}
 
 \subsection{Overview}
