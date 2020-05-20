@@ -777,6 +777,13 @@ onAppFun = maybeApply . onAppFun_maybe . (Just .)
 onAppFunId :: (Id -> CoreExpr) -> CoreExpr -> CoreExpr
 onAppFunId = maybeApply . onAppFunId_maybe . (Just .)
 
+onCase_maybe :: (CoreExpr -> Maybe CoreExpr) -> CoreExpr -> Maybe CoreExpr
+onCase_maybe t e@(Case {}) = t e
+onCase_maybe _ _ = Nothing
+
+onCase :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+onCase t = maybeApply (Just . t)
+
 onTypeM :: Applicative m => (Type -> m Type) -> CoreExpr -> m CoreExpr
 onTypeM f (Type ty) = Type <$> f ty
 onTypeM _ e = pure e
@@ -1289,6 +1296,11 @@ onVarWhen p t (Var v)
   | p v = t v
 onVarWhen _ _ e = e
 
+onVarWhen_maybe :: (Id -> Bool) -> (Id -> Maybe CoreExpr) -> CoreExpr -> Maybe CoreExpr
+onVarWhen_maybe p t (Var v)
+  | p v = t v
+onVarWhen_maybe _ _ _ = Nothing
+
 onAppWhen :: (CoreExpr -> Bool) -> (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
 onAppWhen p t e@(App {})
   | p e = t e
@@ -1394,6 +1406,19 @@ whenId :: Bool -> (a -> a) -> a -> a
 whenId b f x
   | b = f x
   | otherwise = x
+
+transformMaybe :: Data a => (a -> Maybe a) -> a -> Maybe a
+transformMaybe f e0 =
+  let (r, Any madeProgress) = runWriter (Data.transformM go e0)
+  in
+    if madeProgress
+      then Just r
+      else Nothing
+  where
+    go e =
+      case f e of
+        Nothing -> return e
+        Just e' -> tell (Any True) >> return e'
 
 -- | Beta-reduce as many lambda-binders as possible.
 betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])

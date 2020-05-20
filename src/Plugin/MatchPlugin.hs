@@ -102,6 +102,7 @@ import           Data.Char
 import           Data.List
 
 import           CoreOpt
+import           Id
 
 -- import           Data.Typeable.Internal
 
@@ -991,12 +992,51 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 externalizeId <- lift $ findIdTH guts 'externalize
                 castExpId <- lift $ findIdTH guts 'CastExp
 
-                let elimConstruct = Data.transform (caseInline dflags)
-                                  . Data.transform betaReduce
-                                  . Data.transform (replaceVarId constructFnId (getUnfolding' constructFnId))
+                let elimConstruct = fmap (Data.transform (caseInline dflags)
+                                           . Data.transform betaReduce)
+                                    . transformMaybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId))
+
+                let elimTheFn fnId = upOneLevel_maybe (Just
+                                                      . Data.transform (onAppFun (Data.transform betaReduce
+                                                                                 . Data.transform letNonRecSubst
+                                                                                 . betaReduce
+                                                                                 . onAppFun tryUnfoldAndReduceDict'
+                                                                                 . Data.transform letNonRecSubst
+                                                                                 . tryUnfoldAndReduceDict')))
+                                          (upOneLevel_maybe (Just
+                                                            . Data.transform (caseInline dflags)
+                                                            . Data.transform (onScrutinee tryUnfoldAndReduceDict')
+                                                            . Data.transform betaReduce)
+                                              (upOneLevel_maybe (Just)
+                                                (fmap (Data.transform (caseInline dflags)
+                                                          . Data.transform betaReduce)
+                                                  . transformMaybe (replaceVarId_maybe fnId (getUnfolding' fnId)))))
 
 
-                let newExpr''' = Data.transform elimConstruct newExpr''
+                let newExpr'''0 =
+                      Data.transform betaReduce $
+                      Data.transform (combineCasts dflags) $
+                      Data.transform (maybeApply (elimTheFn constructFnId)) $
+                      Data.transform (caseInline dflags) $
+                      Data.transform betaReduce $
+                      Data.transform (maybeApply (elimTheFn fromId)) $
+                      Data.transform letNonRecSubst $
+                      -- Data.transform (caseInline dflags) $
+                      -- Data.transform betaReduce $
+                      maybeApply
+                        (fmap (Data.transform betaReduce . Data.transform caseFloatApp) -- Eliminate a $dmconstruct
+                         . upOneLevel_maybe (Just . Data.transform (onAppFun (Data.transform betaReduce . Data.transform letNonRecSubst . betaReduce . onAppFun tryUnfoldAndReduceDict' . Data.transform letNonRecSubst . tryUnfoldAndReduceDict')))
+                          (upOneLevel_maybe (Just
+                                            -- . Data.transform (maybeApply ((fmap (\x -> trace ("onAppFun: " ++ showPpr dflags x) $ onAppFun tryUnfoldAndReduceDict' x)) . (onVarWhen_maybe (not . idIsFrom internalTypeableModule) (unfoldAndReduceDict_maybe' . Var))))
+                                            . Data.transform (caseInline dflags)
+                                            . betaReduce)
+                          -- (upOneLevel_maybe (Just . Data.transform (caseInline dflags) . Data.transform (onScrutinee (Data.transform tryUnfoldAndReduceDict')) . betaReduce)
+                            (upOneLevel_maybe
+                              (Just . betaReduce)
+                              (transformMaybe elimConstruct))))
+                        newExpr''
+
+                newExpr''' <- Data.transformM (elimRepUnrep guts) newExpr'''0
 
                 -- TODO: Note: the out-of-scope coercion type variable gets
                 -- introduced somewhere between newExpr and newExpr'0
@@ -1020,6 +1060,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- error "debug"
 
                 -- Data.transformM (fixConstructorCast guts dflags) constructedResult
+
+                traceM $ "getUnfolding' constructFnId: " ++ showPpr dflags (getUnfolding' constructFnId)
 
                 traceM $ "args = " ++ showPpr dflags (length (snd (collectArgs constructedResult)))
                 traceM $ "constructedResult = {" ++ showPpr dflags constructedResult ++ "}"
