@@ -150,6 +150,13 @@ buildDictionaryT guts = \ ty0 -> do
                 [NonRec v e] | i == v -> e -- the common case that we would have gotten a single non-recursive let
                 _ -> mkCoreLets bnds (varToCoreExpr i)
 
+buildCo :: HasCallStack => ModGuts -> Type -> Type -> CoreM CoreExpr
+buildCo guts tyA tyB = do
+  let k = tcTypeKind tyA
+      ty = mkTyConApp eqTyCon [k, tyA, tyB]
+
+  buildDictionaryT guts ty
+
 normaliseType' :: ModGuts -> Type -> CoreM Type
 normaliseType' guts = fmap snd . normaliseTypeCo guts
 
@@ -1271,8 +1278,8 @@ combineCasts_maybe dflags origE@(Cast (Cast e coA) coB) =
                  -- trace ("===========================>" ++ showPpr dflags (buildCoercion (coercionLKind coB') (coercionRKind coB'))) $
                  Just $ Cast e (mkTransCo coA' coB')
         Nothing ->
-          error $ "combineCasts_maybe: *** coercions do not match ***: " ++ showPpr dflags (coercionKind coA, coercionKind coB)
-          -- trace "combineCasts_maybe: *** coercions do not match ***" $ Just e
+          -- error $ "combineCasts_maybe: *** coercions do not match ***: " ++ showPpr dflags (coercionKind coA, coercionKind coB)
+          trace "combineCasts_maybe: *** coercions do not match ***" $ Just origE
 combineCasts_maybe _ _ = Nothing
 
 combineCasts :: DynFlags -> CoreExpr -> CoreExpr
