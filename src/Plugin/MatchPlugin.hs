@@ -356,13 +356,56 @@ isVar _ = False
 
 -- Mark for further transformation
 mark0 :: HasCallStack => ModGuts -> Expr Var -> MatchM (Expr Var)
-mark0 _ e@(Coercion {}) = return e
+-- mark0 _ e@(Coercion {}) = return e
+mark0 guts e@(Var f :@ Type ty :@ dict :@ x) = do
+  externalizeName <- lift $ findIdTH guts 'externalize
+
+  if f == externalizeName
+    then do
+      r <- tryMarkUnrepVar guts x
+      case r of
+        Just x' -> return x'
+        Nothing -> return e
+    else do
+      r <- tryMarkUnrepVar guts e
+      case r of
+        Just x' -> return x'
+        Nothing -> markIt guts x
+
 mark0 guts x = do
+  r <- tryMarkUnrepVar guts x
+  case r of
+    Just x' -> return x'
+    Nothing -> markIt guts x
+
+tryMarkUnrepVar :: HasCallStack => ModGuts -> Expr Var -> MatchM (Maybe (Expr Var))
+tryMarkUnrepVar guts e@(Var f :@ Type tyA :@ var@(Var g :@ Type tyB :@ _dict :@ _)) = do
+  unrepId <- lift $ findIdTH guts 'unrep
+  varConId <- lift $ findIdTH guts 'Expr.Var
+
+  dflags <- getDynFlags
+
+  if f == unrepId && g == varConId
+    then do
+      -- traceM $ "=== mark0 ===> " ++ showPpr dflags var
+      return $ Just var
+    else do
+      -- traceM $ "=== mark0 ===> " ++ showPpr dflags var
+      return Nothing
+
+tryMarkUnrepVar guts e = Just <$> markIt guts e
+
+-- | Mark without special treatment for any 'unrep (Var ...)' expressions
+markIt :: HasCallStack => ModGuts -> Expr Var -> MatchM (Expr Var)
+markIt guts x = do
   dflags <- getDynFlags
   expTyCon <- lift $ findTyConTH guts ''GPUExp
 
+  -- traceM $ "markIt: " ++ showPpr dflags x
+
   eType <- hasExprType guts x
-  -- liftIO $ putStrLn $ "mark0 exprType = " ++ showPpr dflags (exprType x)
+  -- traceM $ "markIt x hasExprType: " ++ showPpr dflags eType
+  -- liftIO $ putStrLn $ "markIt exprType = " ++ showPpr dflags (exprType x)
   if eType
     then return x
     else
@@ -1332,7 +1375,7 @@ transformProdMatch guts mark resultTy ty0_ (altCon@(DataAlt dataAlt), vars0, bod
 
       tyDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [ty])
 
-      abs'd <- abstractOver guts x body
+      abs'd <- mark =<< abstractOver guts x body
 
       return (Var oneProdMatchId :@ Type ty :@ Type resultTy :@ tyDict :@ abs'd)
 
@@ -1675,6 +1718,10 @@ transformLams guts mark e0 = Data.transformM go e0
     subst0 _ _ expr = return expr
 
 
+-- TODO: Check if this is needed and implement if it is
+-- -- | Turn `unrep (Var ...)`s into `Var ...`s when they are already in
+-- -- a `GPUExp` position and also turn application of `GPUExp`s into `App`s
+-- simplifyLambda = undefined
 
 -- e  ==>  (\x -> e)     {where x is a free variable in e}
 -- Also transforms the type of x :: T to x :: GPUExp T
@@ -1720,21 +1767,25 @@ abstractOver guts v e = do
 
   repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [varType v])
 
-  markedE' <- mark0 guts (Data.transform (go varId newTy) e)
+  let e' = Data.transform (go varId newTy) e
 
-  -- unreppedVar <- applyUnrep guts (Var varId :@ Type origTy :@ typeableDict :@ nameVal)
+  unreppedVar <- applyUnrep guts (Var varId :@ Type origTy :@ typeableDict :@ nameVal)
 
   -- let markedSubstE' = substCoreExpr v' unreppedVar markedE'
 
-  let varExp = Data.transform (tryUnfoldAndReduceDict guts dflags) $ Data.transform letNonRecSubst (Var varId :@ Type origTy :@ typeableDict :@ nameVal)
-  -- let varExp = Data.transform (tryUnfoldAndReduceDict guts dflags) $ Data.transform letNonRecSubst unreppedVar
+  -- let varExp = Data.transform (tryUnfoldAndReduceDict guts dflags) $ Data.transform letNonRecSubst (Var varId :@ Type origTy :@ typeableDict :@ nameVal)
+  let varExp = Data.transform (tryUnfoldAndReduceDict guts dflags) $ Data.transform letNonRecSubst unreppedVar
 
   -- varExp <- applyUnrep guts varExp0
 
   -- traceM $ "varExp = " ++ showPpr dflags varExp
 
-  let markedSubstE' = substCoreExpr v' varExp markedE'
+  markedSubstE' <- mark0 guts $ substCoreExpr v' varExp e'
+  -- traceM $ "marking " ++ showPpr dflags (substCoreExpr v' varExp e)
   -- liftIO $ putStrLn $ "markedSubstE' = " ++ showPpr dflags markedSubstE'
+
+  -- traceM $ "markedSubstE' = " ++ showPpr dflags (Data.transform (go varId newTy) markedSubstE')
+  -- markedSubstE'' <- mark0 guts markedSubstE'
 
   return (Var lamId :@ Type origTy :@ Type eTy' :@ repDict :@ typeableDict :@ nameVal
             :@ markedSubstE')
