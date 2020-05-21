@@ -90,7 +90,7 @@ import qualified Data.Generics.Uniplate.DataOnly as Data
 
 import           Data.Data (Data)
 
-import           Data.Maybe (fromMaybe, isNothing)
+import           Data.Maybe (fromMaybe, isNothing, isJust)
 
 import Debug.Trace
 
@@ -934,7 +934,13 @@ maybeTransform3 f (Just x) y = f x y
 -- TODO: Try to generalize this to work with any `Data` type (maybe use
 -- Uniplate?).
 upOneLevel_maybe :: (CoreExpr -> Maybe CoreExpr) -> (CoreExpr -> Maybe CoreExpr) -> CoreExpr -> Maybe CoreExpr
-upOneLevel_maybe p q (App f0 x0) = do
+upOneLevel_maybe p q e@(App f0 x0) = do
+  -- XXX: Ignores class variable applications
+
+  let (fnE, args) = collectArgs e
+
+  guard (not (isClassVar fnE))
+
   let f_M = q f0
       x_M = q x0
 
@@ -1259,9 +1265,9 @@ combineCasts_maybe dflags origE@(Cast (Cast e coA) coB) =
         Just (coA', coB') ->
           if eqType (coercionLKind coB') (coercionRKind coB')
             then Just $ Cast e coA'
-            else trace ("combineCasts_maybe: coB' = {" ++ showPpr dflags coB' ++ "}") $
-                 trace ("^-------------------------->" ++ showPpr dflags (coercionLKind coB', coercionRKind coB')) $
-                 trace ("===========================>" ++ showPpr dflags (getCoVar_maybe coB')) $
+            else --trace ("combineCasts_maybe: coB' = {" ++ showPpr dflags coB' ++ "}") $
+                 --trace ("^-------------------------->" ++ showPpr dflags (coercionLKind coB', coercionRKind coB')) $
+                 --trace ("===========================>" ++ showPpr dflags (getCoVar_maybe coB')) $
                  -- trace ("===========================>" ++ showPpr dflags (buildCoercion (coercionLKind coB') (coercionRKind coB'))) $
                  Just $ Cast e (mkTransCo coA' coB')
         Nothing ->
@@ -1419,6 +1425,128 @@ transformMaybe f e0 =
       case f e of
         Nothing -> return e
         Just e' -> tell (Any True) >> return e'
+
+transformIgnoringClasses :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+transformIgnoringClasses t = maybeApply (transformIgnoringClasses_maybe (Just . t))
+
+-- | Data.transform, but do not transform applications
+-- of class variables. Based on code from the 'unplate' package in the
+-- file Data/Generics/Uniplate/Internal/OperationsInc.hs
+--
+-- Gives a 'Just' if it has made any progress, a Nothing otherwise.
+transformIgnoringClasses_maybe :: (CoreExpr -> Maybe CoreExpr) -> CoreExpr -> Maybe CoreExpr
+transformIgnoringClasses_maybe t e0 =
+  let (r, Any madeProgress) = runWriter (go e0)
+  in
+    if madeProgress
+      then Just r
+      else Nothing
+  where
+    t' e =
+      case t e of
+        Nothing -> return e
+        Just e' -> tell (Any True) >> return e'
+
+    go :: CoreExpr -> Writer Any CoreExpr
+    go e@(Var {}) = t' e
+    go e@(Lit {}) = t' e
+    go e@(App {}) =
+      case collectArgs e of
+        (fnE, args)
+          | isClassVar fnE -> return e
+          | otherwise -> do
+              fnE' <- go fnE
+              args' <- mapM go args
+
+              t' $ mkApps fnE' args'
+    go (Lam v body) = t' =<< (Lam v <$> go body)
+    go (Let (NonRec lhs rhs) body) = do
+      rhs' <- go rhs
+      body' <- go body
+      t' (Let (NonRec lhs rhs') body')
+    go (Let (Rec bnds) body) = do
+      bnds' <- mapM (sequenceA . second go) bnds
+      body' <- go body
+      t' (Let (Rec bnds') body')
+
+    go (Case s wild ty alts) = do
+      s' <- go s
+      alts' <- mapM (\(con, pats, rhs) -> strength3 (con, pats, t' rhs)) alts
+      t' (Case s' wild ty alts')
+    go (Cast x co) = t' =<< (Cast <$> go x <*> pure co)
+    go (Tick tick x) = t' =<< (Tick tick <$> go x)
+    go e@(Type {}) = t' e
+    go e@(Coercion {}) = t' e
+
+    -- -- go = f <=< descendIgnoringClasses_maybe go
+    -- go x = 
+    --   -- trace "*" $ trace "*-" $
+    --   case descendIgnoringClasses_maybe go x of
+    --     Nothing -> Nothing
+    --     Just x' -> f x'
+
+-- | Data.descend, but do not transform class variables (C:...) and do not
+-- descend into applications of class variables.
+--
+-- Gives a 'Just' if it has made any progress, a Nothing otherwise.
+descendIgnoringClasses_maybe :: (CoreExpr -> Maybe CoreExpr) -> CoreExpr -> Maybe CoreExpr
+descendIgnoringClasses_maybe t (Var {}) = Nothing
+descendIgnoringClasses_maybe t (Lit {}) = Nothing
+descendIgnoringClasses_maybe t e@(App {}) =
+  case collectArgs e of
+    (fnE, args)
+      | isClassVar fnE -> Nothing
+      | otherwise -> do
+
+        let fnE'_M = t fnE
+            args'_M = map t args
+
+            fnE' = fromMaybe fnE fnE'_M
+            args' = zipWith fromMaybe args' args'_M
+
+        guard (isJust fnE'_M || any isJust args'_M)
+
+        return (mkApps fnE' args')
+descendIgnoringClasses_maybe t (Lam v body) = Lam v <$> t body
+descendIgnoringClasses_maybe t (Let (NonRec lhs rhs) body) = do
+  let rhs'_M = t rhs
+      body'_M = t body
+
+      rhs' = fromMaybe rhs rhs'_M
+      body' = fromMaybe body body'_M
+
+  guard (isJust rhs'_M || isJust body'_M)
+  return (Let (NonRec lhs rhs') body')
+descendIgnoringClasses_maybe t (Let (Rec bnds) body) = do
+  let bnds'_M = map (sequenceA . second t) bnds
+      body'_M = t body
+
+      bnds' = zipWith fromMaybe bnds bnds'_M
+      body' = fromMaybe body body'_M
+
+  guard (any isJust bnds'_M || isJust body'_M)
+  return (Let (Rec bnds') body')
+
+descendIgnoringClasses_maybe t (Case s wild ty alts) = do
+  let s'_M = t s
+      alts'_M = map (\(con, pats, rhs) -> strength3 (con, pats, t rhs)) alts
+
+      s' = fromMaybe s s'_M
+      alts' = zipWith fromMaybe alts alts'_M
+
+  guard (isJust s'_M || any isJust alts'_M)
+
+  return (Case s' wild ty alts')
+
+descendIgnoringClasses_maybe t (Cast x co) = Cast <$> t x <*> pure co
+descendIgnoringClasses_maybe t (Tick tick x) = Tick <$> pure tick <*> t x
+descendIgnoringClasses_maybe _ (Type {}) = Nothing
+descendIgnoringClasses_maybe _ (Coercion {}) = Nothing
+
+-- | Functor strength on triples. Note that functor strength for pairs is
+-- given by (a particular case of) $sequenceA$
+strength3 :: Functor f => (a, b, f c) -> f (a, b, c)
+strength3 (x, y, fz) = fmap (\z -> (x, y, z)) fz
 
 -- | Beta-reduce as many lambda-binders as possible.
 betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])

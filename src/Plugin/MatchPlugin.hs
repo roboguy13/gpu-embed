@@ -396,6 +396,15 @@ isConstructor v
       DataConWrapId {} -> True
       _ -> trace ("is not constructor: " ++ occNameString (occName v)) False
 
+getConstructorTyCon_maybe :: Var -> Maybe TyCon
+getConstructorTyCon_maybe v
+  | isId v =
+    case idDetails v of
+      DataConWorkId dc -> Just $ dataConTyCon dc
+      DataConWorkId dc -> Just $ dataConTyCon dc
+      _ -> Nothing
+getConstructorTyCon_maybe _ = Nothing
+
 builtinConstructor :: Var -> Bool
 builtinConstructor v =
     "I#" == occNameString (occName v)
@@ -408,29 +417,30 @@ getConstructorApp_maybe ::
     -> Maybe
         ( [Expr Var]  -- Type arguments
         , [Expr Var]  -- Dictionary arguments
+        , TyCon       -- The TyCon of the type of the constructor
         , Var         -- Constructor name
         , [Expr Var]) -- Constructor arguments
 getConstructorApp_maybe e = 
   case go e of
     -- Just (_, _, _, []) -> Nothing -- TODO: Do we want this?
-    (Just (_, _, constr, _))
+    (Just (_, _, _, constr, _))
       | builtinConstructor constr -> Nothing
     r -> r
   where
     go (Var v)
-      | isConstructor v = Just ([], [], v, [])
+      | Just tyCon <- getConstructorTyCon_maybe v = Just ([], [], tyCon, v, [])
     go (App f x)
       | isTypeArg x = do
-          (tys, dicts, constr, args) <- go f
-          return (x:tys, dicts, constr, args)
+          (tys, dicts, tyCon, constr, args) <- go f
+          return (x:tys, dicts, tyCon, constr, args)
 
       | isCoArg x || isDict x = do
-          (tys, dicts, constr, args) <- go f
-          return (tys, x:dicts, constr, args)
+          (tys, dicts, tyCon, constr, args) <- go f
+          return (tys, x:dicts, tyCon, constr, args)
 
       | otherwise             = do
-          (tys, dicts, constr, args) <- go f
-          return (tys, dicts, constr, x:args)
+          (tys, dicts, tyCon, constr, args) <- go f
+          return (tys, dicts, tyCon, constr, x:args)
 
     go _ = Nothing
 
@@ -776,7 +786,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
         -- Handle constructors that are not builtins
         go expr@(_ :@ _)
-          | Just (tys, dicts, constr, args0) <- getConstructorApp_maybe expr,
+          | Just (tys, dicts, constrTyCon, constr, args0) <- getConstructorApp_maybe expr,
             Nothing <- builtin constr,
             not (hasExprTy expr),
             not (isDict (Var constr)) = do
@@ -785,15 +795,15 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
             dflags <- getDynFlags
             constructRepId <- lift $ findIdTH guts 'ConstructRep
+            repTyCon <- lift $ findTyConTH guts ''GPURep
 
-            if constr == constructRepId
+            if constr == constructRepId || constrTyCon == repTyCon
               then return expr
               else do
 
                 liftIO $ putStrLn ""
                 liftIO $ putStrLn $ "Handling constructor: " ++ showPpr dflags constr
 
-                repTyCon <- lift $ findTyConTH guts ''GPURep
                 repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
 
                 dflags <- lift $ getDynFlags
@@ -897,83 +907,6 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- typeableC <- lift $ findClassTH guts ''Typeable
 
                 typeableTyCon <- lift $ findTyConTH guts ''Typeable
-                -- let elimConstructThen t
-                --       = repeatTransform
-                --           (id
-                --             (upOneLevel_maybe (t
-                --                                  -- . Data.transform betaReduce
-                --                                  -- . Data.transform letNonRecSubst
-                --                                  -- . Data.transform (caseInline dflags)
-                --                                  . Data.transform (onScrutinee (Data.transform tryUnfoldAndReduceDict'))
-                --                                  . Data.transform (replaceVarId fromId (getUnfolding' fromId))
-
-                --                                  . Data.transform betaReduce
-                --                                  . Data.transform letNonRecSubst
-                --                                  . Data.transform (onScrutinee (Data.transform (onAppFun tryUnfoldAndReduceDict')))
-                --                                  . Data.transform betaReduce
-                --                                  . Data.transform letNonRecSubst
-                --                                  . Data.transform etaReduce
-                --                                  . Data.transform (combineCasts dflags)
-                --                                  . Data.transform (onVarFromClass (tyConName repTyCon) getUnfolding')
-
-                --                                  . Data.transform caseFloatArg
-                --                                  . Data.transform (caseInline dflags)
-                --                                  -- . Data.transform (simpleOptExpr dflags)
-                --                                  . Data.transform (maybeApply (combineCasts_maybe dflags))
-                --                                  . Data.transform betaReduce
-                --                                  . Data.transform etaReduce
-                --                                  . Data.transform betaReduce
-                --                                  . caseFloatApp)
-                --               (fmap (caseInlineDefault dflags) .
-                --                (upOneLevel_maybe (Just
-                --                                       . (\e -> id--Data.transform (simpleOptExpr dflags)
-                --                                                -- $ Data.transform (onAppWhen (appFunFromModule internalTypeableModule) (simpleOptExpr dflags))
-                --                                                $ Data.transform caseFloatArg
-                --                                                $ Data.transform letNonRecSubst
-                --                                                $ Data.transform betaReduce
-                --                                                $ (onAppFunId getUnfolding')
-                --                                                $ Data.transform letNonRecSubst
-                --                                                -- $ Data.transform (onAppWhen (appFunFromModule internalTypeableModule) (simpleOptExpr dflags))
-                --                                                -- $ Data.transform (unfoldAndBetaReduce guts dflags (idIsFrom internalTypeableModule))
-                --                                                -- $ occurAnalyseExpr
-                --                                                -- $ simpleOptExpr dflags
-                --                                                $ onVar getUnfolding'
-                --                                                $ e)
-                --                                       . Data.transform (caseInline dflags)
-                --                                       . Data.transform betaReduce)
-                --                                 (onAppFun_maybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId)))))))
-
-
-                -- let elimConstruct
-                --       = elimConstructThen
-                --           (Just
-                --           . descendIntoCasts
-                --               (maybeApply
-                --                 (upOneLevel_maybe (
-                --                         Just
-                --                       . Data.transform (caseInline dflags)
-                --                       . Data.transform betaReduce
-                --                       . Data.transform (maybeApply $
-                --                             fmap tryUnfoldAndReduceDict'
-                --                           . fmap (caseInline dflags)
-                --                           . fmap (onScrutinee tryUnfoldAndReduceDict')
-                --                           . (upOneLevel_maybe (Just . betaReduce)
-                --                               (upOneLevel_maybe (Just . betaReduce)
-                --                                 (replaceVarId_maybe fromId (getUnfolding' fromId)))))
-
-                --                       . (Data.transform (caseInline dflags))
-                --                       . betaReduce)
-                --                     (onAppFun_maybe unfoldAndReduceDict_maybe'))))
-
-                -- TODO: Make sure this recursively calls elimConstruct
-                -- properly (enough times)
-                -- let newExpr'0 = untilNothing elimConstruct newExpr
-                -- newExpr'0 <- return $ untilNothing (fmap (id) . elimConstruct) newExpr
-                -- let newExpr'1 = Data.transform (maybeApply (combineCasts_maybe dflags)) $ newExpr'0
-
-                -- error $ showPpr dflags $ collectArgs newExpr
-                -- let (_constructRepId, [tyExpr, dict1, dict2, arg]) = collectArgs newExpr
-
                 let newExpr'
                       = Data.transform (caseInline dflags)
                         $ newExpr
@@ -994,10 +927,10 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 let elimConstruct = fmap (Data.transform (caseInline dflags)
                                            . Data.transform betaReduce)
-                                    . transformMaybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId))
+                                    . transformIgnoringClasses_maybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId))
 
                 let elimTheFn fnId = upOneLevel_maybe (Just
-                                                      . Data.transform (onAppFun (Data.transform betaReduce
+                                                      . transformIgnoringClasses (onAppFun (Data.transform betaReduce
                                                                                  . Data.transform letNonRecSubst
                                                                                  . betaReduce
                                                                                  . onAppFun tryUnfoldAndReduceDict'
@@ -1005,82 +938,132 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                                                                                  . tryUnfoldAndReduceDict')))
                                           (upOneLevel_maybe (Just
                                                             . Data.transform (caseInline dflags)
-                                                            . Data.transform (onScrutinee tryUnfoldAndReduceDict')
+                                                            . transformIgnoringClasses (onScrutinee tryUnfoldAndReduceDict')
                                                             . Data.transform betaReduce)
                                               (upOneLevel_maybe (Just)
                                                 (fmap (Data.transform (caseInline dflags)
                                                           . Data.transform betaReduce)
-                                                  . transformMaybe (replaceVarId_maybe fnId (getUnfolding' fnId)))))
+                                                  . transformIgnoringClasses_maybe (replaceVarId_maybe fnId (getUnfolding' fnId)))))
+
+                traceM $ "fn of newExpr'': " ++ showPpr dflags (fst (collectArgs newExpr''))
+                case collectArgs newExpr'' of
+                  (Var newExpr''Fn, _)
+                    | newExpr''Fn /= constructRepId -> do
+                        traceM "already done"
+                        -- traceM $ "^=====> " ++ showPpr dflags newExpr''
+                        return newExpr''
+                  _ -> do
+
+                    -- -- traceM $ "==== newExpr'' is ===> " ++ showPpr dflags newExpr''
+                    -- traceM $ "==== newExpr is ====> " ++ showPpr dflags newExpr
+                    -- traceM $ "simplE' = " ++ showPpr dflags simplE'
+                    -- -- traceM $ "fnE' = " ++ showPpr dflags fnE'
+                    -- -- traceM $ "fn = " ++ showPpr dflags fn
+                    -- -- traceM $ "apped fnE = " ++ showPpr dflags (betaReduce (mkApps fnE restArgs))
+                    -- -- traceM $ "fn0 = " ++ showPpr dflags fn0
+                    -- traceM $ "constr' = " ++ showPpr dflags (mkApps constr' unreppedArgs)
+                    -- -- traceM $ "betaReduced fnE' with constr': " ++ showPpr dflags (betaReduceAll fnE' [mkApps constr' unreppedArgs])
+
+                    simplE'' <- fmap (Data.transform betaReduce . Data.transform letNonRecSubst . Data.transform betaReduce . onAppFun tryUnfoldAndReduceDict' . Data.transform letNonRecSubst . onAppFun tryUnfoldAndReduceDict') -- Remove a $crep, try to get this in the form of a ConstructRep application
+                                  $ Data.transformM (elimRepUnrep guts)
+                                  $ Data.transform (caseInline dflags) $ betaReduce (simplE' :@ mkApps constr' unreppedArgs)
+                    -- traceM $ "simplE'' = " ++ showPpr dflags simplE''
+
+                    let (simplE''Fn, simplE''Args0) = collectArgs simplE''
+                        simplE''Arg0 = last simplE''Args0
+
+                        simplE''Arg = untilNothing (elimTheFn constructFnId) simplE''Arg0
+                        prepareResult x = mkApps simplE''Fn (init simplE''Args0 ++ [x])
 
 
-                let newExpr'''0 =
-                      Data.transform betaReduce $
-                      Data.transform (combineCasts dflags) $
-                      Data.transform (maybeApply (elimTheFn constructFnId)) $
-                      Data.transform (caseInline dflags) $
-                      Data.transform betaReduce $
-                      Data.transform (maybeApply (elimTheFn fromId)) $
-                      Data.transform letNonRecSubst $
-                      -- Data.transform (caseInline dflags) $
-                      -- Data.transform betaReduce $
-                      maybeApply
-                        (fmap (Data.transform betaReduce . Data.transform caseFloatApp) -- Eliminate a $dmconstruct
-                         . upOneLevel_maybe (Just . Data.transform (onAppFun (Data.transform betaReduce . Data.transform letNonRecSubst . betaReduce . onAppFun tryUnfoldAndReduceDict' . Data.transform letNonRecSubst . tryUnfoldAndReduceDict')))
-                          (upOneLevel_maybe (Just
-                                            -- . Data.transform (maybeApply ((fmap (\x -> trace ("onAppFun: " ++ showPpr dflags x) $ onAppFun tryUnfoldAndReduceDict' x)) . (onVarWhen_maybe (not . idIsFrom internalTypeableModule) (unfoldAndReduceDict_maybe' . Var))))
-                                            . Data.transform (caseInline dflags)
-                                            . betaReduce)
-                          -- (upOneLevel_maybe (Just . Data.transform (caseInline dflags) . Data.transform (onScrutinee (Data.transform tryUnfoldAndReduceDict')) . betaReduce)
-                            (upOneLevel_maybe
-                              (Just . betaReduce)
-                              (transformMaybe elimConstruct))))
-                        newExpr''
+                    -- traceM $ "=== simplE''' ===> " ++ showPpr dflags simplE'''
 
-                newExpr''' <- Data.transformM (elimRepUnrep guts) newExpr'''0
+                    -- return simplE''
 
-                -- TODO: Note: the out-of-scope coercion type variable gets
-                -- introduced somewhere between newExpr and newExpr'0
+                    let newExpr'''0 =
+                          -- transformIgnoringClasses_maybe elimConstruct $
 
-                -- traceM $ "newExpr'0 = {" ++ showPpr dflags newExpr'0 ++ "}"
-                -- traceM $ "newExpr''' = {" ++ showPpr dflags newExpr''' ++ "}"
+                          Data.transform (combineCasts dflags) $
+                          Data.transform (caseInline dflags) $
+                          Data.transform betaReduce $
+                          Data.transform (combineCasts dflags) $
+                          Data.transform (maybeApply (elimTheFn fromId)) $
 
+                          untilNothing (upOneLevel_maybe (Just . Data.transform betaReduce . Data.transform (combineCasts dflags)) (transformIgnoringClasses_maybe (elimTheFn constructFnId))) $
 
-                constructedResult <- return newExpr'''
-                -- constructedResult <- return (Var constructRepId :@ tyExpr :@ dict1 :@ dict2 :@  newExpr''') --return (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ Cast r' theCo)
-                -- let constructedResult = (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ r')
+                          Data.transform betaReduce $
+                          Data.transform caseFloatApp $
+                          Data.transform betaReduce $
+                          Data.transform (combineCasts dflags) $
+                          Data.transform betaReduce $
+                          Data.transform (combineCasts dflags) $
+                          transformIgnoringClasses (maybeApply (elimTheFn constructFnId)) $
+                          Data.transform (caseInline dflags) $
+                          Data.transform betaReduce $
+                          transformIgnoringClasses (maybeApply (elimTheFn fromId)) $
+                          Data.transform letNonRecSubst $
+                          -- Data.transform (caseInline dflags) $
+                          -- Data.transform betaReduce $
+                          maybeApply
+                            (fmap (Data.transform betaReduce . Data.transform caseFloatApp) -- Eliminate a $dmconstruct
+                             . upOneLevel_maybe (Just . transformIgnoringClasses (onAppFun (Data.transform betaReduce . Data.transform letNonRecSubst . betaReduce . onAppFun tryUnfoldAndReduceDict' . Data.transform letNonRecSubst . tryUnfoldAndReduceDict')))
+                              (upOneLevel_maybe (Just
+                                                -- . Data.transform (maybeApply ((fmap (\x -> trace ("onAppFun: " ++ showPpr dflags x) $ onAppFun tryUnfoldAndReduceDict' x)) . (onVarWhen_maybe (not . idIsFrom internalTypeableModule) (unfoldAndReduceDict_maybe' . Var))))
+                                                . Data.transform (caseInline dflags)
+                                                . betaReduce)
+                              -- (upOneLevel_maybe (Just . Data.transform (caseInline dflags) . Data.transform (onScrutinee (Data.transform tryUnfoldAndReduceDict')) . betaReduce)
+                                (upOneLevel_maybe
+                                  (Just . betaReduce)
+                                  (transformIgnoringClasses_maybe elimConstruct))))
+                            simplE''Arg
 
-                -- traceM $ "constructRepFn = " ++ showPpr dflags constructRepFn
-                -- traceM $ "dict1' = " ++ showPpr dflags dict1'
-                -- traceM $ "dict2' = " ++ showPpr dflags dict2'
+                    -- traceM $ "elimRepUnrep: {" ++ showPpr dflags newExpr'''0 ++ "}"
+                    newExpr''' <- Data.transformM (elimRepUnrep guts) newExpr'''0
+                    traceM "after elimRepUnrep"
 
-                -- traceM $ "theCo = {" ++ showPpr dflags theCo ++ "}"
-                -- traceM $ "co'' = {" ++ showPpr dflags co'' ++ "}"
-                -- traceM $ "mkSymCo co' = {" ++ showPpr dflags (mkSymCo co') ++ "}"
+                    -- TODO: Note: the out-of-scope coercion type variable gets
+                    -- introduced somewhere between newExpr and newExpr'0
 
-                -- error "debug"
-
-                -- Data.transformM (fixConstructorCast guts dflags) constructedResult
-
-                traceM $ "getUnfolding' constructFnId: " ++ showPpr dflags (getUnfolding' constructFnId)
-
-                traceM $ "args = " ++ showPpr dflags (length (snd (collectArgs constructedResult)))
-                traceM $ "constructedResult = {" ++ showPpr dflags constructedResult ++ "}"
-                -- error "debug"
-
-                -- error (showPpr dflags constructedResult)
-                return constructedResult
+                    -- traceM $ "newExpr'0 = {" ++ showPpr dflags newExpr'0 ++ "}"
+                    -- traceM $ "newExpr''' = {" ++ showPpr dflags newExpr''' ++ "}"
 
 
+                    constructedResult <- return $ prepareResult newExpr'''
+                    -- constructedResult <- return (Var constructRepId :@ tyExpr :@ dict1 :@ dict2 :@  newExpr''') --return (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ Cast r' theCo)
+                    -- let constructedResult = (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ r')
 
-                -- error (showPpr dflags r)
+                    -- traceM $ "constructRepFn = " ++ showPpr dflags constructRepFn
+                    -- traceM $ "dict1' = " ++ showPpr dflags dict1'
+                    -- traceM $ "dict2' = " ++ showPpr dflags dict2'
+
+                    -- traceM $ "theCo = {" ++ showPpr dflags theCo ++ "}"
+                    -- traceM $ "co'' = {" ++ showPpr dflags co'' ++ "}"
+                    -- traceM $ "mkSymCo co' = {" ++ showPpr dflags (mkSymCo co') ++ "}"
+
+                    -- error "debug"
+
+                    -- Data.transformM (fixConstructorCast guts dflags) constructedResult
+
+                    traceM $ "getUnfolding' constructFnId: " ++ showPpr dflags (getUnfolding' constructFnId)
+
+                    -- traceM $ "args = " ++ showPpr dflags (length (snd (collectArgs constructedResult)))
+                    traceM $ "constructedResult = {" ++ showPpr dflags constructedResult ++ "}"
+
+                    -- error "debug"
+
+                    -- error (showPpr dflags constructedResult)
+                    return constructedResult
 
 
-                -- error (showPpr dflags constructedResult)
-                -- return $ Data.transform letNonRecSubst $ simpleOptExpr dflags $ Data.transform betaReduce $ Data.transform letNonRecSubst $ Data.transform (maybeApply (combineCasts_maybe dflags)) $ constructedResult
 
-                -- error (showPpr dflags (newExpr, remainingArgs))
-                -- return newExpr'''
+                    -- error (showPpr dflags r)
 
+
+                    -- error (showPpr dflags constructedResult)
+                    -- return $ Data.transform letNonRecSubst $ simpleOptExpr dflags $ Data.transform betaReduce $ Data.transform letNonRecSubst $ Data.transform (maybeApply (combineCasts_maybe dflags)) $ constructedResult
+
+                    -- error (showPpr dflags (newExpr, remainingArgs))
+                    -- return newExpr'''
 
         go expr@(_ :@ _)
           | Nothing <- getConstructorApp_maybe expr
@@ -1256,54 +1239,24 @@ elimRepUnrep_co guts coA_M origType expr@(Var r :@ Type{} :@ dict :@ arg) =
         Cast (Var u :@ Type{} :@ x) coB -> go u (Just coB) x
         _ -> return expr
 
+    go :: Id -> Maybe Coercion -> CoreExpr -> MatchM CoreExpr
     go u coB_M x = do
       dflags <- getDynFlags
 
       repId <- lift $ findIdTH guts 'rep
       unrepId <- lift $ findIdTH guts 'unrep
 
-      -- liftIO $ putStrLn $ "coA_M free vars: " ++ showPpr dflags (freeVarsCoercion <$> coA_M)
-      -- liftIO $ putStrLn $ "coB_M free vars: " ++ showPpr dflags (freeVarsCoercion <$> coB_M)
+      -- traceM $ "building coercion: " ++ showPpr dflags (exprType x, origType)
+      -- traceM $ "coA_M = " ++ showPpr dflags (fmap coercionKind coA_M)
+      -- traceM $ "coB_M = " ++ showPpr dflags (fmap coercionKind coB_M)
 
-      -- co_M <- case (coA_M, coB_M) of
-      --           (Nothing, Nothing)   -> do
-      --             return Nothing
-      --           (Just coA, Nothing)  -> do
-      --             liftIO $ putStrLn $ "Casting A... " ++ showPpr dflags (coercionKind coA)
-      --             return $ Just coA
-      --           (Nothing, Just coB0)  -> do
-      --             -- repTyCon <- lift $ findTypeTH guts ''GPUExp
-      --             -- let Just coB = setNominalRole_maybe (coercionRole coB0) coB0
-      --             -- let coB' = mkAppCo (mkReflCo (coercionRole coB) repTyCon) coB
+      let co_M = do
+                    guard (isJust coA_M || isJust coB_M)
+                    let newCo = buildCoercion (exprType x) origType
 
-      --             liftIO $ putStrLn $ "Casting B... " ++ showPpr dflags (coercionKind coB0)
-      --             -- liftIO $ putStrLn $ "coB0: " ++ showPpr dflags coB0
-      --             -- liftIO $ putStrLn $ "^----------> " ++ showPpr dflags (coercionRole coB)
-      --             -- liftIO $ putStrLn $ "^----------> " ++ showPpr dflags (coercionRole coB')
+                    -- traceM $ "newCo = {" ++ showPpr dflags newCo ++ "}"
 
-      --             return $ Nothing --Just coB'
-      --           (Just coA, Just coB) -> do
-      --             liftIO $ putStrLn $ "Casting AB... " ++ showPpr dflags (coercionKind coA, coercionKind coB)
-      --             case orderCoercions coA coB of
-      --               Just (coA', coB') -> return $ Just (composeCos coA' coB')
-      --               Nothing -> do -- TODO: Why does this happen? Does coB need a GPUExp wrapping (in both sides)?
-      --                 repTyCon <- lift $ findTypeTH guts ''GPUExp
-      --                 let coB''0 = mkAppCo (mkReflCo (coercionRole coB) repTyCon) coB
-      --                     coB''  = coB''0 --downgradeRole (coercionRole coA) (coercionRole coB''0) coB''0
-      --                     composed = composeCos coA coB''
-
-      --                 -- error $ "elimRepUnrep_co: orderCoercions: " ++ showPpr dflags (coercionKind coA, coercionKind coB)
-      --                 -- return $ Just coA --error "elimRepUnrep_co: orderCoercions"
-
-      --                 liftIO $ putStrLn $ "Coercion roles: " ++ showPpr dflags (coercionRole coA, coercionRole coB'', coercionRole composed)
-      --                 return $ Just composed
-
-      -- Var (dataConWorkId eqDataCon) :@ Type k :@ Type ty1 :@ Type ty2 :@ Coercion co
-      -- k = tcTypeKind ty1
-
-      let newCo = buildCoercion (exprType x) origType
-      let co_M = Just $ downgradeRole Representational (coercionRole newCo) newCo
-      -- traceM $ "newCo = {" ++ showPpr dflags newCo ++ "}"
+                    Just $ downgradeRole Representational (coercionRole newCo) newCo
 
       if r == repId && u == unrepId
         then return $ coerceMaybe co_M x
