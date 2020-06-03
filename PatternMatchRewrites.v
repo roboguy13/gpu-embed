@@ -10,12 +10,6 @@ Definition eq_dec T := forall (x y : T), {x=y} + {x<>y}.
 Hint Unfold eq_dec : eqdec.
 Hint Extern 5 (eq_dec ?T) => unfold eq_dec; repeat decide equality : eqdec.
 
-Check @confluent.
-Check Confluent.
-Check Relation.
-
-Definition evalRelation {A} (r : relation A) {conf_prf : Confluent _ r} {n_prf : Noetherian _ r} (x : A) : A :=  x.
-
 Inductive VarName := MkVarName : nat -> VarName.
 
 Inductive CoreType := .
@@ -491,43 +485,6 @@ Definition evalReplaceIdWith (a b : Id) (e : Expr) : Expr :=
 
 Eval cbv in (evalReplaceIdWith RepId UnrepId (App (Var RepId) (Var ConstructId))).
 
-(*
-Inductive NatPred : nat -> nat -> Prop :=
-| MkNatPred : forall n, NatPred (S n) n.
-
-Lemma NatPred_n : Noetherian _ NatPred.
-Proof.
-  unfold Noetherian.
-  intros.
-  constructor.
-  intros. inversion H. subst.
-  induction H. constructor. intros.
-  constructor. intros. Check Fix. Check Acc_iter. Check Acc_intro_generator. auto with sets.
-
-Lemma ReplaceIdWith_n : forall a b, Noetherian _ (ReplaceIdWith a b).
-Proof.
-  unfold Noetherian.
-  intros.
-  constructor.
-  intros.
-
-Lemma ReplaceIdWith_confluent : forall a b, Confluent _ (ReplaceIdWith a b).
-Proof.
-  intros.
-  unfold Confluent.
-  unfold confluent.
-  intros.
-  unfold coherent.
-
-  induction H0.
-  - (* refl case *)
-    induction H.
-      + (* refl case *)
-        exists x.
-        split.
-        constructor. constructor.
-      + 
-*)
 
 Inductive HasExternalize : Expr -> Prop :=
 | HasExternalize_Var : HasExternalize (Var ExternalizeId)
@@ -587,10 +544,12 @@ Inductive VarNameOccursFreeIn : VarName -> Expr -> Prop :=
     VarNameOccursFreeIn v e ->
     VarNameOccursFreeIn v (Tick t e).
 
-Inductive TransformTailRec0 : Expr -> Expr -> VarName -> Prop :=
+(* Remove a lambda *)
+Inductive TransformTailRec0 : Expr -> Expr -> Prop :=
 | MkTransformTailRec0 : forall v body,
-    TransformTailRec0 (Lam v body) body v.
+    TransformTailRec0 (Lam v body) body.
 
+(* Remove a internalize (externalize ...) from around a 'case' expression *)
 Inductive TransformTailRec1 : Expr -> Expr -> Prop :=
 | MkTransformTailRec1 : forall ty dict s wild alts,
     TransformTailRec1
@@ -598,7 +557,19 @@ Inductive TransformTailRec1 : Expr -> Expr -> Prop :=
       (Case s wild ty alts).
 
 
+(* TODO: Make sure patVars does not contain recName *)
 Inductive TransformTailRec_Alts : VarName -> list Alt -> list Alt -> Prop :=
+| MkTransformTailRec_Alts_Case_Case :  (* Descend into sub-case *)
+    forall recName altcon patVars s wild ty alts alts' restAlts restAlts',
+    { ~ InVarList (SomeId recName) patVars /\ TransformTailRec_Alts recName alts alts' }
+     +
+    { InVarList (SomeId recName) patVars /\ alts' = alts } ->
+    TransformTailRec_Alts recName restAlts restAlts' ->
+    TransformTailRec_Alts
+      recName
+      (cons (altcon, patVars, Case s wild ty alts) restAlts)
+      (cons (altcon, patVars, Case s wild ty alts') restAlts')
+
 | MkTransformTailRec_Alts_Case_rec : forall recName altcon patVars body0 body0' restAlts restAlts',
     VarNameOccursFreeIn recName body0 -> (* Recursive case *)
     ReplaceIdWith (SomeId recName) StepId body0 body0' ->
@@ -607,6 +578,7 @@ Inductive TransformTailRec_Alts : VarName -> list Alt -> list Alt -> Prop :=
       recName
       (cons (altcon, patVars, body0) restAlts)
       (cons (altcon, patVars, body0') restAlts')
+
 | MkTransformTailRec_Alts_Case_nonrec : forall recName altcon patVars body0 restAlts restAlts',
     ~ VarNameOccursFreeIn recName body0 -> (* Base case *)
     TransformTailRec_Alts recName restAlts restAlts' ->
@@ -616,7 +588,25 @@ Inductive TransformTailRec_Alts : VarName -> list Alt -> list Alt -> Prop :=
       (cons (altcon, patVars, Var DoneId :@ body0) restAlts').
 
 Inductive TransformTailRec : VarName -> Expr -> Expr -> Prop :=
-| MkTransformTailRec : forall a b c d,
-    TransformTailRec0 a b -> TransformTailRec1 b c -> TransformTailRec2 c d -> TransformTailRec a d.
+| MkTransformTailRec : forall recName a b s wild ty alts alts',
+    TransformTailRec0 a b ->
+    TransformTailRec1 b (Case s wild ty alts) ->
+    TransformTailRec_Alts recName alts alts' ->
+    TransformTailRec recName a (Case s wild ty alts').
 
-Inductive TransformBinds_rewrite : CoreProgram -> CoreProgram -> Prop := .
+Inductive TransformTailRecBinds : CoreProgram -> CoreProgram -> Prop :=
+| TransformTailRecBinds_nil : TransformTailRecBinds nil nil
+
+| TransformTailRecBinds_NonRec_cons : forall v e restBinds restBinds',
+    TransformTailRecBinds restBinds restBinds' ->
+    TransformTailRecBinds (NonRec v e :: restBinds) (NonRec v e :: restBinds')
+
+| TransformTailRecBinds_cons : forall fName fBody fBody' restRec restRec' restBinds restBinds',
+    { VarNameOccursFreeIn fName fBody /\ TransformTailRec fName fBody fBody' }
+      +
+    { ~ VarNameOccursFreeIn fName fBody /\ fBody' = fBody} ->
+    TransformTailRecBinds (cons (Rec restRec) nil) (cons (Rec restRec') nil) ->
+    TransformTailRecBinds restBinds restBinds' ->
+    TransformTailRecBinds
+      (cons (Rec (cons (fName, fBody) restRec)) restBinds)
+      (cons (Rec (cons (fName, fBody') restRec')) restBinds').
