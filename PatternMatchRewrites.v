@@ -655,11 +655,11 @@ Proof.
     induction (ReplaceIdWith_exist a a x2).
 *)
 
-Program Fixpoint ReplaceIdWith_unchanged (a : Id) (x : Expr) {struct x} :
-  ReplaceIdWith a a x x := _.
-Next Obligation.
+Fixpoint ReplaceIdWith_unchanged (a : Id) (x : Expr) :
+  ReplaceIdWith a a x x.
+Proof.
   intros.
-  dependent induction x generalizing x; intros.
+  induction x; intros.
   constructor.
   destruct (Id_dec_eq i a); now intuition.
   subst.
@@ -669,77 +669,29 @@ Next Obligation.
   constructor.
   induction (Id_dec_eq (SomeId v) a); try now intuition.
 
-  case_eq b; intros.
-(*  pose (Let (NonRec v e) x).*)
-  constructor.
-  destruct (Id_dec_eq (SomeId v) a); try now intuition.
-  constructor. constructor. assumption. constructor. assumption.
-  epose (ReplaceIdWith_Let_NonRec a a v e _ x (Let (NonRec v e) x) _).
-  constructor. inversion r. subst. destruct H3.
-  destruct a0. destruct H0. destruct H1. apply H1.
-  destruct a0. intuition.
-  assumption.
+  destruct (Id_dec_eq (SomeId v) a).
+  constructor. right. intuition.
+  constructor. left. intuition.
 
-  constructor.
-  clear H.
+  destruct (InRecList_dec a l).
+  constructor. intuition.
+  constructor. left. intuition.
   induction l.
-  constructor. constructor. intro. inversion H.
-  constructor. intro. inversion H.
-  constructor. constructor. assumption.
-  induction IHl. induction a1. induction H0.
-  induction H1.
-  induction (InRecList_dec a (a0 :: l)).
-  intuition.
-  constructor. constructor. assumption.
-  constructor. assumption.
-  constructor. constructor.
-  destruct a0. constructor.
-  destruct (Id_dec_eq a (SomeId v)).
-  remember b0.
-  induction H1. induction b0.
-  subst.
-  assert (InRecList (SomeId v) ((v, e) :: nil)). constructor. reflexivity.
-  intuition.
-  subst.
-  Check shrinkNotInRecList.
-  Check swapNotInRecList.
-  pose (swapNotInRecList _ _ _ _ b0).
+  constructor.
   pose (shrinkNotInRecList _ _ _ n).
-  pose (shrinkNotInRecList _ _ _ H).
-  pose (IHMapRelation n1 n1 n0 n0 ltac:(reflexivity)).
-  assumption.
-  induction H1.
-
-
-  induction l. induction H1.
-  induction e. intuition.
-  case_eq H1; intros.
-
-  constructor. constructor. intro.
-  destruct a0.
-  induction (Id_dec_eq a (SomeId v)). subst.
-
-
-  destruct (InRecList_dec a (a0 :: l)); try now intuition.
-  constructor. constructor. assumption. constructor. assumption.
-  constructor. subst. clear n.
-  case_eq l; intros. constructor.
-  constructor. destruct p. constructor. subst.
+  pose (IHl n0).
   
-
-
-  case_eq IHl; intros.
-
-  left. intuition. subst.
-  clear L. clear n.
-  dependent inversion l.
   constructor.
+  destruct a0.
   constructor.
-  destruct p.
-  constructor.
-  case_eq IHl; intros.
+  apply ReplaceIdWith_unchanged.
+  assumption.
 
-  destruct IHl. intuition.
+  constructor. assumption.
+  intuition.
+
+  all: (constructor; assumption).
+Defined.
 
 Theorem ReplaceIdWith_det : forall a b x x',
   ReplaceIdWith a b x x' ->
