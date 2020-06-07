@@ -5,6 +5,13 @@ Require Import Coq.Relations.Relation_Definitions.
 Require Import Coq.Logic.Decidable.
 Require Import Coq.Program.Equality.
 
+Require Import Coq.Program.Wf.
+Require Import Lia.
+Require Import Coq.Arith.Compare_dec.
+
+Require Import Coq.Arith.PeanoNat.
+
+
 Definition eq_dec T := forall (x y : T), {x=y} + {x<>y}.
 
 Hint Unfold eq_dec : eqdec.
@@ -103,6 +110,56 @@ Fixpoint Expr_size (e : Expr) : nat :=
   | TypeExpr _ => 1
   | CoercionExpr _ => 1
   end.
+
+Lemma Expr_size_pos : forall e,
+  0 < Expr_size e.
+Proof.
+  induction e; simpl; try lia.
+Defined.
+
+Lemma Expr_size_LetRec_swap : forall x y xs body,
+  Expr_size (LetRec (x :: y :: xs) body) = Expr_size (LetRec (y :: x :: xs) body).
+Proof.
+  intros.
+  simpl.
+
+  destruct x. destruct y. lia.
+Defined.
+
+Lemma Expr_size_LetRec : forall x xs body,
+  Expr_size (LetRec xs body) < Expr_size (LetRec (x :: xs) body).
+Proof.
+  intros.
+  simpl.
+  destruct x.
+  induction xs. simpl.
+  pose (Expr_size_pos e).
+  lia.
+  lia.
+Defined.
+
+Lemma Expr_size_Case : forall s wild ty x xs,
+  Expr_size (Case s wild ty xs) < Expr_size (Case s wild ty (x :: xs)).
+Proof.
+  intros.
+  induction xs. simpl.
+  destruct x.
+  pose (Expr_size_pos e). destruct p.
+  lia.
+  simpl.
+  destruct x. destruct p.
+  destruct a. destruct p.
+  pose (Expr_size_pos e). lia.
+Defined.
+
+Definition Expr_size_order (a b : Expr) := Expr_size a < Expr_size b.
+
+Require Import Coq.Arith.Wf_nat.
+
+Theorem Expr_size_wf : well_founded Expr_size_order.
+Proof.
+  apply well_founded_ltof.
+Defined.
 
 Check list_eq_dec.
 
@@ -439,8 +496,6 @@ Definition normalizing {X : Type} (R : relation X) :=
 
 Definition fst_lt (p : nat * nat) (q : nat * nat) := fst p < fst q.
 
-Require Import Coq.Program.Wf.
-Require Import Lia.
 
 Program Fixpoint ReplaceIdWith_exist (a b : Id) e {measure (Expr_size e)} :
   {e' : Expr &
@@ -619,42 +674,6 @@ Proof.
   destruct (ReplaceIdWith_exist a b x). subst. assumption.
 Defined.
 
-(*
-Lemma evalReplaceIdWith_refl : forall a x,
-  evalReplaceIdWith a a x = x.
-Proof.
-  intros.
-  induction x.
-  - unfold evalReplaceIdWith.
-    induction (ReplaceIdWith_exist a a (Var i)).
-    inversion p. subst. destruct H2. destruct a0. subst. reflexivity.
-    destruct a0. subst. reflexivity.
-
-  - cbv. reflexivity.
-  - unfold evalReplaceIdWith.
-    induction (ReplaceIdWith_exist a a (App x1 x2)).
-    rewrite <- IHx1.
-    rewrite <- IHx2.
-    inversion p. subst.
-(*    unfold evalReplaceIdWith. *)
-    pose (ReplaceIdWith_exist a a x1).
-    inversion s.
-    induction (Expr_dec_eq x x'). subst.
-    rewrite IHx1. rewrite IHx2.
-    induction (Expr_dec_eq f' x1). subst.
-    induction (Expr_dec_eq x' x2). subst.
-    reflexivity.
-    inversion H5; try (subst; (now intuition || (destruct H0; destruct a0; subst; now intuition))).
-    subst. destruct H0. destruct a0. subst. intuition.
-    destruct a0. subst. intuition.
-    subst.
-
-
-
-    fold evalReplaceIdWith.
-    induction (ReplaceIdWith_exist a a x2).
-*)
-
 Fixpoint ReplaceIdWith_unchanged (a : Id) (x : Expr) :
   ReplaceIdWith a a x x.
 Proof.
@@ -693,11 +712,171 @@ Proof.
   all: (constructor; assumption).
 Defined.
 
+Definition ReplaceIdWith_unchanged2 (a : Id) (b : Id) :
+  forall (x : Expr),
+  forall  (x' : Expr) (H : ReplaceIdWith a b x x') (prf : a = b),
+  x' = x.
+refine (Fix Expr_size_wf _ _).
+Proof.
+  intros.
+
+  dependent induction H0. subst.
+  destruct (Id_dec_eq r b).
+  destruct H0. destruct a. subst. reflexivity.
+  destruct a. subst. reflexivity.
+  destruct H0. destruct a. subst. contradiction.
+  destruct a. subst. contradiction.
+
+  reflexivity.
+
+  cut (forall z, Expr_size_order z f -> Expr_size_order z (App f x)).
+  cut (forall z, Expr_size_order z x -> Expr_size_order z (App f x)).
+
+  intros.
+
+  assert (A : f' = f).
+    apply IHReplaceIdWith1. intros. subst.
+    apply H. intuition. assumption. reflexivity. assumption.
+  rewrite A.
+  assert (A2 : x' = x).
+    apply IHReplaceIdWith2. intros. subst.
+    apply H. intuition. assumption. reflexivity. assumption.
+  rewrite A2. reflexivity.
+
+  intros. unfold Expr_size_order in *.
+  simpl. lia.
+  intros. unfold Expr_size_order in *.
+  simpl. lia.
+
+
+  destruct H0. destruct a0. destruct H1.
+  assert (A : Expr_size_order body (Lam n body)).
+    unfold Expr_size_order. simpl. lia.
+
+  rewrite (H body A body'). reflexivity.
+  assumption. assumption.
+  destruct a0. subst. reflexivity.
+
+  destruct H0. destruct a0. destruct H1. destruct H2.
+
+  assert (A1 : rhs' = rhs).
+    apply H.
+    unfold Expr_size_order. simpl. lia.
+    assumption. assumption.
+
+  assert (A2 : body' = body).
+    apply H.
+    unfold Expr_size_order. simpl. lia.
+    assumption. assumption.
+  subst. reflexivity.
+
+  destruct a0. destruct H1.
+  subst. reflexivity.
+
+  destruct H0. destruct a0. destruct H1. destruct H2.
+
+  assert (A1 : body' = body).
+    apply H.
+    unfold Expr_size_order. simpl. lia.
+    assumption. assumption.
+
+  subst.
+
+  induction H2. reflexivity.
+  destruct x'. destruct x.
+  assert (A2 : e = e0).
+    apply H.
+    unfold Expr_size_order. simpl. lia.
+    inversion H2. assumption. reflexivity.
+  subst.
+  inversion H2. subst.
+
+  assert (A3 : xs' = xs).
+    clear H1. clear H0.
+    clear IHMapRelation.
+    dependent induction H4; intros. reflexivity.
+    cut (forall z, Expr_size_order z (LetRec ((v, e0) :: xs) body) -> Expr_size_order z (LetRec ((v, e0) :: x :: xs) body)).
+    cut (x' = x). intro.
+    cut (xs' = xs). intro.
+    subst. intros. reflexivity.
+    apply IHMapRelation. intros.  subst.
+    apply H.
+    pose (Expr_size_LetRec_swap (v, e0) x xs body).
+    pose (Expr_size_LetRec x ((v, e0) :: xs) body).
+    unfold Expr_size_order in *. lia.
+    assumption. reflexivity.
+    assumption.
+    destruct x. destruct x'.
+    inversion H0. subst.
+    assert (A3' : e1 = e).
+      apply H.
+      unfold Expr_size_order. simpl. lia. assumption.
+      reflexivity.
+    subst. reflexivity.
+    intros.
+    pose (Expr_size_LetRec_swap (v, e0) x xs body).
+    pose (Expr_size_LetRec x ((v, e0) :: xs) body).
+    unfold Expr_size_order in *. lia.
+
+  rewrite A3.
+  reflexivity.
+
+  destruct a0. destruct H1. subst. reflexivity.
+
+  assert (A : s' = s).
+    apply H.
+    unfold Expr_size_order. simpl.
+    lia. assumption. assumption.
+  rewrite A.
+
+  destruct H1. destruct a0. destruct H2.
+  assert (A2 : alts' = alts).
+    dependent induction H3. reflexivity.
+    cut (x' = x). intro.
+    cut (xs' = xs). intro.
+    subst. reflexivity.
+    apply IHMapRelation.
+    intros. subst.
+    apply H.
+    pose (Expr_size_Case s wild ty x xs).
+    unfold Expr_size_order in *. lia.
+    assumption. reflexivity. intros. assumption. assumption. assumption.
+    destruct x'. destruct p.
+    destruct x. destruct p. subst.
+    inversion H3. subst.
+    assert (A2' : e = e0).
+      apply H.
+      unfold Expr_size_order.
+      simpl. lia.
+      assumption. reflexivity.
+    rewrite A2'.
+    reflexivity.
+  rewrite A2.
+
+  reflexivity.
+
+  destruct a0. subst. reflexivity.
+
+  easy. easy. easy. easy.
+Defined.
+
+
 Theorem ReplaceIdWith_det : forall a b x x',
   ReplaceIdWith a b x x' ->
   evalReplaceIdWith a b x = x'.
 Proof.
   intros.
+
+  induction H.
+  - destruct H. destruct a0.
+    subst.
+    unfold evalReplaceIdWith.
+    induction (Id_dec_eq a a'). subst.
+    set (ReplaceIdWith_exist a' a' (Var a')).
+    induction p. induction H. induction a0. subst. reflexivity.
+    destruct b0. subst.
+
+
 
   induction H.
   - destruct H. destruct a0.
