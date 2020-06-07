@@ -712,7 +712,7 @@ Proof.
   all: (constructor; assumption).
 Defined.
 
-Definition ReplaceIdWith_unchanged2 (a : Id) (b : Id) :
+Lemma ReplaceIdWith_unchanged2_ (a : Id) (b : Id) :
   forall (x : Expr),
   forall  (x' : Expr) (H : ReplaceIdWith a b x x') (prf : a = b),
   x' = x.
@@ -860,21 +860,221 @@ Proof.
   easy. easy. easy. easy.
 Defined.
 
+Definition ReplaceIdWith_unchanged2 (a : Id) (x : Expr) (x' : Expr) (H : ReplaceIdWith a a x x') :
+  x' = x := ReplaceIdWith_unchanged2_ a a x x' H (eq_refl a).
 
-Theorem ReplaceIdWith_det : forall a b x x',
-  ReplaceIdWith a b x x' ->
-  evalReplaceIdWith a b x = x'.
+
+Fixpoint ReplaceIdWith_size_inv (a b : Id) (x y : Expr) (H : ReplaceIdWith a b x y):
+  Expr_size x = Expr_size y.
+Proof.
+  intros.
+  induction H; subst; try easy.
+  simpl. lia.
+  destruct H. destruct a0. destruct H0.
+  pose (ReplaceIdWith_size_inv a b _ _ H1).
+  simpl. lia.
+
+  destruct a0. subst. reflexivity.
+
+  destruct H. destruct a0. destruct H0. destruct H1.
+  simpl.
+  pose (ReplaceIdWith_size_inv a b _ _ H1).
+  pose (ReplaceIdWith_size_inv a b _ _ H2).
+  lia.
+  destruct a0. destruct H0. subst.
+  reflexivity.
+  destruct H. destruct a0. destruct H0.
+  destruct H1.
+
+  clear H. clear H0.
+  induction H1. simpl.
+  pose (ReplaceIdWith_size_inv a b _ _ H2). simpl. lia.
+
+  destruct x.
+  assert (A : forall v_ e_ xs_ body_, Expr_size (LetRec ((v_,e_) :: xs_) body_) = Expr_size e_ + Expr_size (LetRec xs_ body_)).
+    induction xs; simpl; lia.
+  destruct x'.
+  destruct H.
+  pose (ReplaceIdWith_size_inv a b _ _ H).
+  rewrite (A x y xs body).
+  rewrite (A x y' xs' body').
+
+  rewrite IHMapRelation.
+  rewrite e1. reflexivity.
+
+  destruct a0. destruct H0. subst. reflexivity.
+Defined.
+
+
+Theorem ReplaceIdWith_trans (a b : Id) (x : Expr) (y : Expr) :
+  forall z,
+  ReplaceIdWith a b x y ->
+  ReplaceIdWith a b y z ->
+  ReplaceIdWith a b x z.
+refine (Fix Expr_size_wf _ _).
+Proof.
+  intros.
+  induction y eqn:E.
+  inversion H0. subst. destruct H6. destruct a0. subst.
+
+  destruct (Id_dec_eq a b).
+  subst. assumption.
+
+
+
+  inversion H0. subst. inversion H1.
+  subst. destruct H5; destruct a0. subst.
+  assumption. subst. assumption.
+
+  destruct a0. subst. assumption.
+
+  easy. subst.
+  apply (H z).
+
+
+  dependent induction x; inversion H; inversion H0
+    ; try((subst; easy) || (
+  subst; destruct H4; destruct a0; destruct H6;
+  subst; destruct a0; subst; easy)).
+
+
+  subst. destruct H4. destruct a0. destruct H6.
+  destruct a0. subst. easy. destruct a0. subst. injection H9. intro. subst.
+  assumption.
+  destruct a0. destruct H6. destruct a0. subst. injection H9. intro. subst.
+  assumption.
+
+  destruct a0. subst. injection H9. intro. subst.
+  assumption.
+
+  subst.
+  injection H12. intros.
+  subst.
+  assert (A1 : ReplaceIdWith a b x1 f'0).
+    apply (IHx1 f').
+    assumption. assumption.
+  assert (A2 : ReplaceIdWith a b x2 x'0).
+    apply (IHx2 x').
+    assumption. assumption.
+
+  assert (A3 : forall p q, ReplaceIdWith a b x1 p -> ReplaceIdWith a b x2 q -> ReplaceIdWith a b (App x1 x2) (App p q)).
+    intros.
+    dependent induction H1. subst. destruct H3. destruct a0. subst.
+
+  dependent induction A1; inversion A2; try easy. subst.
+
+  inversion A1; inversion A2; try easy.
+  subst. destruct H1. destruct a0.
+  destruct H10. destruct a0. subst.
+  apply IHx1.
+
+  clear IHx1. clear IHx2.
+  clear H12. clear H. clear A1. clear A2.
+  dependent induction H0; intros.
+  all: try now inversion H.
+  apply (IHReplaceIdWith1 f' x').
+  destruct s. destruct a1. subst.
+
+  assert (A3 : 
+
+
+Theorem ReplaceIdWith_confluent (a b : Id) (x : Expr) :
+  forall x1' x2',
+  ReplaceIdWith a b x x1' ->
+  ReplaceIdWith a b x x2' ->
+  x1' = x2'.
+refine (Fix Expr_size_wf _ _).
 Proof.
   intros.
 
-  induction H.
-  - destruct H. destruct a0.
+  dependent induction x;
+  inversion H0; inversion H1. subst.
+  destruct H5. destruct a0. destruct H10. destruct a0.
+  subst. reflexivity. subst. destruct a0. contradiction.
+  destruct a0. destruct H10. destruct a0. subst. contradiction.
+  destruct a0. subst. reflexivity.
+
+  subst. reflexivity. subst.
+
+  assert (A1 : f' = f'0).
+    apply IHx1.
+    intros.
+    apply H. unfold Expr_size_order in *. 
+    simpl. lia.
+
+  pose (IHx1 f' _ f'0 H6).
+
+
+  inversion H0; inversion H1; try( subst; intuition; now subst).
+
+  subst. destruct H2. destruct a0. destruct H7. destruct a0. subst.
+  reflexivity.
+  subst. destruct H2.  destruct a0. destruct H7. destruct a0. subst.
+
+  induction H; inversion H0; try (subst; intuition; subst; now intuition).
+  subst.
+
+  
+
+  case_eq H0; intros.
+  destruct s. destruct a1. subst.
+
+  induction H; try (epose (IHReplaceIdWith1 _); discriminate).
+
+
+  induction H6. intuition. subst.
+  inversion H6. subst. intuition. subst.
+
+
+Theorem ReplaceIdWith_det (a b : Id) (x : Expr) :
+  forall x',
+  ReplaceIdWith a b x x' ->
+  evalReplaceIdWith a b x = x'.
+refine (Fix Expr_size_wf _ _).
+Proof.
+  intros.
+
+  induction H0.
+  - induction (Id_dec_eq a a'). subst.
+    destruct H0. destruct a.
     subst.
     unfold evalReplaceIdWith.
-    induction (Id_dec_eq a a'). subst.
     set (ReplaceIdWith_exist a' a' (Var a')).
-    induction p. induction H. induction a0. subst. reflexivity.
-    destruct b0. subst.
+    induction s.
+    apply (ReplaceIdWith_unchanged2 a' (Var a') x).
+    assumption.
+    destruct a. subst.
+    unfold evalReplaceIdWith.
+    set (ReplaceIdWith_exist a' a' (Var b)).
+    destruct s.
+    apply (ReplaceIdWith_unchanged2 a' (Var b) x). assumption.
+
+    destruct H0. destruct a0. subst.
+    unfold evalReplaceIdWith.
+    set (ReplaceIdWith_exist a a' (Var a)).
+    destruct s.
+    inversion r. subst.
+    destruct H3. destruct a0. subst. reflexivity.
+    destruct a0. contradiction.
+    destruct a0. subst.
+    unfold evalReplaceIdWith.
+    set (ReplaceIdWith_exist a a' (Var b)).
+    destruct s.
+    inversion r.
+    subst. destruct H4. destruct a0. subst. contradiction.
+    destruct a0. subst. reflexivity.
+
+  - easy.
+  - unfold evalReplaceIdWith.
+    destruct (ReplaceIdWith_exist a b (App f x)).
+    inversion r. subst.
+    cut (evalReplaceIdWith a b f = f'). intro A.
+    unfold evalReplaceIdWith in A.
+
+    assert (A1 : evalReplaceIdWith a b f = f').
+      apply IHReplaceIdWith1.
+    pose (ReplaceIdWith_unchanged 
+
 
 
 
@@ -922,26 +1122,6 @@ Proof.
   induction p. destruct H0. destruct a0. subst.
   reflexivity. destruct a0. subst.
 
-Theorem ReplaceIdWith_confluent : forall a b x x1' x2',
-  ReplaceIdWith a b x x1' ->
-  ReplaceIdWith a b x x2' ->
-  x1' = x2'.
-Proof.
-  intros.
-
-  induction H; inversion H0; try (subst; intuition; subst; now intuition).
-  subst.
-
-  
-
-  case_eq H0; intros.
-  destruct s. destruct a1. subst.
-
-  induction H; try (epose (IHReplaceIdWith1 _); discriminate).
-
-
-  induction H6. intuition. subst.
-  inversion H6. subst. intuition. subst.
 
 
 Inductive HasExternalize : Expr -> Prop :=
