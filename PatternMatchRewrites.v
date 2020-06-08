@@ -1404,98 +1404,18 @@ Theorem ReplaceIdWith_det (a b : Id) (x : Expr) :
   forall x',
   ReplaceIdWith a b x x' ->
   evalReplaceIdWith a b x = x'.
-refine (Fix Expr_size_wf _ _).
+(* refine (Fix Expr_size_wf _ _). *)
 Proof.
   intros.
-
-  induction H0.
-  - induction (Id_dec_eq a a'). subst.
-    destruct H0. destruct a.
-    subst.
-    unfold evalReplaceIdWith.
-    set (ReplaceIdWith_exist a' a' (Var a')).
-    induction s.
-    apply (ReplaceIdWith_unchanged2 a' (Var a') x).
-    assumption.
-    destruct a. subst.
-    unfold evalReplaceIdWith.
-    set (ReplaceIdWith_exist a' a' (Var b)).
-    destruct s.
-    apply (ReplaceIdWith_unchanged2 a' (Var b) x). assumption.
-
-    destruct H0. destruct a0. subst.
-    unfold evalReplaceIdWith.
-    set (ReplaceIdWith_exist a a' (Var a)).
-    destruct s.
-    inversion r. subst.
-    destruct H3. destruct a0. subst. reflexivity.
-    destruct a0. contradiction.
-    destruct a0. subst.
-    unfold evalReplaceIdWith.
-    set (ReplaceIdWith_exist a a' (Var b)).
-    destruct s.
-    inversion r.
-    subst. destruct H4. destruct a0. subst. contradiction.
-    destruct a0. subst. reflexivity.
-
-  - easy.
-  - unfold evalReplaceIdWith.
-    destruct (ReplaceIdWith_exist a b (App f x)).
-    inversion r. subst.
-    cut (evalReplaceIdWith a b f = f'). intro A.
-    unfold evalReplaceIdWith in A.
-
-    assert (A1 : evalReplaceIdWith a b f = f').
-      apply IHReplaceIdWith1.
-    pose (ReplaceIdWith_unchanged 
-
-
-
-
-  induction H.
-  - destruct H. destruct a0.
-    rewrite H. rewrite H0.
-
-    unfold evalReplaceIdWith.
-    induction (ReplaceIdWith_exist a a' (Var a)).
-    inversion p.
-    destruct H4. destruct a1. subst. intuition. subst. intuition.
-    destruct a0. rewrite H0.
-
-    unfold evalReplaceIdWith.
-    induction (ReplaceIdWith_exist a a' (Var b)).
-    inversion p.
-    destruct H4. destruct a1. subst. intuition. subst.
-    destruct a1. subst. reflexivity.
-
-  - cbv. reflexivity.
-  - destruct H. destruct H. destruct a0.
-    rewrite H. rewrite H1.
-
-    unfold evalReplaceIdWith.
-    induction (ReplaceIdWith_exist a a' (App (Var a) x)).
-    inversion p. subst.
-    inversion H0. destruct H4. destruct a1. subst.
-    inversion H6. destruct H4. destruct a1. subst.
-    inversion H8. destruct H5. destruct a1. subst.
-    reflexivity. intuition. intuition. destruct a1. subst.
-    induction H8. destruct H1. destruct a0. subst.
-    
-    rewrite IHReplaceIdWith1.
-(*    pose (Q := ReplaceIdWith_det1 a a' x (evalReplaceIdWith a a' x) ltac:(reflexivity)). *)
-    inversion H0. subst. destruct H. destruct a0.
-
-
-
-
-
-  induction x; inversion H; subst.
-  destruct H3. destruct a0. subst.
   unfold evalReplaceIdWith.
-  induction (ReplaceIdWith_exist a b (Var a)).
-  induction p. destruct H0. destruct a0. subst.
-  reflexivity. destruct a0. subst.
-
+  unfold ReplaceIdWith_exist.
+  set (ReplaceIdWith_exist_func
+     (existT (fun _ : Id => {_ : Id & Expr}) a
+        (existT (fun _ : Id => Expr) b x))).
+  destruct s.
+  rewrite (ReplaceIdWith_confluent a b x _ _ X r).
+  reflexivity.
+Defined.
 
 
 Inductive HasExternalize : Expr -> Prop :=
