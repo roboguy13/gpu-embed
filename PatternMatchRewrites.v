@@ -1424,8 +1424,10 @@ Inductive HasExternalize : Expr -> Prop :=
     { HasExternalize a } + { HasExternalize b } -> HasExternalize (App a b)
 | HasExternalize_Lam : forall v e,
     HasExternalize e -> HasExternalize (Lam v e)
-| HasExternalize_Let : forall b e,
-    { HasExternalizeBind b } + { HasExternalize e } -> HasExternalize (Let b e)
+| HasExternalize_LetNonRec : forall v rhs e,
+    { HasExternalize rhs } + { HasExternalize e } -> HasExternalize (LetNonRec v rhs e)
+| HasExternalize_LetRec : forall bs e,
+    { HasExternalizeRec bs } + { HasExternalize e } -> HasExternalize (LetRec bs e)
 | HasExternalize_Case : forall s wild ty altcon patVars rhs restAlts,
     { HasExternalize rhs } + { HasExternalize (Case s wild ty restAlts) } ->
     HasExternalize (Case s wild ty (cons (altcon, patVars, rhs) restAlts))
@@ -1434,11 +1436,9 @@ Inductive HasExternalize : Expr -> Prop :=
 | HasExternalize_Tick : forall t e,
     HasExternalize e -> HasExternalize (Tick t e)
 
-with HasExternalizeBind : Bind -> Prop :=
-| HasExternalizeBind_NonRec : forall b e,
-    HasExternalize e -> HasExternalizeBind (NonRec b e)
+with HasExternalizeRec : list (VarName * Expr) -> Prop :=
 | HasExternalizeBind_Rec : forall b e rest,
-    { HasExternalize e } + { HasExternalizeBind (Rec rest) } -> HasExternalizeBind (Rec (cons (b, e) rest)).
+    { HasExternalize e } + { HasExternalizeRec rest } -> HasExternalizeRec (cons (b, e) rest).
 
 Notation "x :@ y" := (App x y) (left associativity, at level 40).
 
@@ -1458,14 +1458,14 @@ Inductive VarNameOccursFreeIn : VarName -> Expr -> Prop :=
 | VarNameOccursFreeIn_Let_NonRec : forall v1 v2 e body,
     v2 <> v1 ->
     { VarNameOccursFreeIn v1 e } + { VarNameOccursFreeIn v1 body } ->
-    VarNameOccursFreeIn v1 (Let (NonRec v2 e) body)
+    VarNameOccursFreeIn v1 (LetNonRec v2 e body)
 | VarNameOccursFreeIn_Let_Rec_nil : forall v body,
     VarNameOccursFreeIn v body ->
-    VarNameOccursFreeIn v (Let (Rec nil) body)
+    VarNameOccursFreeIn v (LetRec nil body)
 | VarNameOccursFreeIn_Let_Rec_cons : forall v1 v2 e rest body,
     v2 <> v1 ->
-    VarNameOccursFreeIn v1 (Let (Rec rest) body) ->
-    VarNameOccursFreeIn v1 (Let (Rec (cons (v2, e) rest)) body)
+    VarNameOccursFreeIn v1 (LetRec rest body) ->
+    VarNameOccursFreeIn v1 (LetRec (cons (v2, e) rest) body)
 | VarNameOccursFreeIn_Case : forall v s wild ty altcon patVars rhs restAlts,
     {VarNameOccursFreeIn v s} + {wild <> v /\ ~ (In v patVars) /\ VarNameOccursFreeIn v rhs} ->
     VarNameOccursFreeIn v (Case s wild ty (cons (altcon, patVars, rhs) restAlts))
