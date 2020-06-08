@@ -496,10 +496,81 @@ Inductive ReplaceIdWith : Id -> Id -> Expr -> Expr -> Type :=
 
 
 
-(*
-Fixpoint ReplaceWithId_size (a b : Id) (e e' : Expr) (H : ReplaceIdWith a b e e') : nat.
-  inversion H.
-*)
+Fixpoint ReplaceIdWith_size (a b : Id) (e e' : Expr) (H : ReplaceIdWith a b e e') : nat.
+  refine (
+    match H with
+    | ReplaceIdWith_Var _ _ _ _ _ => 1
+    | ReplaceIdWith_Lit _ _ _ => 1
+    | ReplaceIdWith_App _ _ _ _ _ _ H1 H2 => S (ReplaceIdWith_size _ _ _ _ H1 + ReplaceIdWith_size _ _ _ _ H2)
+    | ReplaceIdWith_Lam _ _ _ _ _ (inleft (_, _, H)) => S (ReplaceIdWith_size _ _ _ _ H)
+    | ReplaceIdWith_Lam _ _ _ _ _ (inright _) => 1
+    | ReplaceIdWith_Let_NonRec _ _ _ _ _ _ _ (inleft (_, _, H1, H2)) => S (ReplaceIdWith_size _ _ _ _ H1 + ReplaceIdWith_size _ _ _ _ H2)
+    | ReplaceIdWith_Let_NonRec _ _ _ _ _ _ _ _ => 1
+    | ReplaceIdWith_Let_Rec _ _ _ _ _ _ (inleft (_, _, mr, H))  => S (_ + ReplaceIdWith_size _ _ _ _ H)
+    | ReplaceIdWith_Let_Rec _ _ _ _ _ _ (inright _) => 1
+    | ReplaceIdWith_Case _ _ _ _ _ _ _ _ H (inleft (_, _, mr)) => S _
+    | ReplaceIdWith_Case _ _ _ _ _ _ _ _ H (inright _) => S (ReplaceIdWith_size _ _ _ _ H)
+    | ReplaceIdWith_Cast _ _ _ _ _ H => S (ReplaceIdWith_size _ _ _ _ H)
+    | ReplaceIdWith_Tick _ _ _ _ _ H => S (ReplaceIdWith_size _ _ _ _ H)
+    | ReplaceIdWith_TypeExpr _ _ _ => 1
+    | ReplaceIdWith_CoercionExpr _ _ _ => 1
+    end).
+clear s p p0 H p1 n n0.
+induction mr. exact 0.
+destruct r. pose (ReplaceIdWith_size _ _ _ _ r).
+exact (n + IHmr).
+
+clear s p p0 n n0.
+dependent induction mr. exact 0.
+destruct r. pose (ReplaceIdWith_size _ _ _ _ r).
+exact (n + IHmr).
+Defined.
+
+Definition ReplaceIdWith_size_order a1 b1 e1 e1' a2 b2 e2 e2' H1 H2 :=
+  ReplaceIdWith_size a1 b1 e1 e1' H1 < ReplaceIdWith_size a2 b2 e2 e2' H2.
+
+Definition ReplaceIdWith' a b :=
+  {e : Expr & { e' : Expr & ReplaceIdWith a b e e' }}.
+
+Definition packReplaceIdWith a b e e' (H : ReplaceIdWith a b e e') : ReplaceIdWith' a b :=
+  existT _ e (existT _ e' H).
+
+Definition applyReplaceIdWith {R} a b e e'
+  (f : forall (H : ReplaceIdWith' a b), projT1 H = e -> projT1 (projT2 H) = e' -> R) (x : ReplaceIdWith a b e e') : R.
+  refine (f (packReplaceIdWith a b e e' x) _ _).
+  simpl. reflexivity.
+  simpl. reflexivity.
+Defined.
+
+Definition onReplaceIdWith' a b e e' (f : forall (H : ReplaceIdWith' a b), projT1 H = e -> projT1 (projT2 H) = e' -> ReplaceIdWith' a b)
+  : forall (H : ReplaceIdWith a b e e'),
+    ReplaceIdWith
+      a
+      b
+      (projT1 (applyReplaceIdWith a b e e' f H))
+      (projT1 (projT2 (applyReplaceIdWith a b e e' f H))).
+Proof.
+  intros.
+  pose (projT1 (applyReplaceIdWith a b e e' f H)).
+  destruct (applyReplaceIdWith a b e e' f H).
+  simpl in *.
+  destruct s.
+  simpl.
+  assumption.
+Defined.
+
+Definition ReplaceIdWith_size_order' a b : ReplaceIdWith' a b -> ReplaceIdWith' a b -> Prop.
+  refine (ltof _ _).
+intros.
+  destruct X. destruct s.
+  exact (ReplaceIdWith_size _ _ _ _ r).
+Defined.
+
+Definition ReplaceIdWith_size_wf : forall a b,
+  well_founded (ReplaceIdWith_size_order' a b).
+  intros. apply well_founded_ltof.
+Defined.
+
 
 Definition normal_form {X : Type} (R : relation X) (t : X) : Prop :=
   ~ exists t', R t t'.
@@ -949,13 +1020,89 @@ Proof.
   destruct a0. destruct H0. subst. reflexivity.
 Defined.
 
-Theorem ReplaceIdWith_trans (a b : Id) (x : Expr) (y : Expr) :
-  forall z,
+(*
+Theorem ReplaceIdWith_trans (a b : Id) (x y z : Expr) :
   ReplaceIdWith a b x y ->
   ReplaceIdWith a b y z ->
   ReplaceIdWith a b x z.
-refine (Fix Expr_size_wf _ _).
+refine (_).
 Proof.
+  intros.
+  dependent induction x; dependent induction z; dependent induction y; try easy.
+  intros.
+  inversion X. subst. destruct H3; destruct a0.
+  subst. inversion X0. subst. destruct H3; destruct a0.
+  subst. assumption.
+  subst. assumption.
+  subst. assumption.
+  assert (A1 : ReplaceIdWith a b x1 z1).
+    apply (IHx1 y1).
+    inversion X0. subst.
+    inversion X. subst.
+    assumption.
+    inversion X0. subst.
+    assumption.
+  assert (A2 : ReplaceIdWith a b x2 z2).
+    apply (IHx2 y2).
+    inversion X0. subst.
+    inversion X. subst.
+    assumption.
+    inversion X0. subst.
+    assumption.
+  apply IHy1.
+  intros.
+
+  inversion X1. subst. inversion X. subst.
+
+
+
+
+
+  intros.
+  destruct x0. destruct s.
+  simpl in H.
+  simpl in H0. subst.
+  dependent induction x; try easy.
+  inversion r. subst. inversion X0. subst.
+  destruct H2. destruct a0.
+  destruct H3. destruct a0. subst.
+  assumption.
+  destruct a0. subst. assumption.
+  destruct a0. subst. assumption.
+
+  apply (X (packReplaceIdWith _ _ _ _ r)).
+  unfold ReplaceIdWith_size_order'. unfold packReplaceIdWith.
+  unfold ltof.
+
+
+  inversion r. subst. destruct H2. destruct a0. subst.
+  inversion X0. subst.
+  induction x. all: try easy.
+  apply (X (packReplaceIdWith _ _ _ _ r)).
+
+
+  dependent induction r.
+  inversion x0.
+
+
+  dependent induction x0.
+  destruct p.
+  inversion r; subst; try easy.
+  destruct H. destruct a0. subst.
+  case_eq x; intros.
+  induction X0; subst; try easy. Focus 2. 
+  inversion X0; subst; try easy. Focus 2. destruct H. destruct a0. subst.
+
+  pose (packReplaceIdWith _ _ _ _ X0).
+  apply (X r0).
+  fold (packReplaceIdWith a b (Var a) (Var b) r) in *.
+  unfold ReplaceIdWith_size_order'.
+
+  apply (X r0).
+  destruct r0. destruct s. simpl.
+  unfold ReplaceIdWith_size_order'.
+  simpl.
+
 (*
   intros.
   induction x;
@@ -1034,9 +1181,27 @@ Proof.
   destruct s. destruct a1. subst.
 
   assert (A3 : 
+*)
+
+Definition length_order A (a b : list A) : Prop := length a < length b.
+
+Theorem length_order_wf A : well_founded (length_order A).
+  apply well_founded_ltof.
+Defined.
 
 
-Theorem ReplaceIdWith_confluent (a b : Id) (x : Expr) :
+Definition well_founded_induction_type' :
+  forall {A : Type} {R : A -> A -> Prop} (a : A),
+       well_founded R ->
+       forall P : A -> Set,
+       (forall x : A, (forall y : A, R y x -> P y) -> P x) ->
+       P a.
+  intros.
+  apply (@well_founded_induction_type A R H P X).
+Defined.
+
+Theorem ReplaceIdWith_confluent (a b : Id) :
+  forall x,
   forall x1' x2',
   ReplaceIdWith a b x x1' ->
   ReplaceIdWith a b x x2' ->
@@ -1044,44 +1209,195 @@ Theorem ReplaceIdWith_confluent (a b : Id) (x : Expr) :
 refine (Fix Expr_size_wf _ _).
 Proof.
   intros.
+  dependent induction x; try easy.
+  inversion X. inversion X0. subst.
+  destruct H3; destruct a0. subst.
+  destruct H8; destruct a0. subst.
+  reflexivity. easy. subst.
+  destruct H8; destruct a0. subst. easy.
+  subst. reflexivity.
 
-  dependent induction x;
-  inversion H0; inversion H1. subst.
-  destruct H5. destruct a0. destruct H10. destruct a0.
-  subst. reflexivity. subst. destruct a0. contradiction.
-  destruct a0. destruct H10. destruct a0. subst. contradiction.
-  destruct a0. subst. reflexivity.
-
-  subst. reflexivity. subst.
-
+  inversion X. inversion X0. subst.
   assert (A1 : f' = f'0).
-    apply IHx1.
-    intros.
-    apply H. unfold Expr_size_order in *. 
-    simpl. lia.
+    apply (H x1). unfold Expr_size_order. unfold Expr_size. lia.
+    assumption. assumption.
+  assert (A2 : x' = x'0).
+    apply (H x2). unfold Expr_size_order. unfold Expr_size. lia.
+    assumption.
+    assumption.
+  subst. reflexivity.
 
-  pose (IHx1 f' _ f'0 H6).
+  inversion X. inversion X0. subst.
+  destruct X1. destruct p.
+  destruct X2. destruct p0.
+  assert (body' = body'0).
+    apply (H x).
+    unfold Expr_size_order. unfold Expr_size. lia.
+    assumption. assumption.
+  subst. reflexivity.
 
-
-  inversion H0; inversion H1; try( subst; intuition; now subst).
-
-  subst. destruct H2. destruct a0. destruct H7. destruct a0. subst.
+  destruct a0. subst.
+  destruct p. destruct H0. subst. easy. subst.
+  easy. destruct X2. destruct p.
+  destruct a0.
+  destruct p. destruct H0. subst. easy.
+  subst. easy.
+  destruct a0. subst. destruct a1.
+  destruct H0. subst. reflexivity. subst.
   reflexivity.
-  subst. destruct H2.  destruct a0. destruct H7. destruct a0. subst.
 
-  induction H; inversion H0; try (subst; intuition; subst; now intuition).
+  inversion X. inversion X0. subst.
+  destruct X1. destruct p. destruct p.
+  destruct X2. destruct p0. destruct p0.
+  assert (rhs' = rhs'0).
+    apply (H x1). unfold Expr_size_order.
+    unfold Expr_size. lia.
+    assumption. assumption.
+  assert (body' = body'0).
+    apply (H x2). unfold Expr_size_order.
+    unfold Expr_size. lia.
+    assumption. assumption.
+  subst. reflexivity.
+  destruct a0.
+  destruct H1.
+  subst.
+  destruct p.
+  destruct H0.
+  subst.
+  easy.
+  subst. easy.
+  destruct X2. destruct p.
+  destruct p.
+  inversion X. subst. inversion X0. subst.
+  destruct X1. destruct X2. destruct a0.
+  destruct H0. subst. destruct p.
+  easy.
+  destruct p0. destruct p1.
+  destruct p0. destruct p1.
+  assert (rhs' = rhs'0).
+    apply (H x1).
+    unfold Expr_size_order. unfold Expr_size.
+    lia.
+    assumption. assumption.
+  assert (body' = body'0).
+    apply (H x2).
+    unfold Expr_size_order. unfold Expr_size. lia.
+    subst. assumption. assumption.
+  subst.
+  reflexivity.
+  destruct p. destruct a0. destruct H0.
+  subst. easy.
+  destruct a1. subst. easy.
+  destruct a1. destruct X2.
+  destruct H0. destruct p. subst.
+  easy.
+  destruct p. destruct p0. destruct p.
+  destruct p. easy. destruct p. destruct H0.
+  easy.
+  easy.
+  destruct a0. destruct H1. destruct H0.
+  destruct a1. destruct H3. destruct H4.
+  subst. reflexivity.
+  subst. destruct H4. subst.
+  reflexivity.
+  subst. destruct a1.
+  destruct H0.
+  destruct H1.
+  subst.
+  reflexivity.
+  destruct H1.
   subst.
 
-  
+  reflexivity.
 
-  case_eq H0; intros.
-  destruct s. destruct a1. subst.
+  inversion X. inversion X0. subst.
+  destruct X1. destruct p. destruct p.
+  inversion X0. subst.
+  destruct X1. destruct p0.
+  assert (body' = body'0).
+    apply (H x).
+    unfold Expr_size_order. unfold Expr_size. lia.
+    assumption. assumption.
+  destruct p0. destruct X2. destruct p1. destruct p1.
 
-  induction H; try (epose (IHReplaceIdWith1 _); discriminate).
+  subst.
 
+  induction recList'; induction recList'0. subst. reflexivity.
+  subst.
+  inversion X. inversion X0. subst.
+  destruct X1. destruct p2. destruct p2. inversion m2. subst.
+  destruct X2. destruct p3. destruct p3. inversion m3.
+  destruct a1. easy. destruct X2. destruct a1.
+  destruct H1. subst.
+  destruct p2. destruct p2. inversion m2. destruct a1.
+  destruct H1. subst. easy.
+  subst. inversion m. subst. inversion m1.
 
-  induction H6. intuition. subst.
-  inversion H6. subst. intuition. subst.
+  inversion X. subst. inversion X0. subst.
+  destruct X1; destruct X2; destruct p1.
+  destruct p2. destruct p1. destruct p3. destruct p2.
+
+  assert (A : ReplaceIdWith a b (LetRec l x) (LetRec (a1 :: recList'0) body'0)).
+    constructor.
+    left. easy.
+  assert (A2 : ReplaceIdWith a b (LetRec l x) (LetRec (a1 :: recList') body'0)).
+    constructor.
+    left. split. split. assumption.
+    inversion m3. subst.
+    constructor. assumption.
+    inversion m. subst. assumption. assumption.
+(*
+  inversion m2. subst.
+  inversion m3. subst.
+*)
+  inversion A. subst. destruct X1. destruct p3. destruct p3.
+  inversion m4. subst.
+
+  assert (A3 : ReplaceIdWith a b (LetRec xs x) (LetRec recList'0 body'0)).
+    constructor.
+    left. split. split.
+    destruct p2. pose (shrinkNotInRecList a x0 xs n1).
+    pose (shrinkNotInRecList b x0 xs n2). easy.
+    assumption. assumption.
+
+  assert (A4 : ReplaceIdWith a b (LetRec xs x) (LetRec recList' body'0)).
+    constructor.
+    left. split. split.
+    destruct p2. pose (shrinkNotInRecList a x0 xs n1).
+    pose (shrinkNotInRecList b x0 xs n2). easy. 
+    inversion m2. subst.
+    assumption. assumption.
+
+  assert (A_R : LetRec recList' body'0 = LetRec recList'0 body'0).
+    apply (H (LetRec xs x)).
+    unfold Expr_size_order. simpl.
+    destruct x0. pose (Expr_size_pos e). lia.
+    assumption. assumption.
+
+  injection A_R; intros. subst.
+  destruct a0. destruct a1.
+  inversion m2. subst.
+  inversion X3. subst. inversion X1. subst.
+  assert (e = e0).
+    apply (H y).
+    unfold Expr_size_order. simpl. lia.
+    assumption. assumption.
+  subst.
+
+  reflexivity.
+
+  destruct a2. destruct H1. subst. destruct H0.
+  destruct p2. easy. destruct p2. easy.
+
+  destruct a2. destruct p2. destruct p1. destruct p1.
+  firstorder. firstorder.
+  destruct a2. destruct a3. destruct H1. destruct H3.
+  subst. firstorder. firstorder. firstorder.
+
+  destruct X2. destruct p. destruct p. firstorder.
+  destruct a0. destruct a1. destruct H1. destruct H3.
+  subst. reflexivity.
+Defined.
 
 
 Theorem ReplaceIdWith_det (a b : Id) (x : Expr) :
