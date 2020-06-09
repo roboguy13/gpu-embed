@@ -912,36 +912,11 @@ Proof.
   destruct a0. destruct H0. destruct H1. subst. reflexivity.
   destruct H1. subst. reflexivity.
 
-
-(*
-    assumption. reflexivity.
-    assumption.
-    destruct x. destruct x'.
-    inversion H0. subst.
-    assert (A3' : e1 = e).
-      apply H.
-      unfold Expr_size_order. simpl. lia. assumption.
-      reflexivity.
-    subst. reflexivity.
-    intros.
-    pose (Expr_size_LetRec_swap (v, e0) x xs body).
-    pose (Expr_size_LetRec x ((v, e0) :: xs) body).
-    unfold Expr_size_order in *. lia.
-
-  rewrite A3.
-  reflexivity.
-
-  destruct a0. destruct H1. subst. reflexivity.
-*)
-
   assert (A : s' = s).
     apply H.
     unfold Expr_size_order. simpl.
     lia. assumption. assumption.
   rewrite A.
-
-
-
 
   destruct s0. destruct p. destruct p.
   assert (A2 : alts' = alts).
@@ -1019,169 +994,6 @@ Proof.
 
   destruct a0. destruct H0. subst. reflexivity.
 Defined.
-
-(*
-Theorem ReplaceIdWith_trans (a b : Id) (x y z : Expr) :
-  ReplaceIdWith a b x y ->
-  ReplaceIdWith a b y z ->
-  ReplaceIdWith a b x z.
-refine (_).
-Proof.
-  intros.
-  dependent induction x; dependent induction z; dependent induction y; try easy.
-  intros.
-  inversion X. subst. destruct H3; destruct a0.
-  subst. inversion X0. subst. destruct H3; destruct a0.
-  subst. assumption.
-  subst. assumption.
-  subst. assumption.
-  assert (A1 : ReplaceIdWith a b x1 z1).
-    apply (IHx1 y1).
-    inversion X0. subst.
-    inversion X. subst.
-    assumption.
-    inversion X0. subst.
-    assumption.
-  assert (A2 : ReplaceIdWith a b x2 z2).
-    apply (IHx2 y2).
-    inversion X0. subst.
-    inversion X. subst.
-    assumption.
-    inversion X0. subst.
-    assumption.
-  apply IHy1.
-  intros.
-
-  inversion X1. subst. inversion X. subst.
-
-
-
-
-
-  intros.
-  destruct x0. destruct s.
-  simpl in H.
-  simpl in H0. subst.
-  dependent induction x; try easy.
-  inversion r. subst. inversion X0. subst.
-  destruct H2. destruct a0.
-  destruct H3. destruct a0. subst.
-  assumption.
-  destruct a0. subst. assumption.
-  destruct a0. subst. assumption.
-
-  apply (X (packReplaceIdWith _ _ _ _ r)).
-  unfold ReplaceIdWith_size_order'. unfold packReplaceIdWith.
-  unfold ltof.
-
-
-  inversion r. subst. destruct H2. destruct a0. subst.
-  inversion X0. subst.
-  induction x. all: try easy.
-  apply (X (packReplaceIdWith _ _ _ _ r)).
-
-
-  dependent induction r.
-  inversion x0.
-
-
-  dependent induction x0.
-  destruct p.
-  inversion r; subst; try easy.
-  destruct H. destruct a0. subst.
-  case_eq x; intros.
-  induction X0; subst; try easy. Focus 2. 
-  inversion X0; subst; try easy. Focus 2. destruct H. destruct a0. subst.
-
-  pose (packReplaceIdWith _ _ _ _ X0).
-  apply (X r0).
-  fold (packReplaceIdWith a b (Var a) (Var b) r) in *.
-  unfold ReplaceIdWith_size_order'.
-
-  apply (X r0).
-  destruct r0. destruct s. simpl.
-  unfold ReplaceIdWith_size_order'.
-  simpl.
-
-(*
-  intros.
-  induction x;
-  case_eq x0; intros; try (easy || (inversion X0; inversion X1; now subst)).
-  inversion X0. subst. destruct H3. destruct a0. subst.
-
-  destruct (Id_dec_eq a b).
-  subst. assumption.
-
-  inversion X1. subst. destruct H3. destruct a0. subst.
-  assumption. destruct a0. subst. assumption.
-  destruct a0. subst. assumption.
-  subst.
-  induction X1.
-*)
-
-
-
-  inversion X1. subst. inversion H1.
-  subst. destruct H7; destruct a0. subst.
-  assumption. subst. assumption.
-
-  destruct a0. subst. assumption. subst.
-  apply H.
-
-  easy. subst.
-
-  unfold Expr_size_order in *.
-  rewrite <- (ReplaceIdWith_size_inv a b y x0 H1) in *.
-  rewrite <- (ReplaceIdWith_size_inv a b (App x1 x2) y) in *.
-
-  apply (H z).
-
-
-  dependent induction x; inversion H; inversion H0
-    ; try((subst; easy) || (
-  subst; destruct H4; destruct a0; destruct H6;
-  subst; destruct a0; subst; easy)).
-
-
-  subst. destruct H4. destruct a0. destruct H6.
-  destruct a0. subst. easy. destruct a0. subst. injection H9. intro. subst.
-  assumption.
-  destruct a0. destruct H6. destruct a0. subst. injection H9. intro. subst.
-  assumption.
-
-  destruct a0. subst. injection H9. intro. subst.
-  assumption.
-
-  subst.
-  injection H12. intros.
-  subst.
-  assert (A1 : ReplaceIdWith a b x1 f'0).
-    apply (IHx1 f').
-    assumption. assumption.
-  assert (A2 : ReplaceIdWith a b x2 x'0).
-    apply (IHx2 x').
-    assumption. assumption.
-
-  assert (A3 : forall p q, ReplaceIdWith a b x1 p -> ReplaceIdWith a b x2 q -> ReplaceIdWith a b (App x1 x2) (App p q)).
-    intros.
-    dependent induction H1. subst. destruct H3. destruct a0. subst.
-
-  dependent induction A1; inversion A2; try easy. subst.
-
-  inversion A1; inversion A2; try easy.
-  subst. destruct H1. destruct a0.
-  destruct H10. destruct a0. subst.
-  apply IHx1.
-
-  clear IHx1. clear IHx2.
-  clear H12. clear H. clear A1. clear A2.
-  dependent induction H0; intros.
-  all: try now inversion H.
-  apply (IHReplaceIdWith1 f' x').
-  destruct s. destruct a1. subst.
-
-  assert (A3 : 
-*)
 
 Definition length_order A (a b : list A) : Prop := length a < length b.
 
@@ -1447,27 +1259,52 @@ Inductive StrictReflClo {A} (r : A -> A -> Prop) : A -> A -> Prop :=
 | StrictReflClo_step : forall x y, r x y -> StrictReflClo r x y
 | StrictReflClo_refl : forall x y, ~ r x y -> StrictReflClo r x x.
 
-Inductive VarNameOccursFreeIn : VarName -> Expr -> Prop :=
+Inductive VarNameBoundIn : VarName -> list (VarName * Expr) -> Prop :=
+| VarNameBoundIn_cons : forall v v' e rest,
+    {v = v'}
+      +
+    {VarNameBoundIn v rest} ->
+    VarNameBoundIn v ((v', e)::rest).
+
+Theorem VarNameBoundIn_dec :
+  forall v bs,
+  {VarNameBoundIn v bs} + {~ VarNameBoundIn v bs}.
+Proof.
+  intros.
+  induction bs.
+  right. easy.
+  destruct a.
+  destruct (VarName_dec_eq v0 v).
+  subst.
+  left. constructor. left. reflexivity.
+  destruct IHbs.
+  left. constructor. right. assumption.
+  right. intro. inversion H. subst.
+  destruct H2; subst; easy.
+Defined.
+
+Inductive VarNameOccursFreeIn : VarName -> Expr -> Type :=
 | VarNameOccursFreeIn_Var : forall v, VarNameOccursFreeIn v (Var (SomeId v))
 | VarNameOccursFreeIn_App : forall v a b,
-    { VarNameOccursFreeIn v a } + { VarNameOccursFreeIn v b } -> VarNameOccursFreeIn v (App a b)
+    (VarNameOccursFreeIn v a) + (VarNameOccursFreeIn v b) -> VarNameOccursFreeIn v (App a b)
 | VarNameOccursFreeIn_Lam : forall v1 v2 e,
     v2 <> v1 ->
     VarNameOccursFreeIn v1 e ->
     VarNameOccursFreeIn v1 (Lam v2 e)
 | VarNameOccursFreeIn_Let_NonRec : forall v1 v2 e body,
     v2 <> v1 ->
-    { VarNameOccursFreeIn v1 e } + { VarNameOccursFreeIn v1 body } ->
+    (VarNameOccursFreeIn v1 e) + (VarNameOccursFreeIn v1 body) ->
     VarNameOccursFreeIn v1 (LetNonRec v2 e body)
 | VarNameOccursFreeIn_Let_Rec_nil : forall v body,
     VarNameOccursFreeIn v body ->
     VarNameOccursFreeIn v (LetRec nil body)
 | VarNameOccursFreeIn_Let_Rec_cons : forall v1 v2 e rest body,
-    v2 <> v1 ->
-    VarNameOccursFreeIn v1 (LetRec rest body) ->
+    ~ VarNameBoundIn v1 (cons (v2, e) rest) ->
+    (VarNameOccursFreeIn v1 e) + (VarNameOccursFreeIn v1 (LetRec rest body)) ->
+
     VarNameOccursFreeIn v1 (LetRec (cons (v2, e) rest) body)
 | VarNameOccursFreeIn_Case : forall v s wild ty altcon patVars rhs restAlts,
-    {VarNameOccursFreeIn v s} + {wild <> v /\ ~ (In v patVars) /\ VarNameOccursFreeIn v rhs} ->
+    (VarNameOccursFreeIn v s) + ((wild <> v) * (~ (In v patVars)) * VarNameOccursFreeIn v rhs) ->
     VarNameOccursFreeIn v (Case s wild ty (cons (altcon, patVars, rhs) restAlts))
 | VarNameOccursFreeIn_Cast : forall v e co,
     VarNameOccursFreeIn v e ->
@@ -1475,6 +1312,88 @@ Inductive VarNameOccursFreeIn : VarName -> Expr -> Prop :=
 | VarNameOccursFreeIn_Tick : forall v t e,
     VarNameOccursFreeIn v e ->
     VarNameOccursFreeIn v (Tick t e).
+
+Theorem VarNameOccursFreeIn_dec v :
+  forall e, VarNameOccursFreeIn v e + notT (VarNameOccursFreeIn v e).
+refine (Fix Expr_size_wf _ _).
+Proof.
+  intros.
+  induction x; try easy.
+  destruct i; try (right; easy).
+  destruct (VarName_dec_eq v v0).
+  subst. left. constructor.
+  right. intro. inversion H0. subst. easy.
+
+  destruct (H x1); destruct (H x2); try (unfold Expr_size_order; simpl; lia).
+  left. constructor. left. assumption.
+  left. constructor. left. assumption.
+  left. constructor. right. assumption.
+  right. intro. inversion H0. subst. firstorder.
+
+  destruct (VarName_dec_eq v0 v). subst.
+  right. intro. inversion H0. easy.
+  destruct (H x). unfold Expr_size_order. simpl. lia.
+  left. constructor. assumption. assumption.
+  right. intro. inversion H0. subst. easy.
+
+   
+  destruct (VarName_dec_eq v0 v).
+  subst.
+  right. intro. inversion H0. easy.
+  destruct (H x1); destruct (H x2); try (unfold Expr_size_order; simpl; lia).
+  left. constructor. assumption. left. assumption.
+  left. constructor. assumption. left. assumption.
+  left. constructor. assumption. right. assumption.
+  right. intro. inversion H0. subst. destruct H6; easy.
+
+  destruct (VarNameBoundIn_dec v l).
+  right. intro. inversion H0. subst.
+  inversion v0. subst. easy.
+
+  induction l.
+  destruct (H x).
+  unfold Expr_size_order. simpl. lia.
+  left. constructor. assumption.
+  right. intro. inversion H0. subst. easy.
+
+  destruct a.
+  destruct (H x).
+  unfold Expr_size_order. simpl. lia.
+  left. constructor. intro. inversion H0. subst. easy.
+  destruct l.
+  right. constructor. assumption.
+  destruct p.
+  right. constructor. intro. inversion H0. subst.
+  contradict n. constructor. right. assumption.
+  destruct (H (LetRec l x)); try(
+  unfold Expr_size_order; simpl; pose (Expr_size_pos e0); lia).
+
+  right. assumption.
+
+  right.
+  assert (A : ~ VarNameBoundIn v l).
+    contradict n. constructor.
+    right. constructor. right. assumption.
+  clear H IHx n IHl n0.
+  induction l.
+  constructor. assumption.
+  destruct a. constructor.
+  assumption.
+
+  right. apply IHl.
+  contradict A. constructor.
+  right. assumption.
+
+  destruct (H e).
+  unfold Expr_size_order. simpl. lia.
+  left. constructor. assumption. left. assumption.
+  destruct (H (LetRec l x)).
+  unfold Expr_size_order. simpl. pose (Expr_size_pos e). lia.
+  left. constructor. assumption. right. assumption.
+  right. intro.
+  inversion H0; subst. destruct H7; easy.
+Defined.
+
 
 (* Remove a lambda *)
 Inductive TransformTailRec0 : Expr -> Expr -> Prop :=
@@ -1491,6 +1410,7 @@ Inductive TransformTailRec1 : Expr -> Expr -> Prop :=
 
 (* TODO: Make sure patVars does not contain recName *)
 Inductive TransformTailRec_Alts : VarName -> list Alt -> list Alt -> Prop :=
+| MkTransformTailRec_Alts_nil : forall recName, TransformTailRec_Alts recName nil nil
 | MkTransformTailRec_Alts_Case_Case :  (* Descend into sub-case *)
     forall recName altcon patVars s wild ty alts alts' restAlts restAlts',
     { ~ InVarList (SomeId recName) patVars /\ TransformTailRec_Alts recName alts alts' }
@@ -1519,12 +1439,59 @@ Inductive TransformTailRec_Alts : VarName -> list Alt -> list Alt -> Prop :=
       (cons (altcon, patVars, body0) restAlts)
       (cons (altcon, patVars, Var DoneId :@ body0) restAlts').
 
+Theorem TransformTailRec_Alts_progress :
+  forall recName alts,
+  exists alts', TransformTailRec_Alts recName alts alts'.
+Proof.
+  intros.
+
+  induction alts.
+  exists nil. constructor.
+
+  destruct a.
+  destruct e.
+  destruct IHalts.
+  assert (exists alts_,
+        TransformTailRec_Alts recName (cons a nil) alts_).
+    apply H.
+
+  destruct IHalts.
+  inversion H; subst.
+
+
+
 Inductive TransformTailRec : VarName -> Expr -> Expr -> Prop :=
 | MkTransformTailRec : forall recName a b s wild ty alts alts',
     TransformTailRec0 a b ->
     TransformTailRec1 b (Case s wild ty alts) ->
     TransformTailRec_Alts recName alts alts' ->
     TransformTailRec recName a (Case s wild ty alts').
+(*
+Inductive TransformTailRec : VarName -> Expr -> Expr -> Prop :=
+| MkTransformTailRec : forall recName e e',
+    { exists s wild ty alts alts', e = Case s wild ty alts /\
+      TransformTailRecCase recName 
+*)
+
+Theorem TransformTailRec_Case_progress :
+  forall recName e e' s wild ty alts alts',
+        TransformTailRec0 e e' ->
+        TransformTailRec1 e' (Case s wild ty alts) ->
+        TransformTailRec recName e (Case s wild ty alts').
+Proof.
+  intros.
+  econstructor.
+  apply H.
+  apply H0.
+  constructor.
+
+  case_eq e; intros; try ((left; right; easy) || right; easy).
+  case_eq e'; intros; try(subst; discriminate).
+  case_eq e0; intros. subst.
+  subst. right. 
+    subst; right; intros; intro; inversion H.
+Defined.
+
 
 Inductive TransformTailRecBinds : CoreProgram -> CoreProgram -> Prop :=
 | TransformTailRecBinds_nil : TransformTailRecBinds nil nil
@@ -1542,3 +1509,22 @@ Inductive TransformTailRecBinds : CoreProgram -> CoreProgram -> Prop :=
     TransformTailRecBinds
       (cons (Rec (cons (fName, fBody) restRec)) restBinds)
       (cons (Rec (cons (fName, fBody') restRec')) restBinds').
+
+Theorem TransformTailRecBinds_progress
+  : forall p,
+    exists p',
+    TransformTailRecBinds p p'.
+Proof.
+  intros.
+  induction p.
+  exists nil. constructor.
+
+  destruct IHp.
+  destruct a.
+  exists x.
+  induction p. induction x.
+  destruct p0.
+  constructor.
+  constructor.
+  destruct p0.
+  constructor.
