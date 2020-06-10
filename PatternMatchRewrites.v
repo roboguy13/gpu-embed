@@ -1850,248 +1850,108 @@ Proof.
 
   destruct (VarNameOccursFreeIn_dec recName e).
   {
-    inversion t0; subst; (* clear t0; *)
-    induction alts.
-    destruct X. destruct p.
+    { generalize dependent t0.
 
-    exists ((a, l, LetRec l0 (Case s wild ty alts')) :: nil).
-    constructor.
-    { induction l0. constructor. assumption.
+      induction l0; intro t0.
+      destruct x0. inversion t0; subst.
       destruct a0.
-      constructor. assumption.
-      right. apply IHl0.
-      intro. contradictT n.
-      destruct (VarName_dec_eq recName v0).
-      apply InRecList_here. easy.
-      apply InRecList_there. congruence.
-      assumption.
-    }
-    solveNotCaseGoal. solveNotCaseGoal.
-    { induction l0; try easy. }
-    all: try easy.
-
-    { (* generalize dependent t0. *) induction l0.
-      exists ((a, l, LetRec nil body0') :: x).
+      exists ((a, l, LetRec nil e0) :: x).
       constructor. constructor. assumption.
       solveNotCaseGoal. solveNotCaseGoal.
       constructor. left.
       split. split. split; easy.
       constructor.
+
+      inversion t0; subst.
+      destruct X. destruct p. easy.
+      destruct a0. subst. easy.
+      assumption. easy.
+      assumption.
+
+      destruct IHl0.
+      intro. contradictT n.
+      destruct a0.
+      destruct (VarName_dec_eq recName v0).
+      apply InRecList_here. congruence.
+      apply InRecList_there. congruence.
       assumption. assumption.
 
-      destruct a0.
-      destruct (VarNameOccursFreeIn_dec recName e0).
-      pose (evalReplaceIdWith (SomeId recName) StepId e0).
-      destruct IHl0. intro. contradictT n.
+      destruct x1. easy.
+      destruct a1.
+
+
+      destruct (MapRelation_exists (RelationOnSnd (ReplaceIdWith (SomeId recName) StepId)) (a0 :: l0)).
+      intros.
+      apply (RelationOnSnd_exists (ReplaceIdWith (SomeId recName) StepId) a1).
+      intros.
+      apply (ReplaceIdWith_exist (SomeId recName) StepId).
+
+      destruct x0. easy.
+      destruct a1.
+      exists ((a, l, LetRec x2 e1) :: x).
+
+      constructor.
+      destruct a0. constructor.
+      assumption.
+      right. clear m t1 t0. induction l0. constructor. assumption.
+      destruct a0. constructor.
+      intro. contradictT n.
       destruct (VarName_dec_eq recName v0).
       apply InRecList_here. congruence.
       apply InRecList_there. congruence.
       assumption.
-      destruct x0.
-      inversion t1.
-      destruct a0.
-      destruct e2; try (now inversion t1). inversion t1; subst; try easy.
-      contradictT H2.
+      right. apply IHl0.
+      intro. contradictT n.
+      destruct (VarName_dec_eq recName v0).
+      apply InRecList_here. congruence.
+      apply InRecList_there. congruence.
+      destruct (VarName_dec_eq recName v1).
+      apply InRecList_here. congruence.
+      apply InRecList_there. congruence.
+      inversion H; subst. congruence. assumption.
+      solveNotCaseGoal. solveNotCaseGoal.
+      constructor.
+      left. split. split. split. assumption.
+      apply StepNotInRecList.
+      assumption.
+      inversion t0; subst; try easy.
+      assumption.
+    }
 
-(*    generalize dependent t1. generalize dependent t0. *)
-    induction l0; intros.
-    constructor. assumption. destruct a0. constructor.
-    intro. contradictT n.
-    destruct (VarName_dec_eq recName v0).
-    apply InRecList_here. congruence.
-    apply InRecList_there. congruence.
-    assumption. right.
-    apply IHl0.
-    intro. contradictT n.
-    destruct (VarName_dec_eq recName v0).
-    apply InRecList_here. congruence.
-    apply InRecList_there. congruence.
-    destruct (VarName_dec_eq recName v2).
-    apply InRecList_here. congruence.
-    apply InRecList_there. congruence.
-    inversion H. subst. inversion H2. contradiction.
-    subst. assumption.
+  }
 
-    constructor.
-    apply IHl0. intro.
-    contradictT n.
-    destruct (VarName_dec_eq recName v0).
-    apply InRecList_here. congruence.
-    apply InRecList_there. congruence.
-    destruct (VarName_dec_eq recName v2).
-    apply InRecList_here. congruence.
-    apply InRecList_there. congruence.
-    inversion H; subst. injection H2; intro. easy.
-    assumption. inversion t1; subst; try easy.
-    inversion X2. subst.
-    contradictT H2.
-    constructor. intro.
-    contradictT n.
-    destruct (VarName_dec_eq recName v0).
-    apply InRecList_here. congruence.
-    apply InRecList_there. congruence.
-    assumption.
-    right. apply IHl0.
-    intro. contradictT n.
-    destruct (VarName_dec_eq recName v0).
-    apply InRecList_here. congruence.
-    apply InRecList_there. congruence.
-    inversion H; subst. injection H2; intro. easy.
-    destruct (VarName_dec_eq recName v2).
-    apply InRecList_here. congruence.
-    apply InRecList_there. congruence.
-    assumption.
-    
+  induction l0.
+  exists ((a, l, Var DoneId :@ (LetRec nil e)) :: x).
+  apply MkTransformTailRec_Alts_Case_nonrec.
+  intro. inversion H; subst. easy.
+  solveNotCaseGoal. assumption.
 
-    constructor.
+  destruct (MapRelation_exists (RelationOnSnd (ReplaceIdWith (SomeId recName) StepId)) (a0 :: l0)).
+  intros.
+  apply (RelationOnSnd_exists (ReplaceIdWith (SomeId recName) StepId) a1).
+  intros.
+  apply (ReplaceIdWith_exist (SomeId recName) StepId).
 
 
-    inversion t1. subst. easy. subst. 
-    exists ((a, l, LetRec ((v0, e1) ::x
-
-
-    exists ((a, l, LetRec l0 e0) :: x).
-    apply MkTransformTailRec_Alts_Case_rec.
-    clear IHx0.
-    induction l0. constructor. assumption.
-    destruct a0.
-    constructor. assumption.
-    right.
-    apply IHl0.
-    intro. contradictT n.
-    destruct (VarName_dec_eq recName v0).
-    subst. apply InRecList_here. reflexivity.
-    apply InRecList_there. congruence. assumption.
-    solveNotCaseGoal. solveNotCaseGoal.
-    induction l0; try easy. constructor.
-    left. split. split. split. assumption. apply StepNotInRecList.
-    constructor.
-    destruct (IHx0).
-    induction t0.
-
-
-
- inversion t0; subst.
-    constructor.
-    apply notFreeReplace. assumption.
-    destruct X. destruct p.
-    inversion t1. subst.
-    left. split. split. congruence. easy. constructor.
-    subst. destruct X. destruct p.
-    left. split. split. congruence. easy.
-    constructor.
-
-    inversion t0; subst.
-
-    constructor. constructor.
-    apply notFreeReplace. assumption.
-    left. split. split. congruence. easy.
-    inversion t2; subst.
-    constructor. constructor. constructor.
-    constructor.
-    apply notFreeReplace. assumption. 
-    left. split. split. congruence. easy.
-    destruct X3. destruct p.
-    inversion t3; subst. constructor. inversion X5; subst.
-
-
-    induction l0. easy. easy.
-    constructor. left. split. split. split.
-    assumption. apply StepNotInRecList.
-    induction l0. constructor.
-    constructor. destruct a0.
-    constructor.
-
-
-    left. split. split. split. assumption.
-    easy.
-    induction l0. constructor.
-    constructor. destruct a0. constructor.
-    apply notFreeReplace.
-    inversion v; subst. inversion t1; subst.
-
-    constructor.
-    induction l0. constructor. assumption.
-    destruct a0.
-    constructor. assumption.
-    right. apply IHl0.
-    intro. contradictT n.
-    destruct (VarName_dec_eq recName v0).
-    subst.
-    apply InRecList_here. reflexivity.
-    apply InRecList_there. congruence.
-    assumption.
-    intros.
-
-  exists ((a, l, LetRec l0 e0) :: x).
-  constructor. induction l0. constructor. assumption.
-  inversion t1; subst; try easy.
-  
-
-  destruct IHx0.
-
-(*
-  inversion t0; subst.
-  destruct X. destruct p.
-  exists ((a, l, Case s wild ty alts') :: x).
-  apply MkTransformTailRec_Alts_Case_Case.
-*)
-
-
-
-  induction x0; induction x1; try easy.
-  destruct a0, a1.
-  exists ((a, l, LetNonRec v e e0) :: x).
-  constructor. assumption.
+  destruct (VarNameOccursFreeIn_dec recName (LetRec (a0 :: l0) e)).
+  exists ((a, l, (LetRec x1 e)) :: x).
+  destruct x1.
+  inversion m. constructor. assumption.
   solveNotCaseGoal. solveNotCaseGoal.
-  inversion v0; subst.
-  constructor.
-  left. split. split. split. congruence.
-  easy.
-
-
-
-  inversion t. subst.
-  constructor. constructor. solveNotCaseGoal.
-  solveNotCaseGoal.
-  constructor. left. easy.
-  assumption.
-
-  subst. constructor. constructor.
-  constructor.
-  all: try easy. subst.
-  constructor. constructor.
-  solveNotCaseGoal. solveNotCaseGoal.
-  constructor. left. easy.
-  constructor; try assumption.
-
-  
-  left. split.
-  easy. destruct p.
-  induction alts0.
-  constructor.
   destruct a0. destruct p.
-  inversion t0; subst.
   constructor.
-  inversion t0; subst.
-
-  destruct X. destruct p.
-  induction alts.
-  inversion t. subst.
-  induction t0.
-
+  left. split. split. split. assumption.
+  apply StepNotInRecList.
+  assumption.
+  apply notFreeReplace.
+  assumption. assumption.
 
 
-
-  destruct a.
-  destruct e.
-  destruct IHalts.
-  assert (exists alts_,
-        TransformTailRec_Alts recName (cons a nil) alts_).
-    apply H.
-
-  destruct IHalts.
-  inversion H; subst.
+  exists ((a, l, Var DoneId :@ (LetRec (a0 :: l0) e)) :: x).
+  apply MkTransformTailRec_Alts_Case_nonrec.
+  assumption. solveNotCaseGoal.
+  assumption.
+Defined.
 
 
 
