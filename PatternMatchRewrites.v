@@ -277,6 +277,47 @@ Definition Alt : Type := AltCon * list VarName * Expr.
 
 Definition CoreProgram := list Bind.
 
+Definition Bind_size (b : Bind) : nat.
+  induction b.
+  destruct a. exact (S (Expr_size e)).
+  induction b. exact 1.
+  destruct a.
+  exact (S (IHb + Expr_size e)).
+Defined.
+
+Definition Bind_size_order (x y : Bind) : Prop :=
+  Bind_size x < Bind_size y.
+
+Theorem Bind_size_wf : well_founded Bind_size_order.
+  apply well_founded_ltof.
+Defined.
+
+Fixpoint CoreProgram_size (p : CoreProgram) : nat :=
+  match p with
+  | nil => 0
+  | cons (inl (_, x)) xs => S (Expr_size x + CoreProgram_size xs)
+  | cons (inr bs) xs => S (fold_right (fun p q => match p with (_, e) => q + Expr_size e end) 0 bs + CoreProgram_size xs)
+  end.
+
+Definition CoreProgram_size_order (x y : CoreProgram) : Prop :=
+  CoreProgram_size x < CoreProgram_size y.
+
+Theorem CoreProgram_size_wf : well_founded CoreProgram_size_order.
+  apply well_founded_ltof.
+Defined.
+
+Lemma CoreProgram_size_pos : forall x, x <> nil -> 0 < CoreProgram_size x.
+Proof.
+  intros.
+  induction x. contradiction.
+  simpl.
+  induction x.
+  simpl. destruct a.
+  destruct p. lia. lia. destruct a.
+  destruct p.
+  simpl. lia. lia.
+Defined.
+
 (*
 Inductive NotInRecList : Id -> list (VarName * Expr) -> Prop :=
 | NotInRecList_cons : forall v v' e rest,
@@ -1640,12 +1681,12 @@ Defined.
 
 
 (* Remove a lambda *)
-Inductive TransformTailRec0 : Expr -> Expr -> Prop :=
+Inductive TransformTailRec0 : Expr -> Expr -> Type :=
 | MkTransformTailRec0 : forall v body,
     TransformTailRec0 (Lam v body) body.
 
 (* Remove a internalize (externalize ...) from around a 'case' expression *)
-Inductive TransformTailRec1 : Expr -> Expr -> Prop :=
+Inductive TransformTailRec1 : Expr -> Expr -> Type :=
 | MkTransformTailRec1 : forall ty dict s wild alts,
     TransformTailRec1
       (Var InternalizeId :@ TypeExpr ty :@ dict :@ (Var ExternalizeId :@ TypeExpr ty :@ dict :@ Case s wild ty alts))
@@ -1954,8 +1995,47 @@ Proof.
 Defined.
 
 
+Theorem TransformTailRec0_dec :
+  forall e,
+    ({e' : Expr & TransformTailRec0 e e'})
+      +
+    notT ({e' : Expr & TransformTailRec0 e e'}).
+Proof.
+  intros.
+  induction e.
+  all: try (right; intro H; destruct H; now inversion t).
+  left.
+  exists e. constructor.
+Defined.
 
-Inductive TransformTailRec : VarName -> Expr -> Expr -> Prop :=
+(* 
+(Var InternalizeId :@ TypeExpr ty :@ dict :@ (Var ExternalizeId :@ TypeExpr ty :@ dict :@ Case s wild ty alts))
+      (Case s wild ty alts). *)
+
+Theorem TransformTailRec1_dec :
+  forall e,
+    ({e' : Expr & TransformTailRec1 e e'})
+      +
+    notT ({e' : Expr & TransformTailRec1 e e'}).
+refine (fun e =>
+    match e  with
+    | (Var InternalizeId :@ TypeExpr ty1 :@ dict1 :@ (Var ExternalizeId :@ TypeExpr ty2 :@ dict2 :@ Case s wild ty3 alts)) => _
+    | _ => _
+    end).
+(* Var InternalizeId :@ TypeExpr ty1 :@ dict1
+     :@ (Var ExternalizeId :@ TypeExpr ty2 :@ dict2 :@ Case s wild ty3 alts)) *)
+Proof.
+  40: {
+    destruct (CoreType_eq_dec ty1 ty2); destruct (CoreType_eq_dec ty2 ty3);
+      destruct (Expr_dec_eq dict1 dict2). subst.
+    left. exists (Case s wild ty3 alts). constructor.
+    all: easy.
+  }
+  all: try (right; intro H; destruct H; now inversion t).
+Defined.
+
+
+Inductive TransformTailRec : VarName -> Expr -> Expr -> Type :=
 | MkTransformTailRec : forall recName a b s wild ty alts alts',
     TransformTailRec0 a b ->
     TransformTailRec1 b (Case s wild ty alts) ->
@@ -1978,27 +2058,68 @@ Proof.
   econstructor.
   apply H.
   apply H0.
-  constructor.
-
-  case_eq e; intros; try ((left; right; easy) || right; easy).
-  case_eq e'; intros; try(subst; discriminate).
-  case_eq e0; intros. subst.
-  subst. right. 
-    subst; right; intros; intro; inversion H.
+  induction alts; destruct alts'; try easy.
 Defined.
 
 
-Inductive TransformTailRecBinds : CoreProgram -> CoreProgram -> Prop :=
+Theorem TransformTailRec_Case_dec :
+  forall recName e,
+    ({ s & { wild & { ty & { alts & {e' : Expr &
+        { alts' & (TransformTailRec0 e e' *
+                   TransformTailRec1 e' (Case s wild ty alts) *
+                   TransformTailRec recName e (Case s wild ty alts'))%type } }}}}} )
+      +
+    (notT ({ s & { wild & { ty & { alts & {e' : Expr &
+        { alts' & TransformTailRec0 e e' *
+                   TransformTailRec1 e' (Case s wild ty alts) *
+                   TransformTailRec recName e (Case s wild ty alts')}}}}}} )%type ).
+Proof.
+  intros.
+  destruct (TransformTailRec0_dec e).
+  destruct s.
+  destruct (TransformTailRec1_dec x).
+  destruct s.
+  inversion t0; subst.
+  left. exists s. exists wild. exists ty. exists alts.
+  Check TransformTailRec_Alts_progress.
+  destruct (TransformTailRec_Alts_progress recName alts).
+  set (e' := (Var InternalizeId :@ TypeExpr ty :@ dict
+       :@ (Var ExternalizeId :@ TypeExpr ty :@ dict :@ Case s wild ty alts))).
+  exists e'.
+  exists x.
+  split. split. assumption. assumption.
+
+  Check MkTransformTailRec.
+
+  apply (MkTransformTailRec recName e e' s wild ty alts x).
+  inversion t1; subst; try easy.
+  easy. easy.
+
+  right.
+
+  intro.
+  destruct X. destruct s. destruct s. destruct s. destruct s. destruct s.
+  easy.
+  right. intro. destruct X. destruct s. destruct s. destruct s. destruct s. destruct s.
+  easy.
+Defined.
+
+
+Inductive TransformTailRecBinds : CoreProgram -> CoreProgram -> Type :=
 | TransformTailRecBinds_nil : TransformTailRecBinds nil nil
 
 | TransformTailRecBinds_NonRec_cons : forall v e restBinds restBinds',
     TransformTailRecBinds restBinds restBinds' ->
     TransformTailRecBinds (NonRec v e :: restBinds) (NonRec v e :: restBinds')
 
-| TransformTailRecBinds_cons : forall fName fBody fBody' restRec restRec' restBinds restBinds',
-    { VarNameOccursFreeIn fName fBody /\ TransformTailRec fName fBody fBody' }
+| TransformTailRecBinds_Rec_nil : forall rest rest',
+    TransformTailRecBinds rest rest' ->
+    TransformTailRecBinds (Rec nil :: rest) (Rec nil :: rest')
+
+| TransformTailRecBinds_Rec_cons : forall fName fBody fBody' restRec restRec' restBinds restBinds',
+    ( VarNameOccursFreeIn fName fBody * TransformTailRec fName fBody fBody' )
       +
-    { ~ VarNameOccursFreeIn fName fBody /\ fBody' = fBody} ->
+    ( (notT (VarNameOccursFreeIn fName fBody) + notT (TransformTailRec fName fBody fBody')) * (fBody' = fBody)) ->
     TransformTailRecBinds (cons (Rec restRec) nil) (cons (Rec restRec') nil) ->
     TransformTailRecBinds restBinds restBinds' ->
     TransformTailRecBinds
@@ -2007,19 +2128,126 @@ Inductive TransformTailRecBinds : CoreProgram -> CoreProgram -> Prop :=
 
 Theorem TransformTailRecBinds_progress
   : forall p,
-    exists p',
-    TransformTailRecBinds p p'.
+    { p': CoreProgram &
+      TransformTailRecBinds p p'}.
+(* refine (Fix CoreProgram_size_wf _ _). *)
 Proof.
-  intros.
-  induction p.
+  intros x.
+  induction x.
   exists nil. constructor.
 
-  destruct IHp.
+  induction x.
+  destruct a. destruct p.
+  exists (NonRec v e :: nil). constructor.
+  constructor.
+
+  induction l.
+  exists (Rec nil :: nil). constructor. constructor.
+
   destruct a.
-  exists x.
-  induction p. induction x.
-  destruct p0.
-  constructor.
-  constructor.
-  destruct p0.
-  constructor.
+  destruct (VarNameOccursFreeIn_dec v e).
+  Check TransformTailRec_Case_dec.
+  destruct (TransformTailRec_Case_dec v e).
+  {
+    destruct s. destruct s. destruct s. destruct s. destruct s.
+    destruct s. destruct p. destruct p.
+    exists (inr ((v, Case x x0 x1 x4) :: l) :: nil).
+    constructor. left. split. assumption. assumption.
+    easy. easy.
+  }
+
+  {
+    exists (inr ((v, e) :: l) :: nil).
+    constructor.
+    right. split. right.
+    intro.
+    contradictT n.
+    inversion X; subst.
+    exists s. exists wild. exists ty. exists alts'. exists b.
+    exists alts. easy. reflexivity.
+    clear IHx IHl.
+    induction l. constructor. constructor.
+    destruct a.
+    constructor.
+    destruct (TransformTailRec_Case_dec v1 e0).
+    destruct s. destruct s. destruct s. destruct s. destruct s. destruct s.
+    easy.
+    right. split. right. intro.
+    inversion X; subst. easy. reflexivity.
+    apply IHl. constructor. constructor.
+  }
+
+  {
+    destruct (TransformTailRec_Case_dec v e).
+    destruct s. destruct s. destruct s. destruct s. destruct s. destruct s.
+    destruct IHl. easy.
+
+    destruct IHl.
+    inversion t; subst.
+    exists (inr ((v, e) :: nil) :: nil).
+    constructor.
+    right. split. left. assumption. reflexivity.
+    constructor. constructor. constructor.
+
+    exists (inr ((v, e) :: (fName, fBody') :: restRec') :: nil).
+    inversion X1; subst.
+    constructor. firstorder.
+    firstorder. assumption.
+  }
+
+  {
+    destruct a. destruct p.
+    destruct (TransformTailRec_Case_dec v e).
+    destruct s. destruct s. destruct s. destruct s. destruct s. destruct s.
+    destruct p. destruct p.
+    destruct IHx. easy.
+
+    destruct IHx.
+
+    exists (inl (v, e) :: x0).
+    constructor. assumption.
+
+    destruct IHx.
+    inversion t; subst.
+    destruct IHx0.
+    exists restBinds'. assumption.
+
+    inversion t0; subst.
+    exists (inr nil :: NonRec v e :: rest').
+    constructor. inversion t0; subst.
+    constructor. assumption.
+    destruct X0.
+    exists (inr ((fName, fBody') :: restRec') :: NonRec v e :: restBinds'0).
+    constructor.
+    firstorder.
+    easy.
+    inversion t0; subst.
+    constructor. assumption.
+
+    destruct p.
+    subst.
+    exists (inr ((fName, fBody) :: restRec') :: NonRec v e :: restBinds'0).
+    constructor. firstorder. easy.
+    constructor. assumption.
+
+    destruct IHx0.
+    exists rest'. assumption.
+    inversion t0; subst.
+    exists (inr nil :: Rec nil :: rest').
+    constructor. assumption.
+
+    exists (inr ((fName, fBody') :: restRec') :: Rec nil :: rest').
+    constructor. easy. assumption. assumption.
+
+    destruct IHx0.
+    inversion t; subst.
+    exists restBinds'. assumption.
+    inversion t0; subst.
+    exists (inr nil :: Rec ((fName, fBody') :: restRec') :: restBinds').
+    constructor. easy.
+
+    exists (inr ((fName0, fBody'0) :: restRec'0) :: Rec ((fName, fBody') :: restRec') :: restBinds'0).
+    constructor. easy. easy.
+    constructor. easy. easy. easy.
+  }
+Defined.
