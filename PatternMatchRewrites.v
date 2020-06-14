@@ -10,6 +10,7 @@ Require Import Lia.
 Require Import Coq.Arith.Compare_dec.
 
 Require Import Coq.Arith.PeanoNat.
+Require Import Coq.Bool.Bool.
 
 
 Ltac contradictT H :=
@@ -52,7 +53,55 @@ Axiom DataCon : Type.
 Axiom DataCon_dec_eq : eq_dec DataCon.
 Hint Resolve DataCon_dec_eq : eqdec.
 *)
-Inductive DataCon := .
+
+(*
+
+Inductive ADT : Type :=
+| ADT_prod : ADT -> ADT -> ADT
+| ADT_sum : ADT -> ADT -> ADT
+| ADT_base : ADT.
+
+Inductive DataConSort : ADT -> Type :=
+| DataCon_base : DataConSort ADT_base (* Base types *)
+| DataConSort_prod : forall t1 t2, DataConSort t1 -> DataConSort t2 -> DataConSort (ADT_sum t1 t2)
+| DataConSort_sum  : forall t1 t2, DataConSort t1 -> DataConSort t2 -> DataConSort (ADT_prod t1 t2).
+
+
+Definition cast {T} (S : T -> Type) {a b : T} (p : a = b) : S a -> S b :=
+  match p with eq_refl => fun a => a end.
+
+Definition eq_sig T (S : T -> Type) (a b : T) x y
+  (p : existT S a x = existT S b y) :
+  {q : a = b & cast S q x = y} :=
+  match p in _ = z return {q : a = projT1 z & cast S q x = projT2 z} with
+  | eq_refl => existT _ eq_refl eq_refl
+  end.
+
+Definition eq_sig_elim T (S : T -> Type) (a b : T) x y
+  (p : existT S a x = existT S b y) :
+  forall (R : forall c, S c -> Prop), R a x -> R b y :=
+  match p in _ = z return forall (R : forall c, S c -> Prop), R a x -> R _ (projT2 z) with
+  | eq_refl => fun R H => H
+  end.
+
+Lemma DataConSort_eq_dec {T} : eq_dec (DataConSort T).
+  unfold eq_dec. intros.
+  induction x; intros. left.
+  dependent induction y; try easy.
+  dependent induction y; try easy.
+  destruct (IHx1 y1); destruct (IHx2 y2). subst. left. easy.
+  right. subst. intro. inversion H.
+  pose (cast projT2 H1).
+  pose (eq_sig _ (fun t2 : ADT => DataConSort t2) _ _ _ _ H1).
+  destruct s. unfold cast in e. simpl in e.
+*)
+
+(* Right-biased *)
+Inductive DataCon : Type :=
+| DataCon_base : DataCon
+| DataCon_inl : DataCon
+| DataCon_inr : DataCon -> DataCon.
+
 Scheme Equality for DataCon.
 Hint Resolve DataCon_eq_dec : eqdec.
 
@@ -86,6 +135,172 @@ Inductive Expr :=
 | Tick : Tickish -> Expr -> Expr
 | TypeExpr : CoreType -> Expr
 | CoercionExpr : Coercion -> Expr.
+
+(*
+Fixpoint Vect1 (n : nat) : (Type -> Type) -> Type -> Type :=
+  match n with
+  | O   => fun _ _ => unit
+  | S m => fun T A => prod (T A) (Vect1 m T A)
+  end.
+
+Definition Vect (n : nat) A : Type :=
+  Vect1 n (fun X => X) A.
+*)
+
+Polymorphic Inductive Vect1 (T : Type -> Type) : Type -> nat -> Type :=
+| Vect1_nil : forall A, Vect1 T A 0
+| Vect1_cons : forall A n (x : T A) (xs : Vect1 T A n), Vect1 T A (S n).
+
+
+Polymorphic Definition Vect (n : nat) A : Type :=
+  Vect1 (fun X => X) A n.
+
+Polymorphic Fixpoint vmap {n : nat} {P Q} {A B} (f : P A -> Q B) (v : Vect1 P A n) : Vect1 Q B n.
+Proof.
+  induction v.
+  - exact (Vect1_nil _ _).
+  - apply Vect1_cons.
+    exact (f x).
+    apply (IHv f).
+Defined.
+
+
+(** Based partially on http://adam.chlipala.net/cpdt/html/Hoas.html **)
+Polymorphic Inductive expr_phoas var : Type :=
+| Var_phoas : var -> expr_phoas var
+| Lit_phoas : Literal -> expr_phoas var
+| App_phoas : expr_phoas var -> expr_phoas var -> expr_phoas var
+| Lam_phoas : (var -> expr_phoas var) -> expr_phoas var
+(*
+| LetNonRec_phoas : (var -> expr_phoas var) -> expr_phoas var -> expr_phoas var
+| LetRec_phoas : forall n, (Vect n var -> expr_phoas var) -> Vect1 expr_phoas var n -> expr_phoas var
+| Case_phoas : expr_phoas var -> (var -> CoreType -> list (AltCon * (list var -> expr_phoas var))) -> expr_phoas var
+*)
+| Cast_phoas : expr_phoas var -> Coercion -> expr_phoas var
+| Tick_phoas : Tickish -> expr_phoas var -> expr_phoas var
+| TypeExpr_phoas : CoreType -> expr_phoas var
+| CoercionExpr_phoas : Coercion -> expr_phoas var.
+
+Definition LetNonRec_phoas {var} (f : var -> expr_phoas var) (x : expr_phoas var) : expr_phoas var :=
+  App_phoas _ (Lam_phoas _ f) x.
+
+Fixpoint flatten {var} (e : expr_phoas (expr_phoas var)) : expr_phoas var :=
+  match e with
+  | Var_phoas _ e' => e'
+  | Lit_phoas _ l => Lit_phoas _ l
+  | App_phoas _ f x => App_phoas _ (flatten f) (flatten x)
+  | Lam_phoas _ f => Lam_phoas _ (fun x => flatten (f (Var_phoas _ x)))
+  | Cast_phoas _ x co => Cast_phoas _ (flatten x) co
+  | Tick_phoas _ t x => Tick_phoas _ t (flatten x)
+  | TypeExpr_phoas _ t => TypeExpr_phoas _ t
+  | CoercionExpr_phoas _ co => CoercionExpr_phoas _ co
+  end.
+
+Definition Expr_phoas := forall var, expr_phoas var.
+
+Definition Expr_phoas1 := forall var, var -> expr_phoas var.
+
+Definition subst_phoas (e : Expr_phoas) (f : Expr_phoas1) : Expr_phoas :=
+  fun _ =>
+   flatten (f _ (e _)).
+
+Definition Y_phoas {var} (f : var -> expr_phoas var) : expr_phoas var :=
+  let w := Lam_phoas _ (fun z => (App_phoas _ (Lam_phoas _ f) (App_phoas _ (Var_phoas _ z) (Var_phoas _ z))))
+  in
+  App_phoas _ w w.
+
+Definition LetRec_phoas {var} (f : var -> expr_phoas var) (x : var -> expr_phoas var) : expr_phoas var :=
+  LetNonRec_phoas f (Y_phoas x).
+
+
+
+(*
+Definition LetRec_phoas {var} {n} (f : Vect n var -> expr_phoas var) (bs : Vect1 expr_phoas var n) : expr_phoas var.
+Proof.
+  induction bs.
+  - apply f. constructor.
+  - 
+*)
+
+
+(*
+Definition expr_phoas_size {var} (e : expr_phoas var) : nat.
+Proof.
+  induction e eqn:E.
+  - exact 1.
+  - exact 1.
+  - apply S.
+    apply plus.
+    apply (IHe0_1 e0_1). reflexivity.
+    apply (IHe0_2 e0_2). reflexivity.
+  - 
+*)
+
+(*
+Fixpoint expr_phoas_size {var} (e : expr_phoas var) : nat :=
+  match e with
+  | Var_phoas _ _ => 1
+  | Lit_phoas _ _ => 1
+  | App_phoas _ a b => S (expr_phoas_size a + expr_phoas_size b)
+  | Lam_phoas _ f => 1
+  | LetNonRec_phoas _ f x => S (expr_phoas_size x)
+  | LetRec_phoas _ _ fs xs => S (fold_right (fun x acc => acc + expr_phoas_size x) 0 xs)
+  | _ => 0
+  end.
+*)
+(*
+
+Fixpoint flatten {var} (e : expr_phoas (expr_phoas var)) {struct e} : expr_phoas var.
+Proof.
+  dependent induction e.
+  - exact v.
+  - exact (Lit_phoas _ l).
+  - exact (App_phoas _ (flatten _ e1) (flatten _ e2)).
+  - apply Lam_phoas.
+    intros.
+    apply flatten.
+    apply (e (Var_phoas _ X0)).
+  - apply LetNonRec_phoas.
+    intros v.
+    set (e (Var_phoas _ v)).
+*)
+
+
+(*
+  refine(
+  match e with
+  | Var_phoas _ e' => e'
+  | Lit_phoas _ l => Lit_phoas _ l
+  | App_phoas _ f x => App_phoas _ (flatten _ f) (flatten _ x)
+  | Lam_phoas _ f => Lam_phoas _ (fun x => flatten _ (f (Var_phoas _ x)))
+  | LetNonRec_phoas _ f x => LetNonRec_phoas _ (fun y => flatten _ (f (Var_phoas _ y))) (flatten _ x)
+  | LetRec_phoas _ _ fs xs => LetRec_phoas _ _ (fun ys => flatten _ (fs (vmap (Var_phoas _) ys)))
+                                (vmap (flatten _) xs)
+  | Case_phoas _ s f => Case_phoas _ (flatten _ s)
+      (fun wild ty =>
+         map (fun p =>
+          match p with
+          | (altcon, g) => (altcon,  fun z => _)
+          end) (f (Var_phoas _ wild) ty)
+      )
+  | Cast_phoas _ x co => Cast_phoas _ (flatten _ x) co
+  | Tick_phoas _ t x => Tick_phoas _ t (flatten _ x)
+  | TypeExpr_phoas _ ty => TypeExpr_phoas _ ty
+  | CoercionExpr_phoas _ co => CoercionExpr_phoas _ co
+  end).
+Proof.
+  intros.
+  refine (flatten _ _).
+  apply g.
+  exact (map (Var_phoas _) z).
+Defined.
+*)
+
+
+(*
+Inductive Expr_phoas_Step : forall var, expr_phoas var -> expr_phoas var -> Type :=
+| Beta_phoas : 
+*)
 
 Check fold_right.
 
@@ -2130,7 +2345,6 @@ Theorem TransformTailRecBinds_progress
   : forall p,
     { p': CoreProgram &
       TransformTailRecBinds p p'}.
-(* refine (Fix CoreProgram_size_wf _ _). *)
 Proof.
   intros x.
   induction x.
