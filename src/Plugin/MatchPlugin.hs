@@ -9,6 +9,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module Plugin.MatchPlugin (plugin) where
 
@@ -356,6 +357,7 @@ isVar _ = False
 
 -- Mark for further transformation
 mark0 :: HasCallStack => ModGuts -> Expr Var -> MatchM (Expr Var)
+mark0 _ e@(Type _) = return e
 -- mark0 _ e@(Coercion {}) = return e
 mark0 guts e@(Var f :@ Type ty :@ dict :@ x) = do
   externalizeName <- lift $ findIdTH guts 'externalize
@@ -373,10 +375,14 @@ mark0 guts e@(Var f :@ Type ty :@ dict :@ x) = do
         Nothing -> markIt guts x
 
 mark0 guts x = do
-  r <- tryMarkUnrepVar guts x
-  case r of
-    Just x' -> return x'
-    Nothing -> markIt guts x
+  -- unwrappedM <- unwrapUnconstructRep_maybe guts x
+  -- case unwrappedM of
+  --   Just x' -> return x'
+    -- Nothing -> do
+      r <- tryMarkUnrepVar guts x
+      case r of
+        Just x' -> return x'
+        Nothing -> markIt guts x
 
 tryMarkUnrepVar :: HasCallStack => ModGuts -> Expr Var -> MatchM (Maybe (Expr Var))
 tryMarkUnrepVar guts e@(Var f :@ Type tyA :@ var@(Var g :@ Type tyB :@ _dict :@ _)) = do
@@ -387,8 +393,16 @@ tryMarkUnrepVar guts e@(Var f :@ Type tyA :@ var@(Var g :@ Type tyB :@ _dict :@ 
 
   if f == unrepId && g == varConId
     then do
+      dflags <- getDynFlags
+      traceM "traceMarkUnrepVar: unrep Var"
+      traceM $ "--> unrepType: " ++ showPpr dflags tyA
+
       -- traceM $ "=== mark0 ===> " ++ showPpr dflags var
-      return $ Just var
+
+      -- unconstructRepId <- lift $ findIdTH guts 'UnconstructRep
+      -- return (Just (Var unconstructRepId :@ Type tyB :@ var))
+
+      return Nothing -- $ Just var
     else do
       -- traceM $ "=== mark0 ===> " ++ showPpr dflags var
       return Nothing
@@ -608,8 +622,9 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
   fromIntegral <- lift $ findIdTH guts 'fromIntegral
   fromInteger <- lift $ findIdTH guts 'fromInteger
+  unrep <- lift $ findIdTH guts 'unrep
 
-  go0 (== fromIntegral) (== fromInteger) expTyCon (== lamId) e
+  go0 (== unrep) (== fromIntegral) (== fromInteger) expTyCon (== lamId) e
   where
     mark :: HasCallStack => CoreExpr -> MatchM CoreExpr
     mark = mark0 guts
@@ -626,7 +641,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
     replaceVarType v ty = Data.transform (replaceVarType0 v ty)
 
-    go0 isFromIntegral isFromInteger expTyCon isLam = go
+    go0 isUnrep isFromIntegral isFromInteger expTyCon isLam = go
       where
         hasExprTy = hasExprTy' expTyCon
 
@@ -710,6 +725,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
               tailRecAppId <- lift $ findIdTH guts 'tailRecApp
               dflags <- getDynFlags
 
+              -- x <- unwrapUnconstructRep guts x0
+              -- y <- unwrapUnconstructRep guts y0
 
               markedX <- mark x
               markedY <- mark y
@@ -834,7 +851,6 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
             return (Var charLitId :@ expr)
 
-
         -- Handle constructors that are not builtins
         go expr@(_ :@ _)
           | Just (tys, dicts, constrTyCon, constr, args0) <- getConstructorApp_maybe expr,
@@ -937,6 +953,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                       arg
 
 
+                -- e''' <- Data.transformM (maybeTransform3M targetTheFnM constructFn (\app -> let (cFn, cArgs) = collectArgs app in fmap (mkApps cFn) (mapM (\x -> trace ("unconstructing " ++ showPpr dflags x) $ applyUnconstructRep guts x (exprType x)) cArgs))) e''
+
                 let simplE' = reduceConstruct e''
 
 
@@ -945,7 +963,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 let fnE = Data.transform letNonRecSubst
                             $ whileRight (unfoldAndReduceDict_either guts dflags) simplE'
 
-                unreppedArgs <- mapM (applyUnrep guts <=< mark) markedArgs --args
+                unreppedArgs <- mapM (applyUnrep guts <=< {- applyUnconstructRep' guts <=< -} mark) markedArgs --args
                 unrepId <- lift $ findIdTH guts 'unrep
 
                 -- let (newExpr, remainingArgs) = betaReduceAll fnE [mkApps constr' unreppedArgs]
@@ -1027,6 +1045,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                         prepareResult x = mkApps simplE''Fn (init simplE''Args0 ++ [x])
 
 
+                    traceM $ "simplE''Arg = " ++ showPpr dflags simplE''Arg
+
                     -- traceM $ "=== simplE''' ===> " ++ showPpr dflags simplE'''
 
                     -- return simplE''
@@ -1069,8 +1089,10 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                             simplE''Arg
 
                     -- traceM $ "elimRepUnrep: {" ++ showPpr dflags newExpr'''0 ++ "}"
-                    newExpr''' <- Data.transformM (elimRepUnrep guts) newExpr'''0
+                    newExpr''' <- (elimRepUnrep guts) newExpr'''0
                     traceM "after elimRepUnrep"
+                    traceM $ "newExpr''' = " ++ showPpr dflags newExpr'''
+                    traceM ""
 
                     -- TODO: Note: the out-of-scope coercion type variable gets
                     -- introduced somewhere between newExpr and newExpr'0
@@ -1084,10 +1106,11 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                     (co1, _) <- lift $ normaliseTypeCo_role guts Representational toTy
                     (co2, _) <- lift $ normaliseTypeCo_role guts Representational (exprType newExpr''')
                     let co3 = mkTransCo co2 (mkSymCo co1)
-                    traceM $ "co1 kind = " ++ showPpr dflags (coercionKind co1)
-                    traceM $ "co2 kind = " ++ showPpr dflags (coercionKind co2)
+
+                    -- traceM $ "co1 kind = " ++ showPpr dflags (coercionKind co1)
+                    -- traceM $ "co2 kind = " ++ showPpr dflags (coercionKind co2)
                     traceM $ "co3 kind = " ++ showPpr dflags (coercionKind co3)
-                    traceM $ "exprType newExpr''' = " ++ showPpr dflags (exprType newExpr''')
+                    -- traceM $ "exprType newExpr''' = " ++ showPpr dflags (exprType newExpr''')
 
 
                     constructedResult <- return $ prepareResult (Cast newExpr''' co3)
@@ -1114,7 +1137,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                     -- error "debug"
 
                     -- error (showPpr dflags constructedResult)
-                    return constructedResult
+                    updateTypeProofs guts constructedResult
 
 
 
@@ -1127,10 +1150,14 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                     -- error (showPpr dflags (newExpr, remainingArgs))
                     -- return newExpr'''
 
+        go expr@(Var f :@ Type ty :@ x)
+          | isUnrep f = return x
+
         go expr@(_ :@ _)
           | Nothing <- getConstructorApp_maybe expr
           , (Var f, args) <- collectArgs expr
           , not (isConstructor f)
+          , not (isUnrep f)
           , Nothing <- builtin f
           , not (hasExprTy expr) = do
 
@@ -1153,6 +1180,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 let unfoldingF = getUnfolding guts dflags f
 
                 -- markedF <- mark unfoldingF
+                traceM $ "marking args: " ++ showPpr dflags args
                 markedArgs <- mapM mark args
 
                 let (newF0, newArgs) = betaReduceAll unfoldingF args --markedArgs
@@ -1191,96 +1219,208 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 --   | Just _ <- isDataConId_maybe fn
 --     = do
 
-fixConstructorCast :: ModGuts -> DynFlags -> CoreExpr -> MatchM CoreExpr
--- fixConstructorCast guts dflags e0@(Cast (app@(App {})) co0)
---   | (Var fn, args) <- collectArgs app
---   -- , trace ("might fix: " ++ showPpr dflags fn) True
---   , Just _ <- isDataConId_maybe fn
---   = do
---        let ty = coercionLKind co0
 
---        expTyCon <- lift $ findTyConTH guts ''GPUExp
---        repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
---        case splitTyConApp_maybe ty of
---          Just (tyF, [tyArg])
---            | tyF == expTyCon -> do
---              (co', _) <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [tyArg]])
---              traceM $ "Fixed coercion kind: " ++ showPpr dflags (coercionKind co')
---              traceM $ "Fixed constructor: " ++ showPpr dflags fn
---              -- traceM $ "  ^--------------> " ++ showPpr dflags (coercionKind (mkSymCo co'))
---              args' <- mapM (Data.descendM (fixConstructorCast guts dflags)) args
+updateTypeProofs :: ModGuts -> CoreExpr -> MatchM CoreExpr
+updateTypeProofs guts e@(_ :@ _)
+  | (Var f, args) <- collectArgs e = do
+      pairExpId <- lift $ findDataConWorkIdTH guts 'PairExp
+      leftExpId <- lift $ findDataConWorkIdTH guts 'LeftExp
+      rightExpId <- lift $ findDataConWorkIdTH guts 'RightExp
+      constructRepId <- lift $ findDataConWorkIdTH guts 'ConstructRep
 
---              -- return app
---              return $ Cast (mkApps (Var fn) args') (mkSymCo co')
---          _ -> return e0
+      pairExpWrapId <- lift $ findIdTH guts 'PairExp
+      rightExpWrapId <- lift $ findIdTH guts 'RightExp
 
-fixConstructorCast guts dflags e0@(Cast (Var x) co0)
-  | Just _ <- isDataConId_maybe x
-  = do
-       let ty = coercionLKind co0
+      dflags <- getDynFlags
 
-       expTyCon <- lift $ findTyConTH guts ''GPUExp
-       repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
-       case splitTyConApp_maybe ty of
-         Just (tyF, [tyArg])
-           | tyF == expTyCon -> do
-             (co', _) <- lift $ normaliseTypeCo_role guts Representational (mkTyConApp expTyCon [mkTyConApp repTyTyCon [tyArg]])
-             -- traceM $ "Fixed coercion kind: " ++ showPpr dflags (coercionKind co')
-             traceM $ "Fixed constructor: " ++ showPpr dflags x
-             -- traceM $ "  ^--------------> " ++ showPpr dflags co'
-             -- traceM $ "  ^--------------> " ++ showPpr dflags (exprType (Var x), ty, tyArg, coercionKind co')
-             -- traceM $ ""
+      -- traceM $ "checking " ++ showPpr dflags f ++ " vs " ++ showPpr dflags pairExpId
 
-             -- return $ Var x
-             -- return $ e0
+      if | f == pairExpId || f == pairExpWrapId -> do
+            traceM $ "pairExpId transform, length args = " ++ show (length args)
+            traceM $ "args = " ++ showPpr dflags args
 
-             return $ Cast (Var x) (mkSymCo co')
-         _ -> return e0
+            case args of
+              (Type resTy:Type ty1:Type ty2:Coercion co:x1:x2:rest)
+                  | noFreeVarsOfType resTy && noFreeVarsOfType ty1 && noFreeVarsOfType ty2 -> do
+                ty1' <- lift $ normaliseType' guts ty1
+                ty2' <- lift $ normaliseType' guts ty2
 
-fixConstructorCast _ _ e = return e
+                (co', resTy') <- lift $ normaliseTypeCo guts resTy
 
--- TODO: Figure out why this is needed in the first place. It seems to be
--- caused by a simpleOptExpr call in the constructor transformation code.
-fixVarTypeable :: ModGuts -> DynFlags -> CoreExpr -> MatchM CoreExpr
-fixVarTypeable guts dflags e@(App {}) = do
-  varId <- lift $ findIdTH guts 'Expr.Var
-  typeableTyCon <- lift $ findTyConTH guts ''Typeable
+                -- let co' = mkReflCo Nominal resTy
+                -- traceM $ "ty1' = " ++ showPpr dflags ty1'
 
-  let (fnE, args) = collectArgs e
+                traceM $ "x1 = " ++ showPpr dflags x1
+                traceM $ "x2 = " ++ showPpr dflags x2
+                traceM $ "pair co kind: " ++ showPpr dflags (coercionKind co)
+                traceM $ "pair co' kind: " ++ showPpr dflags (coercionKind co')
 
-  case fnE of
-    Var fn
-      | fn == varId ->
-          case args of
-            [Type ty, _dictE@(App{}), arg] -> do
-              typeType <- lift $ findTypeTH guts ''Kind.Type
-              typeableDict <- lift $ buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, ty])
-              return (mkApps fnE [Type ty, typeableDict, arg])
-            _ -> return e
-    _ -> return e
-fixVarTypeable _ _ e = return e
+                (x1_co, _) <- lift $ normaliseTypeCo guts (exprType x1)
+                (x2_co, _) <- lift $ normaliseTypeCo guts (exprType x2)
+
+                x1' <- Data.descendM (updateTypeProofs guts) x1
+                x2' <- Data.descendM (updateTypeProofs guts) x2
+
+                let x1'' = Cast x1' $ downgradeRole Representational (coercionRole x1_co) x1_co
+                    x2'' = Cast x2' $ downgradeRole Representational (coercionRole x2_co) x2_co
+
+                -- let co'' = mkTransCo co co'
+                let co'' = mkReflCo (coercionRole co) resTy'
+
+                return (foldl (:@) (Var f :@ Type resTy' :@ Type ty1' :@ Type ty2' :@ Coercion co'') (x1'':x2'':rest))
+              _ -> Data.descendM (updateTypeProofs guts) e
+         | f == constructRepId -> do
+            traceM $ "constructRepId, length args = " ++ show (length args)
+            case args of
+              (Type ty:dict1:dict2:rest) -> do
+
+                  traceM $ "constructRepId case"
+
+                  ty' <- lift $ normaliseType' guts ty
+
+                  return (foldl (:@) (Var f :@ Type ty') (dict1:dict2:rest))
+              _ -> return e
+         | f == rightExpId || f == rightExpWrapId ->
+            case args of
+              (Type ty1:Type ty2:x:rest) -> do
+                (_co1', ty1') <- lift $ normaliseTypeCo guts ty1
+                (co2', ty2') <- lift $ normaliseTypeCo guts ty2
+
+                x' <- Data.descendM (updateTypeProofs guts) x
+                let x'' = Cast x' $ downgradeRole Representational (coercionRole co2') co2'
+
+                return $ foldl (:@) (Var f :@ Type ty1' :@ Type ty2') (x'':rest)
+              _ -> return e
+         | f == leftExpId -> Data.descendM (updateTypeProofs guts) e --undefined
+         | otherwise -> Data.descendM (updateTypeProofs guts) e
+updateTypeProofs guts e = Data.descendM (updateTypeProofs guts) e
+
+-- -- TODO: Maybe the coercionEnv should be something where you "use up"
+-- -- coercions, like popping off of a stack (kind of linear in a way)
+-- updateTypeProofs :: ModGuts -> [Coercion] -> Maybe CoreType -> CoreExpr -> MatchM CoreExpr
+-- updateTypeProofs guts coercionEnv thisType_M e@(_ :@ _)
+
+{-
+updateTypeProofs :: ModGuts -> CoreExpr -> MatchM CoreExpr
+updateTypeProofs guts e@(_ :@ _)
+  | (Var f, args) <- collectArgs e = do
+      pairExpId <- lift $ findDataConWorkIdTH guts 'PairExp
+      leftExpId <- lift $ findDataConWorkIdTH guts 'LeftExp
+      rightExpId <- lift $ findDataConWorkIdTH guts 'RightExp
+      constructRepId <- lift $ findDataConWorkIdTH guts 'ConstructRep
+
+      rightExpWrapId <- lift $ findIdTH guts 'RightExp
+
+      dflags <- getDynFlags
+
+      -- traceM $ "checking " ++ showPpr dflags f ++ " vs " ++ showPpr dflags pairExpId
+
+      if | f == pairExpId -> do
+            -- traceM $ "pairExpId transform, length args = " ++ show (length args)
+            -- traceM $ "args = " ++ showPpr dflags args
+
+            case args of
+              (Type resTy:Type ty1:Type ty2:Coercion co:x1:x2:rest)
+                  | noFreeVarsOfType resTy && noFreeVarsOfType ty1 && noFreeVarsOfType ty2 -> do
+                ty1' <- lift $ normaliseType' guts ty1
+                ty2' <- lift $ normaliseType' guts ty2
+
+                (co', resTy') <- lift $ normaliseTypeCo guts resTy
+
+                -- let co' = mkReflCo Nominal resTy
+                -- traceM $ "ty1' = " ++ showPpr dflags ty1'
+
+                traceM $ "x1 = " ++ showPpr dflags x1
+                traceM $ "x2 = " ++ showPpr dflags x2
+                traceM $ "pair co kind: " ++ showPpr dflags (coercionKind co)
+                traceM $ "pair co' kind: " ++ showPpr dflags (coercionKind co')
+
+                (x1_co, _) <- lift $ normaliseTypeCo guts (exprType x1)
+                (x2_co, _) <- lift $ normaliseTypeCo guts (exprType x2)
+
+                let x1'
+                      | noFreeVarsOfType (exprType x1) = Cast x1 $ downgradeRole Representational (coercionRole x1_co) x1_co
+                      | otherwise = x1
+                    x2'
+                      | noFreeVarsOfType (exprType x2) = Cast x2 $ downgradeRole Representational (coercionRole x2_co) x2_co
+                      | otherwise = x2
+
+                -- let co'' = mkTransCo co co'
+                let co'' = mkReflCo (coercionRole co) resTy'
+
+                return (foldl (:@) (Var f :@ Type resTy' :@ Type ty1' :@ Type ty2' :@ Coercion co'') (x1':x2':rest))
+              _ -> return e
+         | f == constructRepId -> do
+            traceM $ "constructRepId, length args = " ++ show (length args)
+            case args of
+              (Type ty:dict1:dict2:rest) -> do
+
+                  traceM $ "constructRepId case"
+
+                  ty' <- lift $ normaliseType' guts ty
+
+                  return (foldl (:@) (Var f :@ Type ty') (dict1:dict2:rest))
+              _ -> return e
+         | f == rightExpId || f == rightExpWrapId ->
+            case args of
+              (Type ty1:Type ty2:rest) -> do
+                (_co1', ty1') <- lift $ normaliseTypeCo guts ty1
+                (_co2', ty2') <- lift $ normaliseTypeCo guts ty2
 
 
--- | Fix casts around 'externalize' calls
--- TODO: Check this
-fixExtCast :: DynFlags -> Type -> Id -> CoreExpr -> Maybe CoreExpr
-fixExtCast dflags expType castExpId e0@(Cast e co0) = Just e --Just $ Cast e co0
-  -- normaliseTypeCo_role guts (coercionRole co0) 
-  -- let co = promoteCoercion co0 --setNominalRole_maybe (coercionRole co0) co0
-  -- in
-  -- trace ("coercion input/output: " ++ showPpr dflags (coercionLKind co0, coercionRKind co0)) $
-  -- -- trace (showPpr dflags co0 ++ " ===promoting to===> " ++ showPpr dflags co) $
-  -- Just (Var castExpId :@ Type (coercionLKind co) :@ Type (coercionRKind co) :@ mkEqBox co0 :@ e)
-fixExtCast _ _ _ _ = Nothing
+                return $ foldl (:@) (Var f :@ Type ty1' :@ Type ty2') rest
+              _ -> return e
+         | f == leftExpId -> return e --undefined
+         | otherwise -> return e
+updateTypeProofs guts e@(Cast app@(_ :@ _) co)
+  | noFreeVarsOfType (exprType app) && not (exprType app `eqType` coercionLKind co) = do -- TODO: Make sure this works ok with polymorphic types
+
+      dflags <- getDynFlags
+
+      let (fn, _) = collectArgs app
+
+      traceM $ "updateTypeProofs: fn = " ++ showPpr dflags fn
+
+      traceM $ "updateTypeProofs: tys = " ++ showPpr dflags (exprType app, coercionLKind co, coercionRKind co)
+
+      (coL, tyL) <- lift $ normaliseTypeCo guts (coercionLKind co)
+
+      (coApp, tyApp) <- lift $ normaliseTypeCo guts (exprType app)
+
+      (co'0, ty') <- lift $ normaliseTypeCo guts (coercionRKind co)
+
+      let co' = mkSymCo $ downgradeRole (coercionRole co) (coercionRole co'0) co'0
+
+      traceM $ "updateTypeProofs: coL: " ++ showPpr dflags (coercionKind coL)
+      traceM $ "updateTypeProofs: coApp: " ++ showPpr dflags (coercionKind coApp)
+      traceM $ "updateTypeProofs: co'0: " ++ showPpr dflags (coercionKind co'0)
+      traceM $ "exprType app: " ++ showPpr dflags (exprType app)
+      traceM ""
+
+      return (Cast app co')
+      -- return app
+      -- return e
+updateTypeProofs _ e@(Case s wild ty alts@((_, _, rhs):rest))
+  | noFreeVarsOfType (exprType rhs) && not (ty `eqType` exprType rhs) = -- TODO: Make sure this works ok with polymorphic types
+      return (Case s wild (exprType rhs) alts)
+
+updateTypeProofs _ e = return e
+-}
 
 applyUnrep :: ModGuts -> CoreExpr -> MatchM CoreExpr
 applyUnrep guts e = do
-  unrepId <- lift $ findIdTH guts 'unrep
-  return (Var unrepId :@ Type (exprType e) :@ e)
+  dflags <- getDynFlags
 
--- TODO: Implement and use to repeatedly apply constructor transformation
-repToExternalize :: ModGuts -> CoreExpr -> MatchM CoreExpr
-repToExternalize guts e = error "repToExternalize unimplemented"
+  ty <- lift $ unwrapExpType guts (exprType e)
+
+  unrepId <- lift $ findIdTH guts 'unrep
+
+  let result = (Var unrepId :@ Type ty :@ e)
+
+  traceM $ "applyUnrep: exprType e = " ++ showPpr dflags ty
+  traceM $ "applyUnrep type: " ++ showPpr dflags (exprType result)
+  return result
+
 
 -- | rep (unrep x)  ==>  x
 elimRepUnrep :: ModGuts -> CoreExpr -> MatchM CoreExpr
@@ -1297,16 +1437,17 @@ elimRepUnrep_co guts coA_M origType expr@(Var r :@ Type{} :@ dict :@ arg) =
   where
     go0 e =
       case e of
-        Var u :@ Type{} :@ x -> go u Nothing x
-        Cast (Var u :@ Type{} :@ x) coB -> go u (Just coB) x
-        _ -> return expr
+        Var u :@ Type{} :@ x -> go e u Nothing x
+        Cast (Var u :@ Type{} :@ x) coB -> go e u (Just coB) x
+        _ -> Data.descendM (elimRepUnrep guts) expr
 
-    go :: Id -> Maybe Coercion -> CoreExpr -> MatchM CoreExpr
-    go u coB_M x = do
+    go :: CoreExpr -> Id -> Maybe Coercion -> CoreExpr -> MatchM CoreExpr
+    go unrepped u coB_M x = do
       dflags <- getDynFlags
 
       repId <- lift $ findIdTH guts 'rep
       unrepId <- lift $ findIdTH guts 'unrep
+      expTyCon <- lift $ findTyConTH guts ''GPUExp
 
       -- traceM $ "building coercion: " ++ showPpr dflags (exprType x, origType)
       -- traceM $ "coA_M = " ++ showPpr dflags (fmap coercionKind coA_M)
@@ -1318,26 +1459,78 @@ elimRepUnrep_co guts coA_M origType expr@(Var r :@ Type{} :@ dict :@ arg) =
 
                     -- traceM $ "newCo = {" ++ showPpr dflags newCo ++ "}"
 
-                    Just $ downgradeRole Representational (coercionRole newCo) newCo
+                    newCo' <- case splitTyConApp_maybe (coercionRKind newCo) of
+                                Just (tyCon, _)
+                                  | tyCon == expTyCon -> return newCo
+                                _ -> Just $ buildCoercion (mkTyConApp expTyCon [exprType x]) (mkTyConApp expTyCon [origType])
+
+
+                    traceM $ "kinds of coA_M and coB_M: " ++ showPpr dflags (fmap coercionKind coA_M, fmap coercionKind coB_M)
+                    traceM $ "newCo' kind = " ++ showPpr dflags (coercionKind newCo')
+                    -- traceM $ "newCo' = {" ++ showPpr dflags newCo' ++ "}"
+
+                    let newCo'' =
+                          case coA_M of
+                            Nothing -> newCo'
+                            Just coA -> mkTransCo newCo' coA
+
+                    traceM $ "newCo'' kind = " ++ showPpr dflags (coercionKind newCo'')
+
+                    Just $ downgradeRole Representational (coercionRole newCo'') newCo''
+
 
       if r == repId && u == unrepId
-        then return $ coerceMaybe co_M x
-        else return $ coerceMaybe co_M expr --return $ coerceMaybe coA_M expr
+        then do
+
+          traceM ""
+          -- traceM $ "co_M = " ++ showPpr dflags co_M
+          -- traceM $ "elimRepUnrep_co: origType = " ++ showPpr dflags origType
+          traceM $ "elimRepUnrep_co: co kinds: " ++ showPpr dflags (fmap coercionKind coA_M, fmap coercionKind coB_M)
+          -- traceM $ "======================> x =" ++ showPpr dflags x
+          traceM $ "======================> expr =" ++ showPpr dflags x
+
+          let x' = x  --coerceMaybe co_M x
+
+          unconstructRepId <- lift $ findIdTH guts 'UnconstructRep
+          ty <- lift $ unwrapExpType guts (exprType unrepped)
+
+
+          traceM ""
+          traceM $ "unrepped type = " ++ showPpr dflags (exprType unrepped)
+          traceM $ "unrepped = " ++ showPpr dflags unrepped
+          traceM $ "--->" ++ showPpr dflags (Var unconstructRepId :@ Type ty :@ x')
+
+          if not $ eqType ty (exprType unrepped)
+            then traceM "not eqType" >> Data.descendM (elimRepUnrep guts) x'
+            else {- fmap (Var unconstructRepId :@ Type ty :@) -} (elimRepUnrep guts x')
+        else Data.descendM (elimRepUnrep guts) expr--return $ coerceMaybe coA_M expr
 
     composeCos = mkTransCo
 
-elimRepUnrep_co _guts co_M _ expr = return $ coerceMaybe co_M expr
-
--- elimRepUnrep_co _guts Nothing expr = return expr
--- elimRepUnrep_co _guts (Just co) expr = return $ Cast expr co
+elimRepUnrep_co guts co_M _ expr = Data.descendM (elimRepUnrep guts) $ coerceMaybe co_M expr
 
 -- TODO: Check this
 coerceMaybe :: Maybe Coercion -> Expr a -> Expr a
 coerceMaybe Nothing e = e
 coerceMaybe (Just co) e = Cast e co
 
--- elimRepUnrep_co _guts _co expr = return expr
--- elimRepUnrep guts (Cast e _) = elimRepUnrep guts e
+applyUnconstructRep :: ModGuts -> CoreExpr -> Type -> MatchM CoreExpr
+applyUnconstructRep guts e ty = do
+  unconstructRepId <- lift $ findIdTH guts 'UnconstructRep
+  return (Var unconstructRepId :@ Type ty :@ e)
+
+applyUnconstructRep' :: ModGuts -> CoreExpr -> MatchM CoreExpr
+applyUnconstructRep' guts e = do
+  ty <- lift $ unwrapExpType guts (exprType e)
+  applyUnconstructRep guts e ty
+
+unwrapUnconstructRep_maybe :: ModGuts -> CoreExpr -> MatchM (Maybe CoreExpr)
+unwrapUnconstructRep_maybe guts e@(Var f :@ Type _ :@ x) = do
+  unconstructRepId <- lift $ findIdTH guts 'UnconstructRep
+  if f == unconstructRepId
+    then return (return x)
+    else return Nothing
+unwrapUnconstructRep_maybe _ _ = return Nothing
 
 transformProdMatch :: ModGuts -> (Expr Var -> MatchM (Expr Var)) -> Type -> Type -> Alt Var -> MatchM (Expr Var)
 transformProdMatch guts mark resultTy ty0_ (altCon@(DataAlt dataAlt), vars0, body0) = do
@@ -1406,7 +1599,8 @@ transformProdMatch guts mark resultTy ty0_ (altCon@(DataAlt dataAlt), vars0, bod
 
       error $ "transformProdMatch.go: (" ++ showPpr dflags tys ++ ", " ++ showPpr dflags xs ++ ")\n" -- ++ showPpr dflags body
 
-    pairWrap pairTyCon = foldr1 (\x acc -> mkTyConApp pairTyCon [x, acc])
+    pairWrap _ [] = error "pairWrap"
+    pairWrap pairTyCon xs = foldr1 (\x acc -> mkTyConApp pairTyCon [x, acc]) xs
 
 -- | GPUExp t  ==>  t
 -- and GPURepTy t  ==>  t
@@ -1507,6 +1701,8 @@ transformSumMatch guts mark scrutinee wild resultTy alts@(alt1@(DataAlt dataAlt1
 
       prod <- transformProdMatch guts mark resultTy ty1 x
 
+      -- traceM $ "transformSumMatch: ty1:restTys = " ++ showPpr dflags (ty1:restTys)
+      -- traceM $ "transformSumMatch: x:xs = " ++ showPpr dflags (x:xs)
       let restTy = eitherWrap eitherTyCon restTys
 
       co <- lift $ repTyCo guts restTy
@@ -1536,7 +1732,8 @@ transformSumMatch guts mark scrutinee wild resultTy alts@(alt1@(DataAlt dataAlt1
                 :@ restSum)
 
 
-    eitherWrap eitherTyCon = foldr1 (\x acc -> mkTyConApp eitherTyCon [x, acc])
+    eitherWrap _ [] = error "eitherWrap"
+    eitherWrap eitherTyCon xs = foldr1 (\x acc -> mkTyConApp eitherTyCon [x, acc]) xs
 
 noDoneOrStep :: ModGuts -> CoreExpr -> MatchM Bool
 noDoneOrStep guts e = do
@@ -1676,7 +1873,7 @@ transformLams guts mark e0 = Data.transformM go e0
 
           lamName <- lift $ findIdTH guts 'Expr.Lam
 
-          body' <- lift $ subst arg uniq body
+          body' <- subst arg uniq body
 
           argTy' <- lift $ unwrapExpType guts (varType arg)
           bodyTy' <- lift $ unwrapExpType guts (exprType body')
@@ -1696,25 +1893,31 @@ transformLams guts mark e0 = Data.transformM go e0
     subst0 name uniq (Var name')
       | name' == name = do
 
-        varName <- findIdTH guts 'Expr.Var
+        varName <- lift $ findIdTH guts 'Expr.Var
         -- intTy <- findTypeTH guts ''Int#
 
-        varTy' <- unwrapExpType guts (varType name)
+        varTy' <- lift $ unwrapExpType guts (varType name)
 
-        iHash <- findIdTH guts 'GHC.Types.I#
+        iHash <- lift $ findIdTH guts 'GHC.Types.I#
 
         dflags <- getDynFlags
         let nameInt =  Var iHash :@ Lit (mkLitInt dflags (fromIntegral uniq))
 
-        typeableTyCon <- findTyConTH guts ''Typeable
-        typeType <- findTypeTH guts ''Kind.Type
-        typeableDict <- buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, varTy'])
+        typeableTyCon <- lift $ findTyConTH guts ''Typeable
+        typeType <- lift $ findTypeTH guts ''Kind.Type
+        typeableDict <- lift $ buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, varTy'])
 
-        let result = Var varName :@ Type varTy' :@ typeableDict :@ nameInt
+        -- let result = Var varName :@ Type varTy' :@ typeableDict :@ nameInt
+        unreppedVar <- applyUnrep guts (Var varName :@ Type varTy' :@ typeableDict :@ nameInt)
+        traceM $ "var result = " ++ showPpr dflags unreppedVar
 
-        liftIO $ putStrLn $ "var result = " ++ showPpr dflags result
+        return unreppedVar
 
-        return result
+        -- applyUnconstructRep guts unreppedVar varTy'
+
+        -- liftIO $ putStrLn $ "var result = " ++ showPpr dflags result
+
+        -- return result
     subst0 _ _ expr = return expr
 
 
@@ -1776,6 +1979,8 @@ abstractOver guts v e = do
   -- let varExp = Data.transform (tryUnfoldAndReduceDict guts dflags) $ Data.transform letNonRecSubst (Var varId :@ Type origTy :@ typeableDict :@ nameVal)
   let varExp = Data.transform (tryUnfoldAndReduceDict guts dflags) $ Data.transform letNonRecSubst unreppedVar
 
+  -- varExp <- applyUnconstructRep guts varExp0 origTy
+
   -- varExp <- applyUnrep guts varExp0
 
   -- traceM $ "varExp = " ++ showPpr dflags varExp
@@ -1784,7 +1989,7 @@ abstractOver guts v e = do
   -- traceM $ "marking " ++ showPpr dflags (substCoreExpr v' varExp e)
   -- liftIO $ putStrLn $ "markedSubstE' = " ++ showPpr dflags markedSubstE'
 
-  -- traceM $ "markedSubstE' = " ++ showPpr dflags (Data.transform (go varId newTy) markedSubstE')
+  traceM $ "markedSubstE' = " ++ showPpr dflags (Data.transform (go varId newTy) markedSubstE')
   -- markedSubstE'' <- mark0 guts markedSubstE'
 
   return (Var lamId :@ Type origTy :@ Type eTy' :@ repDict :@ typeableDict :@ nameVal
@@ -2007,6 +2212,13 @@ findTyConTH guts thName = do
     case nameMaybe of
       Nothing -> error $ "findTyConTH: Cannot find " ++ show thName
       Just name -> findTyCon guts name emptyVarSet
+
+findDataConWorkIdTH :: ModGuts -> TH.Name -> CoreM Id
+findDataConWorkIdTH guts thName = do
+    nameMaybe <- thNameToGhcName thName
+    case nameMaybe of
+      Nothing -> error $ "findDataConWorkId: Cannot find " ++ show thName
+      Just name -> findDataConWorkId guts name
 
 findTypeTH :: ModGuts -> TH.Name -> CoreM Type
 findTypeTH guts thName = do

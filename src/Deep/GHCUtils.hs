@@ -537,6 +537,14 @@ findVar guts nm c = do
         NamedDataCon dc -> return $ dataConWrapId dc
         other -> error $ "findVar: impossible Named returned: " ++ show other
 
+findDataConWorkId :: ModGuts -> Name -> CoreM Id
+findDataConWorkId guts nm = do
+  nmd <- findInNameSpaces guts [dataConNS] nm emptyVarSet
+  case nmd of
+    NamedDataCon dc -> return $ dataConWorkId dc
+    other -> error $ "findDataConWorkId: impossible Named returned: " ++ show other
+
+
 findTyCon' :: ModGuts -> Name -> CoreM TyCon
 findTyCon' guts nm = findTyCon guts nm emptyVarSet
 
@@ -726,7 +734,7 @@ getUnfolding_either guts dflags i =
     flattenBinds (NonRec b e:rest) = (b, e) : flattenBinds rest
     flattenBinds (Rec bs:rest) = bs ++ flattenBinds rest
 
-getUnfolding :: ModGuts -> DynFlags -> Id -> CoreExpr
+getUnfolding :: HasCallStack => ModGuts -> DynFlags -> Id -> CoreExpr
 getUnfolding guts dflags i =
   case getUnfolding_either guts dflags i of
     Left e -> error e
@@ -807,9 +815,9 @@ onCoercionM :: Applicative m => (Coercion -> m Coercion) -> CoreExpr -> m CoreEx
 onCoercionM f (Coercion co) = Coercion <$> f co
 onCoercionM _ e = pure e
 
-removeCasts :: CoreExpr -> CoreExpr
-removeCasts (Cast e _) = removeCasts e
-removeCasts e = e
+-- removeCasts :: CoreExpr -> CoreExpr
+-- removeCasts (Cast e _) = removeCasts e
+-- removeCasts e = e
 
 descendIntoCastsM :: Applicative f => (CoreExpr -> f CoreExpr) -> CoreExpr -> f CoreExpr
 descendIntoCastsM f (Cast e co) = Cast <$> descendIntoCastsM f e <*> pure co
@@ -851,6 +859,19 @@ applyWhen :: (a -> Bool) -> (a -> a) -> a -> a
 applyWhen p f x
   | p x       = f x
   | otherwise = x
+
+targetTheFnM :: Monad m => Id -> (CoreExpr -> m CoreExpr) -> CoreExpr -> m CoreExpr
+targetTheFnM fn t = maybeApplyM (targetTheFnM_maybe fn t)
+
+targetTheFnM_maybe :: Monad m => Id -> (CoreExpr -> m CoreExpr) -> CoreExpr -> Maybe (m CoreExpr)
+targetTheFnM_maybe fn t e@(App _ _)
+  | (Var fn', args) <- collectArgs e =
+    if fn == fn'
+      then Just $ do
+        x <- t (Var fn')
+        return $ mkApps x args
+      else Nothing
+targetTheFnM_maybe _ _ _ = Nothing
 
 -- | Given a function name, a transformation and a Core expression,
 -- transform the Core expression when it is an application where
@@ -931,6 +952,10 @@ maybeTransform f (Just x) y = f x y
 maybeTransform3 :: (a -> b -> c -> c) -> Maybe a -> b -> c -> c
 maybeTransform3 _ Nothing  _ = id
 maybeTransform3 f (Just x) y = f x y
+
+maybeTransform3M :: Applicative m => (a -> b -> c -> m c) -> Maybe a -> b -> c -> m c
+maybeTransform3M _ Nothing _ = pure
+maybeTransform3M f (Just x) y = f x y
 
 -- | If q rewrites a subexpression e to e', then apply p to the
 -- superexpression of e'. If there is no subexpression, give Nothing.
@@ -1270,16 +1295,21 @@ combineCasts_maybe dflags origE@(Cast (Cast e coA) coB) =
     else
       case orderCoercions coA coB of
         Just (coA', coB') ->
-          if eqType (coercionLKind coB') (coercionRKind coB')
-            then Just $ Cast e coA'
-            else --trace ("combineCasts_maybe: coB' = {" ++ showPpr dflags coB' ++ "}") $
-                 --trace ("^-------------------------->" ++ showPpr dflags (coercionLKind coB', coercionRKind coB')) $
+          -- if eqType (coercionLKind coB') (coercionRKind coB')
+          --   then Just $ Cast e coA'
+          --   else 
+                 -- trace ("combineCasts_maybe: coB' = {" ++ showPpr dflags coB' ++ "}") $
+                 -- trace ("^-------------------------->" ++ showPpr dflags (coercionLKind coB', coercionRKind coB')) $
                  --trace ("===========================>" ++ showPpr dflags (getCoVar_maybe coB')) $
                  -- trace ("===========================>" ++ showPpr dflags (buildCoercion (coercionLKind coB') (coercionRKind coB'))) $
-                 Just $ Cast e (mkTransCo coA' coB')
+                 let newCo = mkTransCo coA' coB'
+                 in
+                 trace ("combineCasts: " ++ showPpr dflags (coercionKind newCo)) $
+                 trace ("===========> {" ++ showPpr dflags e ++ "}") $
+                 Just $ Cast e newCo
         Nothing ->
-          -- error $ "combineCasts_maybe: *** coercions do not match ***: " ++ showPpr dflags (coercionKind coA, coercionKind coB)
-          trace "combineCasts_maybe: *** coercions do not match ***" $ Just origE
+          error $ "combineCasts_maybe: *** coercions do not match ***: " ++ showPpr dflags (coercionKind coA, coercionKind coB)
+          -- trace "combineCasts_maybe: *** coercions do not match ***" $ Just origE
 combineCasts_maybe _ _ = Nothing
 
 combineCasts :: DynFlags -> CoreExpr -> CoreExpr

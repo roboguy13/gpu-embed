@@ -198,12 +198,22 @@ data GPUExp t where
     -- Typeable allows us to inspect the types. This can be useful if we
     -- want to, for instance, treat 'Complex Double' values differently
     -- than '(Double, Double)' values in a backend
-  ConstructRep :: (Typeable a, GPURep a) => GPUExp (GPURepTy a) -> GPUExp a
+  ConstructRep :: forall a. (Typeable a, GPURep a) => GPUExp (GPURepTy a) -> GPUExp a
 
   Construct :: a -> GPUExp a
   ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
 
   CastExp :: forall (a :: *) (b :: *). a ~ b => GPUExp a -> GPUExp b -- Inspiration from a mailing list posting from Conal Elliott
+
+  UnconstructRep :: GPUExp a -> GPUExp (GPURepTy (M1 S ('MetaSel 'Nothing 'NoSourceUnpackedness 'NoSourceStrictness 'DecidedLazy) (Rec0 a) Void))
+
+-- (GPURepTy
+--     (M1
+--        S
+--        ('MetaSel
+--           'Nothing 'NoSourceUnpackedness 'NoSourceStrictness 'DecidedLazy)
+--        (Rec0 Int)
+--        Void))
 
 tailRecApp :: forall a b. (GPURep a, GPURep b) => GPUExp (b -> Iter a b) -> GPUExp b -> GPUExp a
 tailRecApp body = App (TailRec body)
