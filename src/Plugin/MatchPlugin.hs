@@ -169,9 +169,8 @@ pass guts = do
 -- actually fix the underlying problem.
 hasExternalize :: ModGuts -> Expr Var -> MatchM Bool
 hasExternalize guts e = do
-  (_, a) <- runWriterT (Data.transformM go e)
-  case a of
-    Any b -> return b
+  (_, Any a) <- runWriterT (Data.transformM go e)
+  return a
   where
     go :: Expr Var -> WriterT Any MatchM (Expr Var)
     go expr@(Var f) = do
@@ -255,8 +254,12 @@ transformBinds guts instEnv primMap binds = do
       tell [Rec bs]
       return (Rec x)
 
-    go1 new_mg_binds (NonRec name e) =
-      fmap (NonRec name) (transformExpr (guts {mg_binds = new_mg_binds}) name Nothing primMap e)
+    go1 new_mg_binds (NonRec name e) = do
+      hasEx <- hasExternalize guts e
+      if hasEx
+        then
+          fmap (NonRec name) (transformExpr (guts {mg_binds = new_mg_binds}) name Nothing primMap e)
+        else return (NonRec name e)
 
     go1 new_mg_binds (Rec r) = fmap Rec $
       forM r $ \ (name, e) -> do
@@ -312,7 +315,7 @@ transformExpr :: ModGuts -> Var -> Maybe Var -> [(Id, CoreExpr)] -> Expr Var -> 
 transformExpr guts currName recNameM primMap e = do
   dflags <- lift getDynFlags
   {- Data.transform (onCoercion (removeExpVarOnlyCoercion dflags)) <$> -}
-  untilNothingM (transformExprMaybe guts currName recNameM primMap) e
+  updateTypeProofs guts =<< untilNothingM (transformExprMaybe guts currName recNameM primMap) e
 
 
 -- XXX: The delineation marker probably has to be floated in (or maybe the
@@ -1135,13 +1138,23 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                     -- traceM $ "constructedResult = {" ++ showPpr dflags constructedResult ++ "}"
 
                     let r = repeatTransform' betaReduceTypeApps_maybe $ repeatCaseFloat $ constructedResult
-                    traceM $ "before updateTypeProofs: " ++ showPpr dflags r
+                    return r
+                    -- traceM $ "before updateTypeProofs: " ++ showPpr dflags r
 
                     -- error "debug"
 
                     -- error (showPpr dflags constructedResult)
 
-                    updateUnitTypeProofs guts =<< updateTypeProofs guts r
+                    -- TODO: Why does the second updateTypeProofs change
+                    -- things?
+                    {- updateTypeProofs guts =<< updateUnitTypeProofs guts =<< -}
+
+
+                    -- r' <- updateTypeProofs guts r
+
+                    -- traceM $ "after updateTypeProofs: " ++ showPpr dflags r'
+                    -- return r'
+
                     -- return r
 
 
@@ -1290,7 +1303,7 @@ updateUnitTypeProofs guts e =
 updateTypeProofs :: ModGuts -> CoreExpr -> MatchM CoreExpr
 updateTypeProofs guts e = do
   dflags <- getDynFlags
-  fmap (repeatCaseFloat . Data.transform (combineCasts dflags) . Data.transform letNonRecSubst) $ updateTypeProofs0 guts e
+  updateUnitTypeProofs guts =<< fmap (repeatCaseFloat . Data.transform (combineCasts dflags) . Data.transform letNonRecSubst) (updateTypeProofs0 guts =<< updateUnitTypeProofs guts e)
 
 updateTypeProofs0 :: ModGuts -> CoreExpr -> MatchM CoreExpr
 updateTypeProofs0 guts e@(_ :@ _)
