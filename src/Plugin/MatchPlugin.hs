@@ -1132,12 +1132,17 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                     traceM $ "getUnfolding' constructFnId: " ++ showPpr dflags (getUnfolding' constructFnId)
 
                     -- traceM $ "args = " ++ showPpr dflags (length (snd (collectArgs constructedResult)))
-                    traceM $ "constructedResult = {" ++ showPpr dflags constructedResult ++ "}"
+                    -- traceM $ "constructedResult = {" ++ showPpr dflags constructedResult ++ "}"
+
+                    let r = repeatTransform' betaReduceTypeApps_maybe $ repeatCaseFloat $ constructedResult
+                    traceM $ "before updateTypeProofs: " ++ showPpr dflags r
 
                     -- error "debug"
 
                     -- error (showPpr dflags constructedResult)
-                    updateTypeProofs guts constructedResult
+
+                    updateUnitTypeProofs guts =<< updateTypeProofs guts r
+                    -- return r
 
 
 
@@ -1219,9 +1224,76 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 --   | Just _ <- isDataConId_maybe fn
 --     = do
 
+dslExprType :: CoreExpr -> Type
+dslExprType e =
+  let ty = exprType e
+  in
+  trace ("dslExprType: " ++ showSDocUnsafe (ppr e) ++ "\n---> ty = " ++ showSDocUnsafe (ppr ty))
+    $ ty
+-- dslExprType guts (Cast e _) = dslExprType guts e
+-- dslExprType guts e@(_ :@ _)
+--   | (Var f, args) <- collectArgs e = do
+--     pairExpId <- lift $ findDataConWorkIdTH guts 'PairExp
+--     leftExpId <- lift $ findDataConWorkIdTH guts 'LeftExp
+--     rightExpId <- lift $ findDataConWorkIdTH guts 'RightExp
+
+--     pairExpWrapId <- lift $ findIdTH guts 'PairExp
+--     rightExpWrapId <- lift $ findIdTH guts 'RightExp
+
+--     expTyCon <- lift $ findTyConTH guts ''GPUExp
+--     pairTyCon <- lift $ findTyConTH guts ''(,)
+--     eitherTyCon <- lift $ findTyConTH guts ''Either
+
+--     if | f == pairExpId || f == pairExpWrapId ->
+--           case args of
+--             (Type resTy:Type ty1:Type ty2:Coercion co:x1:x2:rest) ->
+--               return $ mkTyConApp expTyCon [resTy]
+--             _ -> return $ exprType e
+--        | f == rightExpId || f == rightExpWrapId ->
+--           case args of
+--             (Type ty1:Type ty2:x:rest) ->
+--               return $ mkTyConApp expTyCon [mkTyConApp eitherTyCon [ty1, ty2]]
+--             _ -> return $ exprType e
+--        | otherwise -> return $ exprType e
+-- dslExprType guts e = return $ exprType e
+
+updateUnitTypeProofs :: ModGuts -> CoreExpr -> MatchM CoreExpr
+updateUnitTypeProofs guts e@(Cast (Var x) co) = do
+  unitExpId <- lift $ findDataConWorkIdTH guts 'UnitExp
+  unitExpWrapId <- lift $ findIdTH guts 'UnitExp
+
+  dflags <- getDynFlags
+  if x == unitExpId || x == unitExpWrapId
+    then do
+      traceM "unitExp found"
+
+      (co'0, ty') <- lift $ normaliseTypeCo guts (coercionLKind co)
+
+      let co' = downgradeRole Representational (coercionRole co'0) co'0
+
+      traceM $ "unit: co' kinds = " ++ showPpr dflags (coercionKind co')
+      traceM $ "unit: co kinds  = " ++ showPpr dflags (coercionKind co)
+
+
+      traceM $ "unit: co role = " ++ showPpr dflags (coercionRole co)
+
+      let co'' = mkTransCo (mkSymCo co') co
+
+      traceM $ "unit: trans co kinds = " ++ showPpr dflags (coercionKind co'')
+
+      return $ Cast (Var x) co''
+    else
+      Data.descendM (updateUnitTypeProofs guts) e
+updateUnitTypeProofs guts e =
+  Data.descendM (updateUnitTypeProofs guts) e
 
 updateTypeProofs :: ModGuts -> CoreExpr -> MatchM CoreExpr
-updateTypeProofs guts e@(_ :@ _)
+updateTypeProofs guts e = do
+  dflags <- getDynFlags
+  fmap (repeatCaseFloat . Data.transform (combineCasts dflags) . Data.transform letNonRecSubst) $ updateTypeProofs0 guts e
+
+updateTypeProofs0 :: ModGuts -> CoreExpr -> MatchM CoreExpr
+updateTypeProofs0 guts e@(_ :@ _)
   | (Var f, args) <- collectArgs e = do
       pairExpId <- lift $ findDataConWorkIdTH guts 'PairExp
       leftExpId <- lift $ findDataConWorkIdTH guts 'LeftExp
@@ -1230,6 +1302,14 @@ updateTypeProofs guts e@(_ :@ _)
 
       pairExpWrapId <- lift $ findIdTH guts 'PairExp
       rightExpWrapId <- lift $ findIdTH guts 'RightExp
+      leftExpWrapId <- lift $ findIdTH guts 'LeftExp
+
+      typeableTyCon <- lift $ findTyConTH guts ''Typeable
+      expTyCon <- lift $ findTyConTH guts ''GPUExp
+      repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
+
+      unitExpId <- lift $ findDataConWorkIdTH guts 'UnitExp
+      unitExpWrapId <- lift $ findIdTH guts 'UnitExp
 
       dflags <- getDynFlags
 
@@ -1242,58 +1322,147 @@ updateTypeProofs guts e@(_ :@ _)
             case args of
               (Type resTy:Type ty1:Type ty2:Coercion co:x1:x2:rest)
                   | noFreeVarsOfType resTy && noFreeVarsOfType ty1 && noFreeVarsOfType ty2 -> do
-                ty1' <- lift $ normaliseType' guts ty1
-                ty2' <- lift $ normaliseType' guts ty2
+
+                -- ty1' <- lift $ normaliseType' guts ty1
+                -- ty2' <- lift $ normaliseType' guts ty2
 
                 (co', resTy') <- lift $ normaliseTypeCo guts resTy
 
                 -- let co' = mkReflCo Nominal resTy
                 -- traceM $ "ty1' = " ++ showPpr dflags ty1'
 
+                traceM $ "resTy = " ++ showPpr dflags resTy
                 traceM $ "x1 = " ++ showPpr dflags x1
                 traceM $ "x2 = " ++ showPpr dflags x2
                 traceM $ "pair co kind: " ++ showPpr dflags (coercionKind co)
                 traceM $ "pair co' kind: " ++ showPpr dflags (coercionKind co')
 
-                (x1_co, _) <- lift $ normaliseTypeCo guts (exprType x1)
-                (x2_co, _) <- lift $ normaliseTypeCo guts (exprType x2)
 
                 x1' <- Data.descendM (updateTypeProofs guts) x1
                 x2' <- Data.descendM (updateTypeProofs guts) x2
+                (x1'_co, x1'_ty) <- (lift . (normaliseTypeCo guts)) (exprType x1')
+                (x2'_co, x2'_ty) <- (lift . (normaliseTypeCo guts)) (exprType x2')
 
-                let x1'' = Cast x1' $ downgradeRole Representational (coercionRole x1_co) x1_co
-                    x2'' = Cast x2' $ downgradeRole Representational (coercionRole x2_co) x2_co
+                ty1' <- lift $ unwrapExpType guts x1'_ty
+                ty2' <- lift $ unwrapExpType guts x2'_ty
+
+                traceM $ "x1 ty, co: " ++ showPpr dflags (exprType x1', coercionKind x1'_co)
+                traceM $ "x2 ty, co: " ++ showPpr dflags (exprType x2', coercionKind x2'_co)
+                traceM ""
+
+                let x1'' = updateCast x1' $ downgradeRole Representational (coercionRole x1'_co) x1'_co
+                    x2'' = updateCast x2' $ downgradeRole Representational (coercionRole x2'_co) x2'_co
 
                 -- let co'' = mkTransCo co co'
                 let co'' = mkReflCo (coercionRole co) resTy'
+
+                traceM $ "trans co: " ++ showPpr dflags (coercionKind (mkTransCo co co'))
 
                 return (foldl (:@) (Var f :@ Type resTy' :@ Type ty1' :@ Type ty2' :@ Coercion co'') (x1'':x2'':rest))
               _ -> Data.descendM (updateTypeProofs guts) e
          | f == constructRepId -> do
             traceM $ "constructRepId, length args = " ++ show (length args)
             case args of
-              (Type ty:dict1:dict2:rest) -> do
+              (Type ty:dict1:dict2:x:rest)
+                | noFreeVarsOfType ty -> do
 
                   traceM $ "constructRepId case"
 
-                  ty' <- lift $ normaliseType' guts ty
+                  (co'0, ty') <- lift $ normaliseTypeCo guts (mkTyConApp expTyCon [mkTyConApp repTyTyCon [ty]])
+                  let co' = mkSymCo co'0
 
-                  return (foldl (:@) (Var f :@ Type ty') (dict1:dict2:rest))
-              _ -> return e
+                  x' <- Data.descendM (updateTypeProofs guts) x
+
+                  -- dslTy <- dslExprType guts x'
+                  let dslTy = dslExprType x'
+
+                  (x'_co, x'_ty) <- (lift . (normaliseTypeCo guts)) dslTy
+
+                  let co'' = mkTransCo x'_co co'
+
+                  let x'' = updateCast x' $ downgradeRole Representational (coercionRole x'_co) co' --co'' --x'_co
+
+
+                  traceM ""
+                  traceM $ "dslExprType of " ++ showPpr dflags x'
+
+                  traceM ""
+                  traceM "---"
+                  traceM $ "x'_co = " ++ showPpr dflags (coercionKind x'_co)
+                  traceM $ "co' = " ++ showPpr dflags (coercionKind co')
+                  traceM $ "co'' = " ++ showPpr dflags (coercionKind co'')
+                  traceM $ "dslTy = " ++ showPpr dflags dslTy
+                  -- traceM $ "exprTy = " ++ showPpr dflags (exprType x')
+                  traceM $ "x' = " ++ showPpr dflags x'
+                  traceM "---"
+                  traceM ""
+
+                  -- ty' <- (lift . unwrapExpType guts) =<< (dslExprType guts x')
+
+                  typeType <- lift $ findTypeTH guts ''Kind.Type
+                  -- dict1' <- lift $ buildDictionaryT guts (mkTyConApp typeableTyCon [typeType, ty'])
+                  -- dict2' <- lift $ buildDictionaryT guts (mkTyConApp expTyCon [ty'])
+
+                  return (foldl (:@) (Var f :@ Type ty) (dict1:dict2:x'':rest))
+              _ -> Data.descendM (updateTypeProofs guts) e
          | f == rightExpId || f == rightExpWrapId ->
             case args of
-              (Type ty1:Type ty2:x:rest) -> do
-                (_co1', ty1') <- lift $ normaliseTypeCo guts ty1
-                (co2', ty2') <- lift $ normaliseTypeCo guts ty2
+              (Type ty1:Type ty2:x:rest)
+                | noFreeVarsOfType ty1 && noFreeVarsOfType ty2 -> do
+                  (_co1', ty1') <- lift $ normaliseTypeCo guts ty1
+                  (co2', ty2') <- lift $ normaliseTypeCo guts ty2
 
-                x' <- Data.descendM (updateTypeProofs guts) x
-                let x'' = Cast x' $ downgradeRole Representational (coercionRole co2') co2'
 
-                return $ foldl (:@) (Var f :@ Type ty1' :@ Type ty2') (x'':rest)
-              _ -> return e
-         | f == leftExpId -> Data.descendM (updateTypeProofs guts) e --undefined
+                  x' <- Data.descendM (updateTypeProofs guts) x
+
+                  (coX', tyX') <- (lift . normaliseTypeCo guts) (exprType x')
+
+                  let x'' = updateCast x' $ downgradeRole Representational (coercionRole co2') coX'
+
+                  return $ foldl (:@) (Var f :@ Type ty1' :@ Type ty2') (x'':rest)
+              _ -> Data.descendM (updateTypeProofs guts) e
+
+         | f == leftExpId || f == leftExpWrapId -> do --Data.descendM (updateTypeProofs guts) e --undefined
+            case args of
+              (Type ty1:Type ty2:x:rest)
+                | noFreeVarsOfType ty1 && noFreeVarsOfType ty2 -> do
+                  (co1', ty1') <- lift $ normaliseTypeCo guts ty1
+                  (_co2', ty2') <- lift $ normaliseTypeCo guts ty2
+
+                  x' <- Data.descendM (updateTypeProofs guts) x
+
+                  (coX', tyX') <- (lift . normaliseTypeCo guts) (exprType x')
+
+                  let x'' = updateCast x' $ downgradeRole Representational (coercionRole co1') coX'
+
+                  return $ foldl (:@) (Var f :@ Type ty1' :@ Type ty2') (x'':rest)
+              _ -> Data.descendM (updateTypeProofs guts) e
+
          | otherwise -> Data.descendM (updateTypeProofs guts) e
-updateTypeProofs guts e = Data.descendM (updateTypeProofs guts) e
+{-
+updateTypeProofs0 guts e@(Cast (Var x) co) = do
+  unitExpId <- lift $ findDataConWorkIdTH guts 'UnitExp
+  unitExpWrapId <- lift $ findIdTH guts 'UnitExp
+
+  dflags <- getDynFlags
+  if x == unitExpId || x == unitExpWrapId
+    then do
+
+      (co', ty') <- lift $ normaliseTypeCo guts (coercionLKind co)
+      traceM $ "unit: co' kinds = " ++ showPpr dflags (coercionKind co')
+      traceM $ "unit: co kinds  = " ++ showPpr dflags (coercionKind co)
+      Data.descendM (updateTypeProofs guts) e
+    else do
+      traceM $ "not unit: " ++ showPpr dflags x
+      Data.descendM (updateTypeProofs guts) e
+-}
+
+updateTypeProofs0 guts e =
+  Data.descendM (updateTypeProofs guts) e
+
+updateCast :: CoreExpr -> Coercion -> CoreExpr
+updateCast (Cast e _) co = updateCast e co
+updateCast e co = Cast e co
 
 -- -- TODO: Maybe the coercionEnv should be something where you "use up"
 -- -- coercions, like popping off of a stack (kind of linear in a way)

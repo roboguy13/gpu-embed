@@ -1245,6 +1245,9 @@ repeatTransform f x0 =
         Just x' -> tell (Any True) >> pure x'
         Nothing -> pure x
 
+repeatTransform' :: Data a => (a -> Maybe a) -> a -> a
+repeatTransform' f x0 = fromMaybe x0 (repeatTransform f x0)
+
 transform_either :: Data b => (b -> Either a b) -> b -> Maybe b
 transform_either f x0 =
     case Data.transformM go x0 of
@@ -1404,16 +1407,25 @@ substCoreAlt v e alt = let (con, vs, rhs) = alt
                            (subst', vs')  = substBndrs subst vs
                         in (con, vs', substExpr (text "alt-rhs") subst' rhs)
 
+repeatCaseFloat :: CoreExpr -> CoreExpr
+repeatCaseFloat = maybeApply (repeatTransform (\e -> caseFloatApp_maybe e <|> caseFloatArg_maybe e <|> caseFloatCast_maybe e))
+
+-- | (case s wild of { P ... -> e; ... }) `cast` co  ==>   case s wild of { P ... -> e `cast` co; ... }
+caseFloatCast_maybe :: CoreExpr -> Maybe CoreExpr
+caseFloatCast_maybe (Cast (Case s b wild alts) co) =
+  Just $ Case s b wild (mapAlts (`Cast` co) alts)
+caseFloatCast_maybe _ = Nothing
+
 -- | ((case s wild of { P ... -> f; ... }) v)   ==>   case s wild of { P ... -> f v; ... }
-caseFloatApp :: CoreExpr -> CoreExpr
-caseFloatApp e0@(App (Case s b wild alts) v) =
+caseFloatApp_maybe :: CoreExpr -> Maybe CoreExpr
+caseFloatApp_maybe e0@(App (Case s b wild alts) v) =
   let vFVs = freeVarsExpr v
       altsFVs = foldr unionVarSet emptyVarSet $ map (mkVarSet . altVars) alts
       newAlts = mapAlts (`App` v) alts
   in
     if isEmptyVarSet (intersectVarSet vFVs altsFVs)
-      then Case s b (coreAltsType newAlts) newAlts
-      else e0
+      then Just $ Case s b (coreAltsType newAlts) newAlts
+      else Nothing
     -- captures    <- appT (liftM (map mkVarSet) caseAltVarsT) (arr freeVarsExpr) (flip (map . intersectVarSet))
     -- bndrCapture <- appT caseBinderIdT (arr freeVarsExpr) elemVarSet
     -- appT ((if not bndrCapture then idR else alphaCaseBinderR Nothing)
@@ -1422,19 +1434,25 @@ caseFloatApp e0@(App (Case s b wild alts) v) =
     --       idR
     --       (\(Case s b _ alts) v -> let newAlts = mapAlts (`App` v) alts
     --                                 in Case s b (coreAltsType newAlts) newAlts)
-caseFloatApp e = e
+caseFloatApp_maybe _ = Nothing
+
+caseFloatApp :: CoreExpr -> CoreExpr
+caseFloatApp = maybeApply caseFloatApp_maybe
 
 -- f (case s wild of { P ... -> e; ... })   ==>   case s wild of { P ... -> f e; ... }
-caseFloatArg :: CoreExpr -> CoreExpr
-caseFloatArg e0@(App f (Case s b wild alts)) =
+caseFloatArg_maybe :: CoreExpr -> Maybe CoreExpr
+caseFloatArg_maybe e0@(App f (Case s b wild alts)) =
   let fFVs = freeVarsExpr f
       altsFVs = foldr unionVarSet emptyVarSet $ map (mkVarSet . altVars) alts
       newAlts = mapAlts (f `App`) alts
   in
     if isEmptyVarSet (intersectVarSet fFVs altsFVs)
-      then Case s b (coreAltsType newAlts) newAlts
-      else e0
-caseFloatArg e = e
+      then Just $ Case s b (coreAltsType newAlts) newAlts
+      else Nothing
+caseFloatArg_maybe e = Nothing
+
+caseFloatArg :: CoreExpr -> CoreExpr
+caseFloatArg = maybeApply caseFloatArg_maybe
 
 -- From hermit's HERMIT.Core:
 -- | Map a function over the RHS of each case alternative.
@@ -1585,6 +1603,16 @@ descendIgnoringClasses_maybe _ (Coercion {}) = Nothing
 strength3 :: Functor f => (a, b, f c) -> f (a, b, c)
 strength3 (x, y, fz) = fmap (\z -> (x, y, z)) fz
 
+betaReduceTypes_maybe :: CoreExpr -> [CoreExpr] -> Maybe CoreExpr
+betaReduceTypes_maybe (Lam v body) (a:as) =
+  let e' = substCoreExpr v a body
+  in
+  betaReduceTypes_maybe e' as <|> Just e'
+betaReduceTypes_maybe _ _ = Nothing
+
+betaReduceTypeApps_maybe :: CoreExpr -> Maybe CoreExpr
+betaReduceTypeApps_maybe = uncurry betaReduceTypes_maybe . collectArgs
+
 -- | Beta-reduce as many lambda-binders as possible.
 betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])
 betaReduceAll e0@(Lam v body) (a:as) =
@@ -1733,6 +1761,9 @@ isSatisfiablePred ty = case getClassPredTys_maybe ty of
 -- TODO: This seems to be the out-of-scope coercion variable culprit.
 caseInlineDefault :: DynFlags -> CoreExpr -> CoreExpr
 caseInlineDefault dflags e0@(Case e wild ty [alt@(DEFAULT, _, rhs)]) = e0
+  -- let (_, _, rhs') = substCoreAlt wild e alt
+  -- in rhs'
+
     -- trace ("DEFAULT wild = " ++ showSDocUnsafe (ppr wild)) $
     -- let r = wrapLet (Just (wild, e)) rhs --substCoreAlt wild e alt--simpleOptExpr dflags e0 --caseInline dflags e0
     -- in
