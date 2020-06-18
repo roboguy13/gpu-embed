@@ -815,9 +815,18 @@ onCoercionM :: Applicative m => (Coercion -> m Coercion) -> CoreExpr -> m CoreEx
 onCoercionM f (Coercion co) = Coercion <$> f co
 onCoercionM _ e = pure e
 
--- removeCasts :: CoreExpr -> CoreExpr
--- removeCasts (Cast e _) = removeCasts e
--- removeCasts e = e
+removeCastsIgnoringDicts :: CoreExpr -> CoreExpr
+removeCastsIgnoringDicts e@(Cast x co)
+  | isDict x = e
+  | tcIsConstraintKind (coercionLKind co) || tcIsConstraintKind (coercionRKind co) = e
+removeCastsIgnoringDicts (Cast x _) = removeCastsIgnoringDicts x
+removeCastsIgnoringDicts e = e
+
+removeCastsOfAppFns_maybe :: [Id] -> CoreExpr -> Maybe CoreExpr
+removeCastsOfAppFns_maybe fnIds e@(Cast fnE _)
+  | (Var fnId', args) <- collectArgs fnE
+  , fnId' `elem` fnIds = Just fnE
+removeCastsOfAppFns_maybe _ _ = Nothing
 
 descendIntoCastsM :: Applicative f => (CoreExpr -> f CoreExpr) -> CoreExpr -> f CoreExpr
 descendIntoCastsM f (Cast e co) = Cast <$> descendIntoCastsM f e <*> pure co
@@ -1296,8 +1305,6 @@ combineCasts_maybe dflags origE@(Cast (Cast e coA) coB) =
   if coercionRole coA /= coercionRole coB
     then error "combineCasts_maybe: *** coercion roles do not match ***"
     else
-      case orderCoercions coA coB of
-        Just (coA', coB') ->
           -- if eqType (coercionLKind coB') (coercionRKind coB')
           --   then Just $ Cast e coA'
           --   else 
@@ -1305,13 +1312,13 @@ combineCasts_maybe dflags origE@(Cast (Cast e coA) coB) =
                  -- trace ("^-------------------------->" ++ showPpr dflags (coercionLKind coB', coercionRKind coB')) $
                  --trace ("===========================>" ++ showPpr dflags (getCoVar_maybe coB')) $
                  -- trace ("===========================>" ++ showPpr dflags (buildCoercion (coercionLKind coB') (coercionRKind coB'))) $
-                 let newCo = mkTransCo coA' coB'
+                 let newCo = mkTransCo coA coB
                  in
                  trace ("combineCasts: " ++ showPpr dflags (coercionKind newCo)) $
                  trace ("===========> {" ++ showPpr dflags e ++ "}") $
                  Just $ Cast e newCo
-        Nothing ->
-          error $ "combineCasts_maybe: *** coercions do not match ***: " ++ showPpr dflags (coercionKind coA, coercionKind coB)
+        -- Nothing ->
+        --   error $ "combineCasts_maybe: *** coercions do not match ***: " ++ showPpr dflags (coercionKind coA, coercionKind coB)
           -- trace "combineCasts_maybe: *** coercions do not match ***" $ Just origE
 combineCasts_maybe _ _ = Nothing
 
@@ -1603,15 +1610,15 @@ descendIgnoringClasses_maybe _ (Coercion {}) = Nothing
 strength3 :: Functor f => (a, b, f c) -> f (a, b, c)
 strength3 (x, y, fz) = fmap (\z -> (x, y, z)) fz
 
-betaReduceTypes_maybe :: CoreExpr -> [CoreExpr] -> Maybe CoreExpr
-betaReduceTypes_maybe (Lam v body) (a:as) =
-  let e' = substCoreExpr v a body
-  in
-  betaReduceTypes_maybe e' as <|> Just e'
-betaReduceTypes_maybe _ _ = Nothing
+-- betaReduceTypes_maybe :: CoreExpr -> [CoreExpr] -> Maybe CoreExpr
+-- betaReduceTypes_maybe (Lam v body) (a:as) =
+--   let e' = substCoreExpr v a body
+--   in
+--   betaReduceTypes_maybe e' as <|> Just e'
+-- betaReduceTypes_maybe _ _ = Nothing
 
-betaReduceTypeApps_maybe :: CoreExpr -> Maybe CoreExpr
-betaReduceTypeApps_maybe = uncurry betaReduceTypes_maybe . collectArgs
+-- betaReduceTypeApps_maybe :: CoreExpr -> Maybe CoreExpr
+-- betaReduceTypeApps_maybe = uncurry betaReduceTypes_maybe . collectArgs
 
 -- | Beta-reduce as many lambda-binders as possible.
 betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])
@@ -1624,42 +1631,34 @@ betaReduceAll e0@(Lam v body) (a:as) =
     -- whenId (isTyCoVar v) (trace ("<------------ " ++ showSDocUnsafe (ppr e0))) $
     -- whenId (isTyCoVar v) (trace ("^-----------> " ++ showSDocUnsafe (ppr r))) $
     (r, as')
-betaReduceAll e@(Cast (Lam v body) co) (a:as) =
-  -- trace ("betaReduceAll: Cast: v = " ++ showSDocUnsafe (ppr v)) $
-  -- trace ("betaReduceAll: coercion = " ++ showSDocUnsafe (ppr co)) $
-  -- trace ("------------------------------------") $
-  case splitFunCo_maybe co of
-    Just (coA, coB) ->
-      let (remaining, args) = betaReduceAll (Lam (setVarType v (coercionRKind coA)) (Cast body coB)) (Cast a coA:as)
-      in (remaining, args)
-    Nothing ->
-        -- TODO: Make sure this does, in fact, mean it's either a constraint or a forall
-        -- TODO: Make sure this works in those cases ^
-        -- TODO: Should there be a Cast here?
-      -- trace ("betaReduceAll: coercion kind = " ++ showSDocUnsafe (ppr (coercionKind co))) $
-      case splitForAllCo_maybe co of
-        Just (tyVar, coA, coB) ->
-          betaReduceAll (Lam (setVarType v (coercionRKind coA)) (Cast body coB)) (Cast a coA:as)
-        _ -> --error $ "betaReduceAll: " ++ showSDocUnsafe (ppr (coercionLKind co, coercionRKind co))
-          let (coA, coB) = decomposeFunCo (coercionRole co) co
-          in
-            betaReduceAll (Lam (setVarType v (coercionRKind coA)) (Cast body coB)) (Cast a coA:as)
-          -- case a of
-          --   Type ty ->
-          --     let substTyVar = substTy (extendTvSubst emptyTCvSubst tyVar a)
-          --     betaReduceAll (substCoreExpr v a (Data.transform (onType tySubst) body)) as
-          --   _ -> error "betaReduceAll"
-      -- error $ "betaReduceAll: " ++ showSDocUnsafe (ppr (coercionKind co))
-      -- (e, as)
 
-      -- let (remaining, args) = betaReduceAll (Lam v body) (a:as)
-      -- in (Cast remaining co, as) -- TODO: Does this make sense?
+-- Coercion handling is based on the hypothetical operational semantics
+-- for GHC's implementation of System FC given here https://github.com/ghc/ghc/tree/master/docs/core-spec
+betaReduceAll e@(Cast (Lam v body) gamma) (a:as) =
+  trace ("betaReduceAll: Cast: v = " ++ showSDocUnsafe (ppr v)) $
+  case a of
+    Coercion gamma' -> -- S_CPush
+      let rho = coercionRole gamma'
+          gamma0 = mkNthCo rho 2 (mkNthCo Representational 2 gamma)
+          gamma1 = mkSymCo (mkNthCo rho 3 (mkNthCo Representational 2 gamma))
+          gamma2 = mkNthCo Representational 3 gamma
+      in
+      betaReduceAll (Lam v (Cast body gamma2)) (Coercion (mkTransCo gamma0 (mkTransCo gamma gamma1)) : as)
 
-  -- | Just (argTy, resTy) <- splitFunCo_maybe co =
-  --     let (remaining, args) = betaReduceAll (substCoreExpr v a body) as
-  --     in case splitFunCo_maybe co of
-  --          Just (coA, coB) -> (Cast remaining coB, as)
-  --          Nothing -> (Cast remaining resTy, as)
+    Type tau -> -- S_TPush
+      let gamma' = mkSymCo (mkNthCo Nominal 0 gamma)
+          tau' = Cast a gamma'
+          (result, remainingArgs) = betaReduceAll (Lam v body) (tau':as)
+      in
+      (Cast result
+           (mkInstCo gamma (mkSymCo (mkGReflCo Nominal tau (MCo gamma'))))
+      ,remainingArgs)
+
+    _ -> -- S_Push
+      let gamma0 = mkSymCo (mkNthCo Representational 2 gamma)
+          gamma1 = mkNthCo Representational 3 gamma
+      in
+      betaReduceAll (Lam v (Cast body gamma1)) ((Cast a gamma0) : as)
 betaReduceAll e            as     = (e,as)
 
 -- getLamInCasts :: CoreExpr -> Maybe (Id, CoreExpr, Coercion)

@@ -315,7 +315,9 @@ transformExpr :: ModGuts -> Var -> Maybe Var -> [(Id, CoreExpr)] -> Expr Var -> 
 transformExpr guts currName recNameM primMap e = do
   dflags <- lift getDynFlags
   {- Data.transform (onCoercion (removeExpVarOnlyCoercion dflags)) <$> -}
-  updateTypeProofs guts =<< untilNothingM (transformExprMaybe guts currName recNameM primMap) e
+
+  {- updateUnitTypeProofs guts =<< updateTypeProofs guts =<< updateUnitTypeProofs guts =<< -}
+  untilNothingM (transformExprMaybe guts currName recNameM primMap) e
 
 
 -- XXX: The delineation marker probably has to be floated in (or maybe the
@@ -480,7 +482,7 @@ getConstructorApp_maybe ::
         , TyCon       -- The TyCon of the type of the constructor
         , Var         -- Constructor name
         , [Expr Var]) -- Constructor arguments
-getConstructorApp_maybe e = 
+getConstructorApp_maybe e =
   case go e of
     -- Just (_, _, _, []) -> Nothing -- TODO: Do we want this?
     (Just (_, _, _, constr, _))
@@ -1017,6 +1019,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                                                           . Data.transform betaReduce)
                                                   . transformIgnoringClasses_maybe (replaceVarId_maybe fnId (getUnfolding' fnId)))))
 
+
+
                 traceM $ "fn of newExpr'': " ++ showPpr dflags (fst (collectArgs newExpr''))
                 case collectArgs newExpr'' of
                   (Var newExpr''Fn, _)
@@ -1026,19 +1030,26 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                         return newExpr''
                   _ -> do
 
-                    -- -- traceM $ "==== newExpr'' is ===> " ++ showPpr dflags newExpr''
-                    -- traceM $ "==== newExpr is ====> " ++ showPpr dflags newExpr
-                    -- traceM $ "simplE' = " ++ showPpr dflags simplE'
-                    -- -- traceM $ "fnE' = " ++ showPpr dflags fnE'
-                    -- -- traceM $ "fn = " ++ showPpr dflags fn
-                    -- -- traceM $ "apped fnE = " ++ showPpr dflags (betaReduce (mkApps fnE restArgs))
-                    -- -- traceM $ "fn0 = " ++ showPpr dflags fn0
-                    -- traceM $ "constr' = " ++ showPpr dflags (mkApps constr' unreppedArgs)
-                    -- -- traceM $ "betaReduced fnE' with constr': " ++ showPpr dflags (betaReduceAll fnE' [mkApps constr' unreppedArgs])
+                    pairExpWorkId <- lift $ findDataConWorkIdTH guts 'PairExp
+                    leftExpWorkId <- lift $ findDataConWorkIdTH guts 'LeftExp
+                    rightExpWorkId <- lift $ findDataConWorkIdTH guts 'RightExp
+                    constructRepWorkId <- lift $ findDataConWorkIdTH guts 'ConstructRep
+                    unitExpWorkId <- lift $ findDataConWorkIdTH guts 'UnitExp
+
+                    pairExpWrapId <- lift $ findIdTH guts 'PairExp
+                    rightExpWrapId <- lift $ findIdTH guts 'RightExp
+                    leftExpWrapId <- lift $ findIdTH guts 'LeftExp
+                    constructRepWrapId <- lift $ findIdTH guts 'ConstructRep
+                    unitExpWrapId <- lift $ findIdTH guts 'UnitExp
+
+                    let dslConstructorIds = [pairExpWorkId, pairExpWrapId, constructRepWorkId, constructRepWrapId, leftExpWorkId, rightExpWorkId, leftExpWrapId, rightExpWrapId, unitExpWorkId, unitExpWrapId]
 
                     simplE'' <- fmap (Data.transform betaReduce . Data.transform letNonRecSubst . Data.transform betaReduce . onAppFun tryUnfoldAndReduceDict' . Data.transform letNonRecSubst . onAppFun tryUnfoldAndReduceDict') -- Remove a $crep, try to get this in the form of a ConstructRep application
                                   $ Data.transformM (elimRepUnrep guts)
-                                  $ Data.transform (caseInline dflags) $ betaReduce (simplE' :@ mkApps constr' unreppedArgs)
+                                  $ Data.transform (caseInline dflags)
+                                  -- $ repeatTransform' (removeCastsOfAppFns_maybe dslConstructorIds)
+                                  $ Data.transform (combineCasts dflags)
+                                  $ betaReduce (simplE' :@ mkApps constr' unreppedArgs)
                     -- traceM $ "simplE'' = " ++ showPpr dflags simplE''
 
                     let (simplE''Fn, simplE''Args0@(Type tyArg:_)) = collectArgs simplE''
@@ -1053,6 +1064,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                     -- traceM $ "=== simplE''' ===> " ++ showPpr dflags simplE'''
 
                     -- return simplE''
+
 
                     let newExpr'''0 =
                           -- transformIgnoringClasses_maybe elimConstruct $
@@ -1103,20 +1115,20 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                     -- traceM $ "newExpr'0 = {" ++ showPpr dflags newExpr'0 ++ "}"
                     -- traceM $ "newExpr''' = {" ++ showPpr dflags newExpr''' ++ "}"
 
-                    let toTy = mkTyConApp expTyCon [mkTyConApp repTyTyCon [tyArg]]
+                    -- let toTy = mkTyConApp expTyCon [mkTyConApp repTyTyCon [tyArg]]
 
-                    -- newCo <- lift $ buildCo guts (exprType newExpr''') toTy
-                    (co1, _) <- lift $ normaliseTypeCo_role guts Representational toTy
-                    (co2, _) <- lift $ normaliseTypeCo_role guts Representational (exprType newExpr''')
-                    let co3 = mkTransCo co2 (mkSymCo co1)
+                    -- -- newCo <- lift $ buildCo guts (exprType newExpr''') toTy
+                    -- (co1, _) <- lift $ normaliseTypeCo_role guts Representational toTy
+                    -- (co2, _) <- lift $ normaliseTypeCo_role guts Representational (exprType newExpr''')
+                    -- let co3 = mkTransCo co2 (mkSymCo co1)
 
-                    -- traceM $ "co1 kind = " ++ showPpr dflags (coercionKind co1)
-                    -- traceM $ "co2 kind = " ++ showPpr dflags (coercionKind co2)
-                    traceM $ "co3 kind = " ++ showPpr dflags (coercionKind co3)
-                    -- traceM $ "exprType newExpr''' = " ++ showPpr dflags (exprType newExpr''')
+                    -- -- traceM $ "co1 kind = " ++ showPpr dflags (coercionKind co1)
+                    -- -- traceM $ "co2 kind = " ++ showPpr dflags (coercionKind co2)
+                    -- traceM $ "co3 kind = " ++ showPpr dflags (coercionKind co3)
+                    -- -- traceM $ "exprType newExpr''' = " ++ showPpr dflags (exprType newExpr''')
 
 
-                    constructedResult <- return $ prepareResult (Cast newExpr''' co3)
+                    constructedResult <- return $ prepareResult newExpr'''
                     -- constructedResult <- return (Var constructRepId :@ tyExpr :@ dict1 :@ dict2 :@  newExpr''') --return (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ Cast r' theCo)
                     -- let constructedResult = (constructRepFn :@ Type ty :@ dict1' :@ dict2' :@ r')
 
@@ -1137,8 +1149,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                     -- traceM $ "args = " ++ showPpr dflags (length (snd (collectArgs constructedResult)))
                     -- traceM $ "constructedResult = {" ++ showPpr dflags constructedResult ++ "}"
 
-                    let r = repeatTransform' betaReduceTypeApps_maybe $ repeatCaseFloat $ constructedResult
-                    return r
+                    return constructedResult
                     -- traceM $ "before updateTypeProofs: " ++ showPpr dflags r
 
                     -- error "debug"
@@ -1237,38 +1248,39 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 --   | Just _ <- isDataConId_maybe fn
 --     = do
 
-dslExprType :: CoreExpr -> Type
-dslExprType e =
-  let ty = exprType e
-  in
-  trace ("dslExprType: " ++ showSDocUnsafe (ppr e) ++ "\n---> ty = " ++ showSDocUnsafe (ppr ty))
-    $ ty
+dslExprType :: ModGuts -> CoreExpr -> MatchM Type
+-- dslExprType e =
+--   let ty = exprType e
+--   in
+--   trace ("dslExprType: " ++ showSDocUnsafe (ppr e) ++ "\n---> ty = " ++ showSDocUnsafe (ppr ty))
+--     $ ty
+
 -- dslExprType guts (Cast e _) = dslExprType guts e
--- dslExprType guts e@(_ :@ _)
---   | (Var f, args) <- collectArgs e = do
---     pairExpId <- lift $ findDataConWorkIdTH guts 'PairExp
---     leftExpId <- lift $ findDataConWorkIdTH guts 'LeftExp
---     rightExpId <- lift $ findDataConWorkIdTH guts 'RightExp
+dslExprType guts e@(_ :@ _)
+  | (Var f, args) <- collectArgs e = do
+    pairExpId <- lift $ findDataConWorkIdTH guts 'PairExp
+    leftExpId <- lift $ findDataConWorkIdTH guts 'LeftExp
+    rightExpId <- lift $ findDataConWorkIdTH guts 'RightExp
 
---     pairExpWrapId <- lift $ findIdTH guts 'PairExp
---     rightExpWrapId <- lift $ findIdTH guts 'RightExp
+    pairExpWrapId <- lift $ findIdTH guts 'PairExp
+    rightExpWrapId <- lift $ findIdTH guts 'RightExp
 
---     expTyCon <- lift $ findTyConTH guts ''GPUExp
---     pairTyCon <- lift $ findTyConTH guts ''(,)
---     eitherTyCon <- lift $ findTyConTH guts ''Either
+    expTyCon <- lift $ findTyConTH guts ''GPUExp
+    pairTyCon <- lift $ findTyConTH guts ''(,)
+    eitherTyCon <- lift $ findTyConTH guts ''Either
 
---     if | f == pairExpId || f == pairExpWrapId ->
---           case args of
---             (Type resTy:Type ty1:Type ty2:Coercion co:x1:x2:rest) ->
---               return $ mkTyConApp expTyCon [resTy]
---             _ -> return $ exprType e
---        | f == rightExpId || f == rightExpWrapId ->
---           case args of
---             (Type ty1:Type ty2:x:rest) ->
---               return $ mkTyConApp expTyCon [mkTyConApp eitherTyCon [ty1, ty2]]
---             _ -> return $ exprType e
---        | otherwise -> return $ exprType e
--- dslExprType guts e = return $ exprType e
+    if | f == pairExpId || f == pairExpWrapId ->
+          case args of
+            (Type resTy:Type ty1:Type ty2:Coercion co:x1:x2:rest) ->
+              return $ mkTyConApp expTyCon [resTy]
+            _ -> return $ exprType e
+       | f == rightExpId || f == rightExpWrapId ->
+          case args of
+            (Type ty1:Type ty2:x:rest) ->
+              return $ mkTyConApp expTyCon [mkTyConApp eitherTyCon [ty1, ty2]]
+            _ -> return $ exprType e
+       | otherwise -> return $ exprType e
+dslExprType guts e = return $ exprType e
 
 updateUnitTypeProofs :: ModGuts -> CoreExpr -> MatchM CoreExpr
 updateUnitTypeProofs guts e@(Cast (Var x) co) = do
@@ -1276,7 +1288,7 @@ updateUnitTypeProofs guts e@(Cast (Var x) co) = do
   unitExpWrapId <- lift $ findIdTH guts 'UnitExp
 
   dflags <- getDynFlags
-  if x == unitExpId || x == unitExpWrapId
+  if {- x == unitExpId || -} x == unitExpWrapId
     then do
       traceM "unitExp found"
 
@@ -1303,7 +1315,8 @@ updateUnitTypeProofs guts e =
 updateTypeProofs :: ModGuts -> CoreExpr -> MatchM CoreExpr
 updateTypeProofs guts e = do
   dflags <- getDynFlags
-  updateUnitTypeProofs guts =<< fmap (repeatCaseFloat . Data.transform (combineCasts dflags) . Data.transform letNonRecSubst) (updateTypeProofs0 guts =<< updateUnitTypeProofs guts e)
+  Data.transformM (updateTypeProofs0 guts) e
+  -- updateUnitTypeProofs guts =<< fmap (repeatCaseFloat . Data.transform (combineCasts dflags) . Data.transform letNonRecSubst) (updateTypeProofs0 guts =<< updateUnitTypeProofs guts e)
 
 updateTypeProofs0 :: ModGuts -> CoreExpr -> MatchM CoreExpr
 updateTypeProofs0 guts e@(_ :@ _)
@@ -1322,6 +1335,18 @@ updateTypeProofs0 guts e@(_ :@ _)
       repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
 
       unitExpId <- lift $ findDataConWorkIdTH guts 'UnitExp
+
+      pairExpWorkId <- lift $ findDataConWorkIdTH guts 'PairExp
+      leftExpWorkId <- lift $ findDataConWorkIdTH guts 'LeftExp
+      rightExpWorkId <- lift $ findDataConWorkIdTH guts 'RightExp
+      constructRepWorkId <- lift $ findDataConWorkIdTH guts 'ConstructRep
+      unitExpWorkId <- lift $ findDataConWorkIdTH guts 'UnitExp
+
+      constructRepWrapId <- lift $ findIdTH guts 'ConstructRep
+      unitExpWrapId <- lift $ findIdTH guts 'UnitExp
+
+      let dslConstructorIds = [pairExpWorkId, pairExpWrapId, constructRepWorkId, constructRepWrapId, leftExpWorkId, rightExpWorkId, leftExpWrapId, rightExpWrapId, unitExpWorkId, unitExpWrapId]
+
       unitExpWrapId <- lift $ findIdTH guts 'UnitExp
 
       dflags <- getDynFlags
@@ -1344,27 +1369,38 @@ updateTypeProofs0 guts e@(_ :@ _)
                 -- let co' = mkReflCo Nominal resTy
                 -- traceM $ "ty1' = " ++ showPpr dflags ty1'
 
-                traceM $ "resTy = " ++ showPpr dflags resTy
-                traceM $ "x1 = " ++ showPpr dflags x1
-                traceM $ "x2 = " ++ showPpr dflags x2
+                -- traceM $ "resTy = " ++ showPpr dflags resTy
+                -- traceM $ "x1 = " ++ showPpr dflags x1
+                -- traceM $ "x2 = " ++ showPpr dflags x2
+
                 traceM $ "pair co kind: " ++ showPpr dflags (coercionKind co)
                 traceM $ "pair co' kind: " ++ showPpr dflags (coercionKind co')
 
 
-                x1' <- Data.descendM (updateTypeProofs guts) x1
-                x2' <- Data.descendM (updateTypeProofs guts) x2
-                (x1'_co, x1'_ty) <- (lift . (normaliseTypeCo guts)) (exprType x1')
-                (x2'_co, x2'_ty) <- (lift . (normaliseTypeCo guts)) (exprType x2')
+                -- x1' <- {- fmap removeCasts $ -} Data.descendM (updateTypeProofs guts) x1
+                -- x2' <- {- fmap removeCasts $ -} Data.descendM (updateTypeProofs guts) x2
+
+                let x1' = maybeApply (removeCastsOfAppFns_maybe dslConstructorIds) x1
+                    x2' = maybeApply (removeCastsOfAppFns_maybe dslConstructorIds) x2
+
+                ty1 <- dslExprType guts x1'
+                ty2 <- dslExprType guts x2'
+
+                (x1'_co, x1'_ty) <- (lift . (normaliseTypeCo guts)) ty1
+                (x2'_co, x2'_ty) <- (lift . (normaliseTypeCo guts)) ty2
 
                 ty1' <- lift $ unwrapExpType guts x1'_ty
                 ty2' <- lift $ unwrapExpType guts x2'_ty
 
-                traceM $ "x1 ty, co: " ++ showPpr dflags (exprType x1', coercionKind x1'_co)
-                traceM $ "x2 ty, co: " ++ showPpr dflags (exprType x2', coercionKind x2'_co)
+                traceM $ "x1' = " ++ showPpr dflags x1'
+                traceM $ "x2' = " ++ showPpr dflags x2'
+
+                traceM $ "x1' ty, co: " ++ showPpr dflags (exprType x1', coercionKind x1'_co)
+                traceM $ "x2' ty, co: " ++ showPpr dflags (exprType x2', coercionKind x2'_co)
                 traceM ""
 
-                let x1'' = updateCast x1' $ downgradeRole Representational (coercionRole x1'_co) x1'_co
-                    x2'' = updateCast x2' $ downgradeRole Representational (coercionRole x2'_co) x2'_co
+                let x1'' = x1' --Cast x1' $ downgradeRole Representational (coercionRole x1'_co) x1'_co
+                    x2'' = x2' --Cast x2' $ downgradeRole Representational (coercionRole x2'_co) x2'_co
 
                 -- let co'' = mkTransCo co co'
                 let co'' = mkReflCo (coercionRole co) resTy'
@@ -1372,7 +1408,7 @@ updateTypeProofs0 guts e@(_ :@ _)
                 traceM $ "trans co: " ++ showPpr dflags (coercionKind (mkTransCo co co'))
 
                 return (foldl (:@) (Var f :@ Type resTy' :@ Type ty1' :@ Type ty2' :@ Coercion co'') (x1'':x2'':rest))
-              _ -> Data.descendM (updateTypeProofs guts) e
+              _ -> return e
          | f == constructRepId -> do
             traceM $ "constructRepId, length args = " ++ show (length args)
             case args of
@@ -1384,10 +1420,11 @@ updateTypeProofs0 guts e@(_ :@ _)
                   (co'0, ty') <- lift $ normaliseTypeCo guts (mkTyConApp expTyCon [mkTyConApp repTyTyCon [ty]])
                   let co' = mkSymCo co'0
 
-                  x' <- Data.descendM (updateTypeProofs guts) x
+                  -- x' <- Data.descendM (updateTypeProofs guts) x
+                  let x' = maybeApply (removeCastsOfAppFns_maybe dslConstructorIds) x
 
-                  -- dslTy <- dslExprType guts x'
-                  let dslTy = dslExprType x'
+                  dslTy <- dslExprType guts x'
+                  -- let dslTy = dslExprType x'
 
                   (x'_co, x'_ty) <- (lift . (normaliseTypeCo guts)) dslTy
 
@@ -1407,6 +1444,7 @@ updateTypeProofs0 guts e@(_ :@ _)
                   traceM $ "dslTy = " ++ showPpr dflags dslTy
                   -- traceM $ "exprTy = " ++ showPpr dflags (exprType x')
                   traceM $ "x' = " ++ showPpr dflags x'
+                  traceM $ "dict1 = " ++ showPpr dflags dict1
                   traceM "---"
                   traceM ""
 
@@ -1417,41 +1455,44 @@ updateTypeProofs0 guts e@(_ :@ _)
                   -- dict2' <- lift $ buildDictionaryT guts (mkTyConApp expTyCon [ty'])
 
                   return (foldl (:@) (Var f :@ Type ty) (dict1:dict2:x'':rest))
-              _ -> Data.descendM (updateTypeProofs guts) e
-         | f == rightExpId || f == rightExpWrapId ->
+              _ -> return e --Data.descendM (updateTypeProofs guts) e
+         | {- f == rightExpId || -} f == rightExpWrapId ->
             case args of
               (Type ty1:Type ty2:x:rest)
                 | noFreeVarsOfType ty1 && noFreeVarsOfType ty2 -> do
                   (_co1', ty1') <- lift $ normaliseTypeCo guts ty1
                   (co2', ty2') <- lift $ normaliseTypeCo guts ty2
 
+                  when (f == rightExpId) (traceM ("rightExp: e = " ++ showPpr dflags e))
 
-                  x' <- Data.descendM (updateTypeProofs guts) x
+                  -- x' <- Data.descendM (updateTypeProofs guts) x
+                  let x' = maybeApply (removeCastsOfAppFns_maybe dslConstructorIds) x
 
                   (coX', tyX') <- (lift . normaliseTypeCo guts) (exprType x')
 
-                  let x'' = updateCast x' $ downgradeRole Representational (coercionRole co2') coX'
+                  let x'' = x' --updateCast x' $ downgradeRole Representational (coercionRole co2') coX'
 
                   return $ foldl (:@) (Var f :@ Type ty1' :@ Type ty2') (x'':rest)
-              _ -> Data.descendM (updateTypeProofs guts) e
+              _ -> return e
 
-         | f == leftExpId || f == leftExpWrapId -> do --Data.descendM (updateTypeProofs guts) e --undefined
+         | {- f == leftExpId || -} f == leftExpWrapId -> do --Data.descendM (updateTypeProofs guts) e --undefined
             case args of
               (Type ty1:Type ty2:x:rest)
                 | noFreeVarsOfType ty1 && noFreeVarsOfType ty2 -> do
                   (co1', ty1') <- lift $ normaliseTypeCo guts ty1
                   (_co2', ty2') <- lift $ normaliseTypeCo guts ty2
 
-                  x' <- Data.descendM (updateTypeProofs guts) x
+                  -- x' <- Data.descendM (updateTypeProofs guts) x
+                  let x' = maybeApply (removeCastsOfAppFns_maybe dslConstructorIds) x
 
                   (coX', tyX') <- (lift . normaliseTypeCo guts) (exprType x')
 
-                  let x'' = updateCast x' $ downgradeRole Representational (coercionRole co1') coX'
+                  let x'' = x' --updateCast x' $ downgradeRole Representational (coercionRole co1') coX'
 
                   return $ foldl (:@) (Var f :@ Type ty1' :@ Type ty2') (x'':rest)
-              _ -> Data.descendM (updateTypeProofs guts) e
+              _ -> return e
 
-         | otherwise -> Data.descendM (updateTypeProofs guts) e
+         | otherwise -> return e
 {-
 updateTypeProofs0 guts e@(Cast (Var x) co) = do
   unitExpId <- lift $ findDataConWorkIdTH guts 'UnitExp
@@ -1470,8 +1511,8 @@ updateTypeProofs0 guts e@(Cast (Var x) co) = do
       Data.descendM (updateTypeProofs guts) e
 -}
 
-updateTypeProofs0 guts e =
-  Data.descendM (updateTypeProofs guts) e
+updateTypeProofs0 guts e = return e
+  -- Data.descendM (updateTypeProofs guts) e
 
 updateCast :: CoreExpr -> Coercion -> CoreExpr
 updateCast (Cast e _) co = updateCast e co
