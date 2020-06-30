@@ -182,7 +182,7 @@ data GPUExp t where
   LeftExp :: forall a b. GPUExp a -> GPUExp (Either a b)
   RightExp :: forall a b. GPUExp b -> GPUExp (Either a b)
 
-  PairExp :: forall a b. GPUExp a -> GPUExp b -> GPUExp (a, b)
+  PairExp :: forall a b. (GPURep a, GPURep b) => GPUExp a -> GPUExp b -> GPUExp (a, b)
   FstExp :: forall a b. GPUExp (a, b) -> GPUExp a
   SndExp :: forall a b. GPUExp (a, b) -> GPUExp b
 
@@ -364,6 +364,9 @@ runIter f = go
       case f x of
         Done r -> r
         Step x' -> go x'
+
+-- unconstruct' :: forall t. (GPURep t, GPURep (GPURepTy t), GPURepTy (GPURepTy t) ~ GPURepTy t, Generic t, GPURep (Rep t Void), GPURepTy (Rep t Void) ~ GPURepTy t) => GPUExp (GPURepTy t) -> GPUExp t
+-- unconstruct' (PairExp x y) = _ ( (construct x, construct y))
 
 -- Typeable constraint is for ConstructRep
 class Typeable t => GPURep t where
@@ -585,7 +588,7 @@ instance forall p q. (GPURep (p Void), GPURep (q Void), GenericRep (p Void), Gen
     genericRep' = bimap rep' rep' . toCanonical
     genericUnrep' = fromCanonical . bimap unrep' unrep'
 
-instance (GPURep (p Void), GPURep (q Void), GenericRep (p Void), GenericRep (q Void), GPURepTy (p Void) ~ GenericRepTy (p Void), GPURepTy (q Void) ~ GenericRepTy (q Void)) =>
+instance (GPURep (GenericRepTy (p Void)), GPURep (GenericRepTy (q Void)), GPURep (p Void), GPURep (q Void), GenericRep (p Void), GenericRep (q Void), GPURepTy (p Void) ~ GenericRepTy (p Void), GPURepTy (q Void) ~ GenericRepTy (q Void)) =>
   GenericRep ((p :*: q) Void) where
 
     type GenericRepTy ((p :*: q) Void) = (GPURepTy (p Void), GPURepTy (q Void))

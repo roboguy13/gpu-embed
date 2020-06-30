@@ -807,33 +807,33 @@ onType :: (Type -> Type) -> CoreExpr -> CoreExpr
 onType f (Type ty) = Type $ f ty
 onType _ e = e
 
-onCoercion :: (Coercion -> Coercion) -> CoreExpr -> CoreExpr
-onCoercion f (Coercion co) = Coercion (f co)
-onCoercion _ e = e
+-- onCoercion :: (Coercion -> Coercion) -> CoreExpr -> CoreExpr
+-- onCoercion f (Coercion co) = Coercion (f co)
+-- onCoercion _ e = e
 
-onCoercionM :: Applicative m => (Coercion -> m Coercion) -> CoreExpr -> m CoreExpr
-onCoercionM f (Coercion co) = Coercion <$> f co
-onCoercionM _ e = pure e
+-- onCoercionM :: Applicative m => (Coercion -> m Coercion) -> CoreExpr -> m CoreExpr
+-- onCoercionM f (Coercion co) = Coercion <$> f co
+-- onCoercionM _ e = pure e
 
-removeCastsIgnoringDicts :: CoreExpr -> CoreExpr
-removeCastsIgnoringDicts e@(Cast x co)
-  | isDict x = e
-  | tcIsConstraintKind (coercionLKind co) || tcIsConstraintKind (coercionRKind co) = e
-removeCastsIgnoringDicts (Cast x _) = removeCastsIgnoringDicts x
-removeCastsIgnoringDicts e = e
+-- removeCastsIgnoringDicts :: CoreExpr -> CoreExpr
+-- removeCastsIgnoringDicts e@(Cast x co)
+--   | isDict x = e
+--   | tcIsConstraintKind (coercionLKind co) || tcIsConstraintKind (coercionRKind co) = e
+-- removeCastsIgnoringDicts (Cast x _) = removeCastsIgnoringDicts x
+-- removeCastsIgnoringDicts e = e
 
-removeCastsOfAppFns_maybe :: [Id] -> CoreExpr -> Maybe CoreExpr
-removeCastsOfAppFns_maybe fnIds e@(Cast fnE _)
-  | (Var fnId', args) <- collectArgs fnE
-  , fnId' `elem` fnIds = Just fnE
-removeCastsOfAppFns_maybe _ _ = Nothing
+-- removeCastsOfAppFns_maybe :: [Id] -> CoreExpr -> Maybe CoreExpr
+-- removeCastsOfAppFns_maybe fnIds e@(Cast fnE _)
+--   | (Var fnId', args) <- collectArgs fnE
+--   , fnId' `elem` fnIds = Just fnE
+-- removeCastsOfAppFns_maybe _ _ = Nothing
 
-descendIntoCastsM :: Applicative f => (CoreExpr -> f CoreExpr) -> CoreExpr -> f CoreExpr
-descendIntoCastsM f (Cast e co) = Cast <$> descendIntoCastsM f e <*> pure co
-descendIntoCastsM f e = f e
+-- descendIntoCastsM :: Applicative f => (CoreExpr -> f CoreExpr) -> CoreExpr -> f CoreExpr
+-- descendIntoCastsM f (Cast e co) = Cast <$> descendIntoCastsM f e <*> pure co
+-- descendIntoCastsM f e = f e
 
-descendIntoCasts :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
-descendIntoCasts f = runIdentity . (descendIntoCastsM (Identity . f))
+-- descendIntoCasts :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+-- descendIntoCasts f = runIdentity . (descendIntoCastsM (Identity . f))
 
 isDictVar :: Var -> Bool
 isDictVar v =
@@ -1050,9 +1050,9 @@ altsApply_maybe f = go False
         Nothing -> (alt:)                      <$> go foundJust alts
         Just body' -> ((con, conArgs, body'):) <$> go True      alts
 
-onCast_maybe :: (CoreExpr -> r) -> CoreExpr -> Maybe r
-onCast_maybe f e@(Cast {}) = Just $ f e
-onCast_maybe _ _ = Nothing
+-- onCast_maybe :: (CoreExpr -> r) -> CoreExpr -> Maybe r
+-- onCast_maybe f e@(Cast {}) = Just $ f e
+-- onCast_maybe _ _ = Nothing
 
 atLeastOneJust :: Maybe a -> Maybe b -> Bool
 atLeastOneJust Nothing Nothing = False
@@ -1107,6 +1107,15 @@ maybeApplyM f x0 =
     Just x -> x
     _      -> pure x0
 
+workDataCon_maybe :: CoreExpr -> Maybe CoreExpr
+workDataCon_maybe (Var v)
+  | isId v =
+      case idDetails v of
+        DataConWrapId dc -> Just $ Var $ dataConWorkId dc
+        _ -> Nothing
+workDataCon_maybe _ = Nothing
+
+
 -- targetParentOfFnAppMaybe :: Maybe Id -> (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
 -- targetParentOfFnAppMaybe Nothing   _ e = e
 -- targetParentOfFnAppMaybe (Just fn) t e = targetParentOfFnApp fn t e
@@ -1156,45 +1165,6 @@ unfoldAndReduceDict guts dflags e =
 -- From HERMIT: --
 --
 
-castFloatAppEither :: DynFlags -> CoreExpr -> Either String CoreExpr
-castFloatAppEither dflags (App (Cast e1 co) e2) =
-
-    --trace ("castFloatAppEither: co = " ++ showPpr dflags co) $
-       case co of
-
-            -- TyConAppCo _r t [c1, c2] ->
-            --     if isFunTyCon t
-            --       then trace "castFloatApp firing" $ return $ Cast (App e1 (Cast e2 (modifyRole (SymCo c1)))) (modifyRole c2)
-            --       else Left "castFloatAppEither"
-
--- #if __GLASGOW_HASKELL__ > 710
---             ForAllCo{} -> Left "castFloatAppR: ForAllCo TODO"
--- #else
-
-            ForAllCo t kc c2 -> -- TODO: Does this work as expected with the newer GHC API?
-                case e2 of
-                  Type x' -> --trace ("castFloatApp forallco: { " ++ showPpr dflags (t, kc, c2) ++ "\n}\n") $
-                    -- return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') (modifyRole c2)))
-                    Left "" --return (Cast (App e1 e2) (CoreSubst.substCo (CoreSubst.extendTvSubst emptySubst t x') (modifyRole c2)))
-                  _ -> Left "castFloatAppEither"
-
--- #endif
-            _ ->
-              case decomposeFunCo_maybe (coercionRole co) co of
-                Just (coA, coB) ->
-                  let coA' = mkSymCo (modifyRole coA)
-                      coB' = mkSymCo (modifyRole coB)
-                  in
-                    -- trace ("castFloatApp decomposeFun modified: " ++ showPpr dflags (coA', coB')) $
-                    -- trace ("castFloatApp coA' free vars: " ++ showPpr dflags (freeVarsCoercion coA')) $
-                    -- trace ("castFloatApp coB' free vars: " ++ showPpr dflags (freeVarsCoercion coB')) $
-                    Right $ Cast (App e1 (Cast e2 coA')) coB'
-                Nothing -> Left "castFloatAppEither: decomposeFunCo_maybe gave Nothing"
-                -- Right $ Cast (App e1 (Cast e2 coA)) coB
-  where
-    modifyRole co' = downgradeRole Representational (coercionRole co') co'
-
-castFloatAppEither _ _ = Left "castFloatAppEither: not in correct form"
 
 -- -- | (Cast (App f x) co)  ==>  (App (
 -- appFloatCast_maybe :: DynFlags -> CoreExpr -> Maybe CoreExpr
@@ -1268,11 +1238,11 @@ transform_either f x0 =
         Left _ -> Right x
         Right x' -> Left x'
 
-tryCastFloatApp :: DynFlags -> CoreExpr -> CoreExpr
-tryCastFloatApp dflags e =
-  case castFloatAppEither dflags e of
-    Left _ -> e
-    Right e' -> e'
+-- tryCastFloatApp :: DynFlags -> CoreExpr -> CoreExpr
+-- tryCastFloatApp dflags e =
+--   case castFloatAppEither dflags e of
+--     Left _ -> e
+--     Right e' -> e'
 
 coercionRKind :: Coercion -> Type
 coercionRKind co =
@@ -1328,9 +1298,9 @@ combineCasts dflags e =
     Just e' -> e'
     _ -> e
 
-targetCastM :: Applicative m => (CoreExpr -> m CoreExpr) -> CoreExpr -> m CoreExpr
-targetCastM t e@(Cast _ _) = t e
-targetCastM _ e = pure e
+-- targetCastM :: Applicative m => (CoreExpr -> m CoreExpr) -> CoreExpr -> m CoreExpr
+-- targetCastM t e@(Cast _ _) = t e
+-- targetCastM _ e = pure e
 
 -- | Build a CoreExpr for a DFunUnfolding
 dFunExpr :: Unfolding -> CoreExpr
@@ -1387,19 +1357,19 @@ unfoldAndBetaReduce_maybe _ _ _ _ = Nothing
 unfoldAndBetaReduce :: ModGuts -> DynFlags -> (Id -> Bool) -> CoreExpr -> CoreExpr
 unfoldAndBetaReduce guts dflags = maybeApply . unfoldAndBetaReduce_maybe guts dflags
 
-etaReduce_maybe :: CoreExpr -> Maybe CoreExpr
-etaReduce_maybe (Lam v (App f (Var v')))
-  | v == v' && not (v `elemVarSet` localFreeVarsExpr f) = Just f
-etaReduce_maybe (Lam v (App f (Cast (Var v') co)))
-  | v == v' && not (v `elemVarSet` localFreeVarsExpr f) =
-      let (argTy, restTy) = splitFunTy (exprType f)
-          co' = mkFunCo (coercionRole co) co (mkReflCo (coercionRole co) restTy)
-      in
-      Just $ Cast f co'
-etaReduce_maybe _ = Nothing
+-- etaReduce_maybe :: CoreExpr -> Maybe CoreExpr
+-- etaReduce_maybe (Lam v (App f (Var v')))
+--   | v == v' && not (v `elemVarSet` localFreeVarsExpr f) = Just f
+-- etaReduce_maybe (Lam v (App f (Cast (Var v') co)))
+--   | v == v' && not (v `elemVarSet` localFreeVarsExpr f) =
+--       let (argTy, restTy) = splitFunTy (exprType f)
+--           co' = mkFunCo (coercionRole co) co (mkReflCo (coercionRole co) restTy)
+--       in
+--       Just $ Cast f co'
+-- etaReduce_maybe _ = Nothing
 
-etaReduce :: CoreExpr -> CoreExpr
-etaReduce = maybeApply etaReduce_maybe
+-- etaReduce :: CoreExpr -> CoreExpr
+-- etaReduce = maybeApply etaReduce_maybe
 
  -- | Substitute all occurrences of a variable with an expression, in an expression.
 substCoreExpr :: Var -> CoreExpr -> (CoreExpr -> CoreExpr)
@@ -1415,13 +1385,13 @@ substCoreAlt v e alt = let (con, vs, rhs) = alt
                         in (con, vs', substExpr (text "alt-rhs") subst' rhs)
 
 repeatCaseFloat :: CoreExpr -> CoreExpr
-repeatCaseFloat = maybeApply (repeatTransform (\e -> caseFloatApp_maybe e <|> caseFloatArg_maybe e <|> caseFloatCast_maybe e))
+repeatCaseFloat = maybeApply (repeatTransform (\e -> caseFloatApp_maybe e <|> caseFloatArg_maybe e {- <|> caseFloatCast_maybe e -}))
 
--- | (case s wild of { P ... -> e; ... }) `cast` co  ==>   case s wild of { P ... -> e `cast` co; ... }
-caseFloatCast_maybe :: CoreExpr -> Maybe CoreExpr
-caseFloatCast_maybe (Cast (Case s b wild alts) co) =
-  Just $ Case s b wild (mapAlts (`Cast` co) alts)
-caseFloatCast_maybe _ = Nothing
+-- -- | (case s wild of { P ... -> e; ... }) `cast` co  ==>   case s wild of { P ... -> e `cast` co; ... }
+-- caseFloatCast_maybe :: CoreExpr -> Maybe CoreExpr
+-- caseFloatCast_maybe (Cast (Case s b wild alts) co) =
+--   Just $ Case s b wild (mapAlts (`Cast` co) alts)
+-- caseFloatCast_maybe _ = Nothing
 
 -- | ((case s wild of { P ... -> f; ... }) v)   ==>   case s wild of { P ... -> f v; ... }
 caseFloatApp_maybe :: CoreExpr -> Maybe CoreExpr

@@ -24,6 +24,7 @@ extra-source-files:  CHANGELOG.md
 --   hs-source-dirs:      src/
 --   default-language:    Haskell2010
 
+
 executable gpu-embed
   main-is:             Test/PluginExample.hs
   ghc-options:         -main-is Test.PluginExample
@@ -33,3 +34,4 @@ executable gpu-embed
   build-depends:       base ^>=4.13.0.0, uniplate ^>=1.6.12, template-haskell ^>=2.15.0.0, containers ^>=0.6.2.1, mtl ^>=2.2.2, tagged ^>=0.8.6, constraint ^>=0.1.4.0, ghc-prim ^>=0.5.3, ghc
   hs-source-dirs:      src/
   default-language:    Haskell2010
+
