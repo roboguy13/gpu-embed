@@ -1205,7 +1205,10 @@ repeatTransform f x0 =
   let (r, Any changed) = runWriter $ go x0
   in
     if changed
-      then Just r
+      then --Just r
+        case repeatTransform f r of
+          Nothing -> Just r
+          Just r' -> Just r'
       else Nothing
   where
     go :: a -> Writer Any a
@@ -1382,7 +1385,7 @@ caseFloatApp_maybe e0@(App (Case s b wild alts) v) =
   in
     if isEmptyVarSet (intersectVarSet vFVs altsFVs)
       then Just $ Case s b (coreAltsType newAlts) newAlts
-      else Nothing
+      else trace "need alpha conversion" Nothing
     -- captures    <- appT (liftM (map mkVarSet) caseAltVarsT) (arr freeVarsExpr) (flip (map . intersectVarSet))
     -- bndrCapture <- appT caseBinderIdT (arr freeVarsExpr) elemVarSet
     -- appT ((if not bndrCapture then idR else alphaCaseBinderR Nothing)

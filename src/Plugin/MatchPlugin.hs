@@ -1067,7 +1067,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                               untilNothing (upOneLevel_maybe (Just . Data.transform betaReduce . Data.transform (combineCasts dflags)) (transformIgnoringClasses_maybe (elimTheFn constructFnId))) $
 
                               Data.transform betaReduce $
-                              Data.transform caseFloatApp $
+                              -- Data.transform caseFloatApp $
+                              maybeApply (repeatTransform caseFloatApp_maybe) $
                               Data.transform betaReduce $
                               Data.transform (combineCasts dflags) $
                               Data.transform betaReduce $
@@ -1080,7 +1081,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                               -- Data.transform (caseInline dflags) $
                               -- Data.transform betaReduce $
                               maybeApply
-                                (fmap (Data.transform betaReduce . Data.transform caseFloatApp) -- Eliminate a $dmconstruct
+                                (fmap (Data.transform betaReduce . maybeApply (repeatTransform caseFloatApp_maybe)) -- Eliminate a $dmconstruct
                                  . upOneLevel_maybe (Just . transformIgnoringClasses (onAppFun (Data.transform betaReduce . Data.transform letNonRecSubst . betaReduce . onAppFun tryUnfoldAndReduceDict' . Data.transform letNonRecSubst . tryUnfoldAndReduceDict')))
                                   (upOneLevel_maybe (Just
                                                     -- . Data.transform (maybeApply ((fmap (\x -> trace ("onAppFun: " ++ showPpr dflags x) $ onAppFun tryUnfoldAndReduceDict' x)) . (onVarWhen_maybe (not . idIsFrom internalTypeableModule) (unfoldAndReduceDict_maybe' . Var))))
@@ -1093,10 +1094,11 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                                 simplE''Arg
 
                         -- traceM $ "elimRepUnrep: {" ++ showPpr dflags newExpr'''0 ++ "}"
-                        newExpr''' <- elimRepUnrep guts newExpr'''0
+                        newExpr''' <- elimRepUnrep guts $ Data.transform betaReduce  newExpr'''0
                         traceM $ "before elimRepUnrep: " ++ showPpr dflags newExpr'''0
                         traceM "after elimRepUnrep"
                         traceM $ "newExpr''' = " ++ showPpr dflags newExpr'''
+                        traceM $ "floated newExpr''' = " ++ showPpr dflags (maybeApply (repeatTransform caseFloatApp_maybe) newExpr''')
                         traceM ""
 
                         -- TODO: Note: the out-of-scope coercion type variable gets
