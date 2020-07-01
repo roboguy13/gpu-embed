@@ -8,7 +8,7 @@
 -- {-# LANGUAGE StandaloneDeriving #-}
 -- {-# LANGUAGE FlexibleInstances #-}
 
-{-# OPTIONS_GHC -XNoMonomorphismRestriction -O0 -Wtype-defaults -fexpose-all-unfoldings -dcore-lint -dsuppress-all -dno-suppress-coercions -dno-suppress-type-applications -fprint-equality-relations -fplugin=Plugin.MatchPlugin #-}
+{-# OPTIONS_GHC -XNoMonomorphismRestriction -O0 -Wtype-defaults -fexpose-all-unfoldings -dcore-lint -dsuppress-all -dno-suppress-coercions -fprint-equality-relations -fplugin=Plugin.MatchPlugin #-}
 
 module Test.PluginExample where
 
@@ -45,7 +45,7 @@ import           CodeGen.C
 default (Int, Double)
 
 
-
+{-
 data Three = First | Second | Third
   deriving (Generic)
 
@@ -84,7 +84,8 @@ test =
 
 main :: IO ()
 main = return ()
-{-
+-}
+
 data Nat = Z | S Nat deriving (Generic, Show)
 
 data Example = N Nat | B Bool deriving (Generic, Show)
@@ -436,4 +437,3 @@ mandelbrot_height = 40
 --         B' b -> B' (not b)
 --     |]
 --   transformExpr exp
--}

@@ -150,12 +150,46 @@ buildDictionaryT guts = \ ty0 -> do
                 [NonRec v e] | i == v -> e -- the common case that we would have gotten a single non-recursive let
                 _ -> mkCoreLets bnds (varToCoreExpr i)
 
-buildCo :: HasCallStack => ModGuts -> Type -> Type -> CoreM CoreExpr
+buildCo :: HasCallStack => ModGuts -> Type -> Type -> CoreM Coercion
 buildCo guts tyA tyB = do
   let k = tcTypeKind tyA
       ty = mkTyConApp eqTyCon [k, tyA, tyB]
 
-  buildDictionaryT guts ty
+  dflags <- getDynFlags
+
+  binder <- newIdH ("$d" ++ zEncodeString (filter (not . isSpace) (showPpr dflags ty))) ty
+  (i, bnds) <- buildDictionary guts binder
+  when (null bnds) (error ("buildCo: no dictionary bindings generated for " ++ showPpr dflags ty))
+
+  let r = case bnds of
+            [NonRec v e] | i == v -> e -- the common case that we would have gotten a single non-recursive let
+            _ -> do
+              Data.transform letNonRecSubst $ mkCoreLets bnds (varToCoreExpr i)
+      -- let r = Data.transform letNonRecSubst $ mkCoreLets bnds (varToCoreExpr i)
+      -- case r of
+      --   Cast _ co -> return (Coercion co)
+      --   _ -> error "buildCo"
+
+  traceM $ "buildCo: r = " ++ showPpr dflags r
+  case r of
+    Cast _ co ->
+      case coercionKind co of
+        (Pair coL_ty coR_ty) ->
+          case splitAppTys coL_ty of
+            (f, (k:leftTy:_)) -> do
+              traceM $ "buildCo: decomp co kinds = " ++ showPpr dflags (map coercionKind (decomposeCo 3 co [nthCoRole 0 co, nthCoRole 1 co, nthCoRole 2 co]))
+              traceM $ "buildCo: decomp co roles = " ++ showPpr dflags (map coercionRole (decomposeCo 3 co [nthCoRole 0 co, nthCoRole 1 co, nthCoRole 2 co]))
+
+              return $ mkCoCast (mkReflCo Nominal leftTy) co
+            _ ->
+              error $ "buildCo: Not coercion of coercions: " ++ showPpr dflags (splitAppTys coL_ty)
+    _ -> error $ "buildCo: " ++ showPpr dflags r
+
+  -- case exprToCoercion_maybe r of
+  --   Nothing -> error $ "buildCo: " ++ showPpr dflags r
+  --   Just co -> return co
+
+  -- buildDictionaryT guts ty
 
 normaliseType' :: ModGuts -> Type -> CoreM Type
 normaliseType' guts = fmap snd . normaliseTypeCo guts
@@ -807,34 +841,6 @@ onType :: (Type -> Type) -> CoreExpr -> CoreExpr
 onType f (Type ty) = Type $ f ty
 onType _ e = e
 
--- onCoercion :: (Coercion -> Coercion) -> CoreExpr -> CoreExpr
--- onCoercion f (Coercion co) = Coercion (f co)
--- onCoercion _ e = e
-
--- onCoercionM :: Applicative m => (Coercion -> m Coercion) -> CoreExpr -> m CoreExpr
--- onCoercionM f (Coercion co) = Coercion <$> f co
--- onCoercionM _ e = pure e
-
--- removeCastsIgnoringDicts :: CoreExpr -> CoreExpr
--- removeCastsIgnoringDicts e@(Cast x co)
---   | isDict x = e
---   | tcIsConstraintKind (coercionLKind co) || tcIsConstraintKind (coercionRKind co) = e
--- removeCastsIgnoringDicts (Cast x _) = removeCastsIgnoringDicts x
--- removeCastsIgnoringDicts e = e
-
--- removeCastsOfAppFns_maybe :: [Id] -> CoreExpr -> Maybe CoreExpr
--- removeCastsOfAppFns_maybe fnIds e@(Cast fnE _)
---   | (Var fnId', args) <- collectArgs fnE
---   , fnId' `elem` fnIds = Just fnE
--- removeCastsOfAppFns_maybe _ _ = Nothing
-
--- descendIntoCastsM :: Applicative f => (CoreExpr -> f CoreExpr) -> CoreExpr -> f CoreExpr
--- descendIntoCastsM f (Cast e co) = Cast <$> descendIntoCastsM f e <*> pure co
--- descendIntoCastsM f e = f e
-
--- descendIntoCasts :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
--- descendIntoCasts f = runIdentity . (descendIntoCastsM (Identity . f))
-
 isDictVar :: Var -> Bool
 isDictVar v =
   let str = occNameString (occName v)
@@ -1254,42 +1260,16 @@ coercionLKind co =
   let Pair x _ = coercionKind co
   in x
 
-orderCoercions0 :: Coercion -> Coercion -> Maybe (Coercion, Coercion)
-orderCoercions0 co1 co2
-  | ty1b `eqType` ty2a                 = Just (co1, co2)
-  | ty1b_flipped `eqType` ty2a_flipped = Just (co2, co1)
-  | otherwise                          = Nothing
-  where
-    ty1b = coercionRKind co1
-    ty2a = coercionLKind co2
-
-    ty1b_flipped = coercionRKind co2
-    ty2a_flipped = coercionLKind co1
-
-orderCoercions :: Coercion -> Coercion -> Maybe (Coercion, Coercion)
-orderCoercions co1 co2 =
-  orderCoercions0 co1 co2 <|> orderCoercions0 (mkSymCo co1) co2 <|> orderCoercions0 co1 (mkSymCo co2)
-
 combineCasts_maybe :: DynFlags -> CoreExpr -> Maybe CoreExpr
 combineCasts_maybe dflags origE@(Cast (Cast e coA) coB) =
   if coercionRole coA /= coercionRole coB
     then error "combineCasts_maybe: *** coercion roles do not match ***"
     else
-          -- if eqType (coercionLKind coB') (coercionRKind coB')
-          --   then Just $ Cast e coA'
-          --   else 
-                 -- trace ("combineCasts_maybe: coB' = {" ++ showPpr dflags coB' ++ "}") $
-                 -- trace ("^-------------------------->" ++ showPpr dflags (coercionLKind coB', coercionRKind coB')) $
-                 --trace ("===========================>" ++ showPpr dflags (getCoVar_maybe coB')) $
-                 -- trace ("===========================>" ++ showPpr dflags (buildCoercion (coercionLKind coB') (coercionRKind coB'))) $
-                 let newCo = mkTransCo coA coB
-                 in
-                 trace ("combineCasts: " ++ showPpr dflags (coercionKind newCo)) $
-                 trace ("===========> {" ++ showPpr dflags e ++ "}") $
-                 Just $ Cast e newCo
-        -- Nothing ->
-        --   error $ "combineCasts_maybe: *** coercions do not match ***: " ++ showPpr dflags (coercionKind coA, coercionKind coB)
-          -- trace "combineCasts_maybe: *** coercions do not match ***" $ Just origE
+      let newCo = mkTransCo coA coB
+      in
+      trace ("combineCasts: " ++ showPpr dflags (coercionKind newCo)) $
+      trace ("===========> {" ++ showPpr dflags e ++ "}") $
+      Just $ Cast e newCo
 combineCasts_maybe _ _ = Nothing
 
 combineCasts :: DynFlags -> CoreExpr -> CoreExpr
@@ -1605,7 +1585,8 @@ betaReduceAll e0@(Lam v body) (a:as) =
 -- Coercion handling is based on the hypothetical operational semantics
 -- for GHC's implementation of System FC given here https://github.com/ghc/ghc/tree/master/docs/core-spec
 betaReduceAll e@(Cast (Lam v body) gamma) (a:as) =
-  trace ("betaReduceAll: Cast: v = " ++ showSDocUnsafe (ppr v)) $
+  -- trace ("betaReduceAll: Cast: v = " ++ showSDocUnsafe (ppr v)) $
+  trace ("betaReduceAll: Cast: " ++ showSDocUnsafe (ppr (coercionKind gamma))) $
   case a of
     Coercion gamma' -> -- S_CPush
       let rho = coercionRole gamma'

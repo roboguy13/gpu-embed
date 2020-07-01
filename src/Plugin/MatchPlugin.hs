@@ -401,6 +401,7 @@ tryMarkUnrepVar guts e@(Var f :@ Type tyA :@ var@(Var g :@ Type tyB :@ _dict :@ 
       dflags <- getDynFlags
       traceM "traceMarkUnrepVar: unrep Var"
       traceM $ "--> unrepType: " ++ showPpr dflags tyA
+      traceM $ "types: " ++ showPpr dflags (exprType e, exprType var)
 
       -- traceM $ "=== mark0 ===> " ++ showPpr dflags var
 
@@ -430,7 +431,7 @@ markIt guts x = do
     else
       case splitFunTy_maybe (exprType x) of
         Just (a, b)
-          | isExprTy expTyCon a && isExprTy expTyCon b -> return x
+          | {- isExprTy expTyCon a && -} isExprTy expTyCon b -> return x
         _ -> markAny guts x
 
 -- | Mark anything that isn't a dictionary
@@ -539,59 +540,6 @@ isEmbeddedFnType :: ModGuts -> Type -> MatchM Bool
 isEmbeddedFnType guts t =
   fmap isJust (getEmbeddedFnType guts t)
 
--- | Transform 'f x' to 'App f x' when f has a type of the form
--- 'GPUExp (a -> b)'. Performs this transformation recursively.
--- transformApps :: ModGuts -> Expr Var -> MatchM (Expr Var)
--- transformApps guts = Data.descendM go
---   where
---     mark = mark0 guts
-
---     go expr@(lhs :@ rhs) = do
---         -- let (f, args) = collectArgs expr
---         expTyCon <- lift $ findTyConTH guts ''GPUExp
---         dflags <- getDynFlags
-
---         when (not (isFunTy (exprType lhs))) $ do
---           liftIO $ putStrLn $ "========= " ++ showPpr dflags (exprType lhs)
---           liftIO $ putStrLn ""
-
---         case getEmbeddedFnType0 expTyCon guts (exprType lhs) of
---           Nothing -> return expr
---           Just (aTy, bTy) -> do
---             -- let (tyArgs, restArgs0) = span isType args
---             --     (dictArgs, restArgs1) = span isDict restArgs0
-
---             -- dflags <- getDynFlags
---             -- liftIO $ putStrLn $ "!!!!!!!!!! attempting: " ++ showPpr dflags f
---             -- liftIO $ putStrLn $ "!!!!!!!!!! with rhs = " ++ showPpr dflags rhs
---             -- liftIO $ putStrLn $ "%%%%%%%%%% With type:  " ++ showPpr dflags (exprType (mkApps f (tyArgs ++ dictArgs)))
---             -- liftIO $ putStrLn ""
-
---             if isFunTy (exprType lhs)
---               then return expr -- Nothing to do here, already typical function application
---               else do
-
-
---                     -- liftIO $ putStrLn $ "~~~~~~~~~~~~ App transform: " ++ showPpr dflags expr
---                     -- liftIO $ putStrLn $ "~~~~~~~~~~~~ restArgs1 = " ++ showPpr dflags restArgs1
-
---                     -- case restArgs1 of
---                     --   [] -> return expr
---                     --   (arg:nextArgs) ->
-
---                     dflags <- getDynFlags
---                     -- liftIO $ putStrLn $ "App transform: " ++  showPpr dflags expr
---                     appId <- lift $ findIdTH guts 'App
-
---                     repTyCon <- lift $ findTyConTH guts ''GPURep
---                     repDict <- lift $ buildDictionaryT guts (mkTyConApp repTyCon [aTy])
-
---                     -- markedLhs <- mark lhs
---                     -- markedRhs <- mark rhs
-
---                     return (Var appId :@ Type aTy :@ Type bTy :@ repDict :@ lhs :@ rhs)
-
---     go expr = return expr
 
 
 -- | mkExprApps f [x, y, z]  =  App (App (App f x') y') z'
@@ -624,6 +572,16 @@ mkExprApps guts fn0 args0 =
 -- 'exprVars' are already of GPUExp type and do not need to be modified
 transformPrims0 :: ModGuts -> Var -> Maybe Var -> [(Id, CoreExpr)] -> [Expr Var] -> Expr Var -> MatchM (Expr Var)
 transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts mark <=< -} do
+
+  dflags <- getDynFlags
+
+  -- tailRecId <- lift $ findIdTH guts 'Expr.TailRec
+  -- runIterId <- lift $ findIdTH guts 'Expr.runIter
+  -- traceM ""
+  -- traceM $ "TailRec type: " ++ showPpr dflags (exprType (Var tailRecId))
+  -- traceM $ "runIter type: " ++ showPpr dflags (exprType (Var runIterId))
+  -- traceM ""
+
   lamId <- lift $ findIdTH guts 'Expr.Lam
   expTyCon <- lift $ findTyConTH guts ''GPUExp
 
@@ -719,8 +677,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
         -- Handle builtins
         go expr@(Var f :@ tyA@(Type{}) :@ tyB@(Type{}) :@ dictA :@ dictB :@ x :@ y)
           | Just b <- builtin f,
-            -- True <- isDict dictA,
-            -- True <- isDict dictB,
+            True <- isDict dictA,
+            True <- isDict dictB,
             not (hasExprTy expr) = do
 
               -- TODO: Is the problem that it is ending up as
@@ -743,18 +701,34 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
               if f == runIterId
                 then do
                   liftIO $ putStrLn "+++++++++++++++++++ tailRecApp fired"
+                  traceM $ "tyA, tyB: " ++ showPpr dflags (tyA, tyB)
                   return (Var tailRecAppId :@ tyA :@ tyB :@ dictA :@ dictB :@ markedX :@ markedY)
                 else
                   return (b :@ tyA :@ tyB :@ dictA :@ dictB :@ markedX :@ markedY)
 
 
         go expr@(Var f :@ tyA@(Type{}) :@ tyB@(Type{}) :@ dictA :@ dictB :@ x)
-           | Just b <- builtin f,
-             True <- isDict dictA,
-             True <- isDict dictB,
-             not (hasExprTy expr) = do
-               markedX <- mark x
-               return (b :@ tyA :@ tyB :@ dictA :@ dictB :@ markedX)
+          | Just b <- builtin f,
+            True <- isDict dictA,
+            True <- isDict dictB,
+            not (hasExprTy expr) = do
+              markedX <- mark x
+              dflags <- getDynFlags
+
+              traceM ""
+              traceM $ "here: " ++ showPpr dflags f
+              traceM $ "tyA, tyB: " ++ showPpr dflags (tyA, tyB)
+              traceM ""
+
+              runIterId <- lift $ findIdTH guts 'runIter
+              tailRecAppId <- lift $ findIdTH guts 'tailRecApp
+
+              if f == runIterId
+                then
+                  -- abstractOver guts
+                  return (Var tailRecAppId :@ tyA :@ tyB :@ dictA :@ dictB :@ markedX)
+                else
+                  return (b :@ tyA :@ tyB :@ dictA :@ dictB :@ markedX)
 
         go expr@(Var f :@ tyA@(Type tyA') :@ tyB@(Type tyB') :@ dictA :@ dictB :@ x)
            | isFromIntegral f,
@@ -813,8 +787,11 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
               markedX <- mark x
               markedY <- mark y
 
-              tyA <- lift $ normaliseType' guts tyA0
-              tyB <- lift $ normaliseType' guts tyB0
+              -- tyA <- lift $ normaliseType' guts tyA0
+              -- tyB <- lift $ normaliseType' guts tyB0
+
+              let tyA = tyA0
+                  tyB = tyB0
 
               return (b :@ Type tyA :@ Type tyB :@ markedX :@ markedY)
 
@@ -923,6 +900,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 -- liftIO $ putStrLn $ "repUnfolding = {" ++ showPpr dflags repUnfolding ++ "}"
                 -- error $ "constructUnfolding = {" ++ showPpr dflags constructUnfolding ++ "}"
 
+                -- traceM $ "rep type: " ++ showPpr dflags (exprType repUnfolding)
 
 
                 let (fn0, restArgs) = betaReduceAll
@@ -998,7 +976,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 -- error (showPpr dflags (Data.transform(unfoldAndBetaReduce guts dflags (idIsFrom internalTypeableModule)) newExpr'0))
 
-                newExpr'' <- Data.transformM (elimRepUnrep guts) newExpr'
+                newExpr'' <- return newExpr' --Data.transformM (elimRepUnrep guts) newExpr'
 
                 -- error (showPpr dflags newExpr'')
 
@@ -1115,7 +1093,8 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                                 simplE''Arg
 
                         -- traceM $ "elimRepUnrep: {" ++ showPpr dflags newExpr'''0 ++ "}"
-                        newExpr''' <- (elimRepUnrep guts) newExpr'''0
+                        newExpr''' <- elimRepUnrep guts newExpr'''0
+                        traceM $ "before elimRepUnrep: " ++ showPpr dflags newExpr'''0
                         traceM "after elimRepUnrep"
                         traceM $ "newExpr''' = " ++ showPpr dflags newExpr'''
                         traceM ""
@@ -1157,12 +1136,40 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                         traceM $ "getUnfolding' constructFnId: " ++ showPpr dflags (getUnfolding' constructFnId)
 
+                        -- let test = mkEqTypeExpr (exprType constructedResult) (exprType constructedResult)
+
+                        -- testDict <- lift $ buildDictionaryT guts (mkTyConApp eqTyCon [tcTypeKind (exprType constructedResult), exprType constructedResult, exprType constructedResult])
+                        -- traceM $ "mkEqTypeExpr: " ++ showPpr dflags testDict
+
+                        -- constructedResult' <-
+                        --       case collectArgs constructedResult of
+                        --         (Var cFn, cArgs@(Type toTy0:_))
+                        --           | cFn == constructRepId -> do
+                        --               let transformedArg = last cArgs
+
+                        --               transformedTy0 <- lift $ unwrapExpType guts (exprType transformedArg)
+
+                        --               let transformedTy = mkTyConApp repTyTyCon [transformedTy0]
+                        --                   toTy = mkTyConApp repTyTyCon [toTy0]
+
+                        --               traceM $ "types for eq: " ++ showPpr dflags (toTy, transformedTy)
+
+                        --               dict <- lift $ buildDictionaryT guts (mkTyConApp eqTyCon [tcTypeKind toTy, transformedTy, toTy])
+
+                        --               traceM $ "dict = " ++ showPpr dflags dict
+                        --               return constructedResult
+                        --         (fn, _) -> do
+                        --           traceM $ "not ConstructRep: " ++ showPpr dflags fn
+                        --           return constructedResult
+
                         -- traceM $ "args = " ++ showPpr dflags (length (snd (collectArgs constructedResult)))
                         traceM $ "constructedResult = {" ++ showPpr dflags constructedResult ++ "}"
 
                         -- updateTypeProofs guts constructedResult
 
+                        -- Data.transformM (updateConstructRepCast guts) constructedResult
                         return constructedResult
+
                         -- traceM $ "before updateTypeProofs: " ++ showPpr dflags r
 
                     -- error "debug"
@@ -1230,19 +1237,10 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 traceM $ "marking args: " ++ showPpr dflags args
                 markedArgs <- mapM mark args
 
-                let (newF0, newArgs) = betaReduceAll unfoldingF args --markedArgs
+                let (newF0, newArgs) = betaReduceAll unfoldingF markedArgs --args
                     newF             = caseInlineT dflags $ caseInline dflags (caseInline dflags newF0)
 
                 markedNewF <- mark newF
-
-                -- liftIO $ putStrLn $ "newArgs = " ++ showPpr dflags newArgs
-
-                -- liftIO $ putStrLn $ "inlining (pre-beta reduce): { " ++ showPpr dflags unfoldingF ++ " }"
-
-                -- liftIO $ putStrLn $ "inlining (pre-case inline): { " ++ showPpr dflags newF0 ++ " }"
-                -- liftIO $ putStrLn $ "inlining: { " ++ showPpr dflags newF ++ " }"
-                -- liftIO $ putStrLn $ "inlining (new args): " ++ showPpr dflags newArgs
-                -- liftIO $ putStrLn $ "inlining: { " ++ showPpr dflags (betaReduceAll (caseInlineT dflags newF) args) ++ " }"
 
                 mkExprApps guts markedNewF newArgs
 
@@ -1260,6 +1258,65 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
         --   return (Cast markedE co)
 
         go expr = return expr
+
+updateConstructRepCast :: ModGuts -> CoreExpr -> MatchM CoreExpr
+updateConstructRepCast guts expr = do
+  constructRepId <- lift $ findIdTH guts 'ConstructRep
+  case collectArgs expr of
+    (Var fn, args@(Type ty1:restArgs)) ->
+      let x = last args
+      in
+      if fn /= constructRepId || not (isEmptyVarSet (freeVarsType ty1)) || isDict x
+        then return expr
+        else do
+          repTyTyCon <- lift $ findTyConTH guts ''GPURepTy
+          dflags <- getDynFlags
+
+          let toTy = mkTyConApp repTyTyCon [ty1]
+
+          xTy <- lift $ unwrapExpType guts (exprType x)
+          -- let xTy = mkTyConApp repTyTyCon [xTy0]
+
+          if eqType xTy ty1 || not (isEmptyVarSet (freeVarsType xTy))
+            then return expr
+            else do
+              traceM $ "ty pair = " ++ showPpr dflags (toTy, xTy)
+
+              -- let eqTy = mkTyConApp eqTyCon [tcTypeKind toTy, xTy, toTy]
+
+              -- traceM $ "eqTy = " ++ showPpr dflags eqTy
+
+              expTyCon <- lift $ findTyConTH guts ''GPUExp
+
+              let xTy' = mkTyConApp expTyCon [xTy]
+                  toTy' = mkTyConApp expTyCon [toTy]
+
+              co0 <- lift $ buildCo guts xTy' toTy'
+              let co = downgradeRole Representational (coercionRole co0) co0
+              traceM $ "update co = " ++ showPpr dflags (coercionKind co)
+              traceM $ "update co role = " ++ showPpr dflags (coercionRole co)
+              let args' = Type ty1 : init restArgs ++ [Cast x co]
+              return $ mkApps (Var fn) args'
+              -- return (Var fn :@ Type ty1 :@ dict1 :@ dict2 :@ dict3 :@ (Cast expr co))
+    _ -> return expr
+
+                        --       case collectArgs constructedResult of
+                        --         (Var cFn, cArgs@(Type toTy0:_))
+                        --           | cFn == constructRepId -> do
+                        --               let transformedArg = last cArgs
+
+                        --               transformedTy0 <- lift $ unwrapExpType guts (exprType transformedArg)
+
+                        --               let transformedTy = mkTyConApp repTyTyCon [transformedTy0]
+                        --                   toTy = mkTyConApp repTyTyCon [toTy0]
+
+                        --               traceM $ "types for eq: " ++ showPpr dflags (toTy, transformedTy)
+
+                        --               dict <- lift $ buildDictionaryT guts (mkTyConApp eqTyCon [tcTypeKind toTy, transformedTy, toTy])
+
+                        --               traceM $ "dict = " ++ showPpr dflags dict
+                        --               return constructedResult
+                        --         (fn, _) -> return constructedResult
 
 
 applyUnrep :: ModGuts -> CoreExpr -> MatchM CoreExpr
@@ -1295,7 +1352,7 @@ elimRepUnrep_co guts coA_M origType expr@(Var r :@ Type{} :@ dict :@ arg) =
       case e of
         Var u :@ Type{} :@ x -> go e u Nothing x
         Cast (Var u :@ Type{} :@ x) coB -> go e u (Just coB) x
-        _ -> Data.descendM (elimRepUnrep guts) expr
+        _ -> Data.descendM (elimRepUnrep guts) (coerceMaybe coA_M expr)
 
     go :: CoreExpr -> Id -> Maybe Coercion -> CoreExpr -> MatchM CoreExpr
     go unrepped u coB_M x = do
@@ -1304,36 +1361,54 @@ elimRepUnrep_co guts coA_M origType expr@(Var r :@ Type{} :@ dict :@ arg) =
       repId <- lift $ findIdTH guts 'rep
       unrepId <- lift $ findIdTH guts 'unrep
       expTyCon <- lift $ findTyConTH guts ''GPUExp
+      expType <- lift $ findTypeTH guts ''GPUExp
 
       -- traceM $ "building coercion: " ++ showPpr dflags (exprType x, origType)
       -- traceM $ "coA_M = " ++ showPpr dflags (fmap coercionKind coA_M)
       -- traceM $ "coB_M = " ++ showPpr dflags (fmap coercionKind coB_M)
       traceM "****** elimRepUnrep_co ******"
 
-      let co_M = do
-                    guard (isJust coA_M || isJust coB_M)
-                    let newCo = buildCoercion (exprType x) origType
+      let co_M =
+            case (coA_M, coB_M) of
+              (Just coA, Just coB) ->
+                let coB' = mkAppCo (mkReflCo (coercionRole coA) expType) coB
+                in
+                trace ("coercion kind coA: " ++ showPpr dflags (coercionKind coA)) $
+                trace ("coercion kind coB': " ++ showPpr dflags (coercionKind coB')) $
+                trace ("coercion role coA: " ++ showPpr dflags (coercionRole coA)) $
+                trace ("coercion role coB': " ++ showPpr dflags (coercionRole coB')) $
+                let co' = mkTransCo coB' coA
+                in
+                  Just (maybeApply (setNominalRole_maybe (coercionRole co')) co')
+                -- Just $ downgradeRole Representational (coercionRole co') co'
+              _ -> do
+                co' <- coA_M <|> coB_M
+                return $ maybeApply (setNominalRole_maybe (coercionRole co')) co'
 
-                    -- traceM $ "newCo = {" ++ showPpr dflags newCo ++ "}"
+      -- let co_M = do
+      --               guard (isJust coA_M || isJust coB_M)
+      --               let newCo = fromMaybe (buildCoercion (exprType x) origType) coB_M
 
-                    newCo' <- case splitTyConApp_maybe (coercionRKind newCo) of
-                                Just (tyCon, _)
-                                  | tyCon == expTyCon -> return newCo
-                                _ -> Just $ buildCoercion (mkTyConApp expTyCon [exprType x]) (mkTyConApp expTyCon [origType])
+      --               -- traceM $ "newCo = {" ++ showPpr dflags newCo ++ "}"
+
+      --               newCo' <- case splitTyConApp_maybe (coercionRKind newCo) of
+      --                           Just (tyCon, _)
+      --                             | tyCon == expTyCon -> return newCo
+      --                           _ -> Just $ buildCoercion (mkTyConApp expTyCon [exprType x]) (mkTyConApp expTyCon [origType])
 
 
-                    traceM $ "kinds of coA_M and coB_M: " ++ showPpr dflags (fmap coercionKind coA_M, fmap coercionKind coB_M)
-                    traceM $ "newCo' kind = " ++ showPpr dflags (coercionKind newCo')
-                    -- traceM $ "newCo' = {" ++ showPpr dflags newCo' ++ "}"
+      --               traceM $ "kinds of coA_M and coB_M: " ++ showPpr dflags (fmap coercionKind coA_M, fmap coercionKind coB_M)
+      --               traceM $ "newCo' kind = " ++ showPpr dflags (coercionKind newCo')
+      --               -- traceM $ "newCo' = {" ++ showPpr dflags newCo' ++ "}"
 
-                    let newCo'' =
-                          case coA_M of
-                            Nothing -> newCo'
-                            Just coA -> mkTransCo newCo' coA
+      --               let newCo'' =
+      --                     case coA_M of
+      --                       Nothing -> newCo'
+      --                       Just coA -> trace "making trans co" $ mkTransCo newCo' coA
 
-                    traceM $ "newCo'' kind = " ++ showPpr dflags (coercionKind newCo'')
+      --               traceM $ "newCo'' kind = " ++ showPpr dflags (coercionKind newCo'')
 
-                    Just $ downgradeRole Representational (coercionRole newCo'') newCo''
+      --               Just $ downgradeRole Representational (coercionRole newCo'') newCo''
 
 
       if r == repId && u == unrepId
@@ -1349,8 +1424,11 @@ elimRepUnrep_co guts coA_M origType expr@(Var r :@ Type{} :@ dict :@ arg) =
 
           traceM ""
           traceM $ "co_M = " ++ showPpr dflags (fmap coercionKind co_M)
+          traceM $ "coA_M = " ++ showPpr dflags (fmap coercionKind coA_M)
+          traceM $ "coB_M = " ++ showPpr dflags (fmap coercionKind coB_M)
+          traceM $ "x = " ++ showPpr dflags x
 
-          unconstructRepId <- lift $ findIdTH guts 'UnconstructRep
+          -- unconstructRepId <- lift $ findIdTH guts 'UnconstructRep
           ty <- lift $ unwrapExpType guts (exprType unrepped)
 
 
@@ -1360,19 +1438,19 @@ elimRepUnrep_co guts coA_M origType expr@(Var r :@ Type{} :@ dict :@ arg) =
           -- traceM $ "--->" ++ showPpr dflags x --showPpr dflags (Var unconstructRepId :@ Type ty :@ x')
 
           if not $ eqType ty (exprType unrepped)
-            then traceM "not eqType" >> fmap (coerceMaybe co_M) (Data.descendM (elimRepUnrep guts) x)
-            else fmap (coerceMaybe co_M) (elimRepUnrep guts x)
+            then traceM "not eqType" >> {- fmap (coerceMaybe co_M) -} (Data.descendM (elimRepUnrep guts) (coerceMaybe co_M x))
+            else elimRepUnrep guts (coerceMaybe co_M x)
         -- else Data.descendM (elimRepUnrep guts) expr--return $ coerceMaybe coA_M expr
-        else Data.descendM (elimRepUnrep guts) $ coerceMaybe coA_M expr
+        else Data.descendM (elimRepUnrep guts) $ coerceMaybe co_M expr
 
     composeCos = mkTransCo
 
-elimRepUnrep_co guts co_M _ expr = Data.descendM (elimRepUnrep guts) $ coerceMaybe co_M expr
+elimRepUnrep_co guts co_M _ expr = Data.descendM (elimRepUnrep guts) (coerceMaybe co_M expr)
 
 -- TODO: Check this
 coerceMaybe :: Maybe Coercion -> Expr a -> Expr a
 coerceMaybe Nothing e = e
-coerceMaybe (Just co) e = Cast e co
+coerceMaybe (Just co) e = Cast e (maybeApply (setNominalRole_maybe (coercionRole co)) co)
 
 applyUnconstructRep :: ModGuts -> CoreExpr -> Type -> MatchM CoreExpr
 applyUnconstructRep guts e ty = do
@@ -1619,7 +1697,8 @@ transformTailRec guts recVar e0 = do
     recName = varName recVar
 
     go0 :: CoreExpr -> MatchM CoreExpr
-    go0 (Lam v body) = go1 (varType v) v body
+    go0 (Lam v body) =
+      go1 (varType v) v body
     go0 e = return e
 
     go1 :: Type -> Var -> CoreExpr -> MatchM CoreExpr
@@ -1660,9 +1739,10 @@ transformTailRec guts recVar e0 = do
 
               -- theLam <- abstractOver guts lamV x'
               let theLam = Lam lamV x'
+              outerV <- lift $ mkSysLocalM (occNameFS (occName lamV)) (varType lamV)
 
               return (Var f :@ fTyArg :@ fDict :@
-                        (Var runIterId :@ Type resultTy :@ Type ty :@ resultTyDict :@ tyDict :@ theLam))
+                        (Lam outerV (Var runIterId :@ Type resultTy :@ Type ty :@ resultTyDict :@ tyDict :@ theLam :@ Var outerV)))
 
         else return expr
     go2 ty lamV e = return e
@@ -1800,7 +1880,10 @@ abstractOver guts v e = do
 
   -- lamFnId <- lift $ findIdTH guts 'Expr.lam
 
-  lamId <- lift $ findIdTH guts 'Expr.Lam
+  -- lamId <- lift $ findIdTH guts 'Expr.Lam
+
+  lamId <- lift $ findDataConWorkIdTH guts 'Expr.Lam
+
   varId <- lift $ findIdTH guts 'Expr.Var
   nameId <- lift $ findIdTH guts 'Expr.Name
 
@@ -1849,10 +1932,16 @@ abstractOver guts v e = do
   -- traceM $ "marking " ++ showPpr dflags (substCoreExpr v' varExp e)
   -- liftIO $ putStrLn $ "markedSubstE' = " ++ showPpr dflags markedSubstE'
 
-  traceM $ "markedSubstE' = " ++ showPpr dflags (Data.transform (go varId newTy) markedSubstE')
+  -- traceM $ "markedSubstE' = " ++ showPpr dflags (Data.transform (go varId newTy) markedSubstE')
   -- markedSubstE'' <- mark0 guts markedSubstE'
 
-  return (Var lamId :@ Type origTy :@ Type eTy' :@ repDict :@ typeableDict :@ nameVal
+  -- traceM $ "lamId = " ++ showPpr dflags lamId
+
+  let funTy = mkFunTy origTy eTy'
+
+  let co = mkReflCo Nominal funTy
+
+  return (Var lamId :@ Type funTy :@ Type origTy :@ Type eTy' :@ Coercion co :@ repDict :@ typeableDict :@ nameVal
             :@ markedSubstE')
   where
     go varId newTy (Var v')
@@ -2089,6 +2178,12 @@ findTypeTH guts thName = do
 
 
 -- Modified from 'Inst':
+
+mkEqTypeExpr :: Type -> Type -> CoreExpr
+mkEqTypeExpr ty1 ty2 =
+  Var (dataConWrapId eqDataCon) :@ Type k :@ Type ty1 :@ Type ty2
+  where
+    k = tcTypeKind ty1
 
 mkEqBox :: TcCoercion -> CoreExpr
 mkEqBox co =

@@ -198,7 +198,7 @@ data GPUExp t where
     -- Typeable allows us to inspect the types. This can be useful if we
     -- want to, for instance, treat 'Complex Double' values differently
     -- than '(Double, Double)' values in a backend
-  ConstructRep :: forall a. (Typeable a, GPURep a) => GPUExp (GPURepTy a) -> GPUExp a
+  ConstructRep :: forall a. (Typeable a, GPURep a, GPURep (GPURepTy a)) => GPUExp (GPURepTy a) -> GPUExp a
 
   Construct :: a -> GPUExp a
   ConstructAp :: forall a b. (GPURep a) => GPUExp (a -> b) -> GPUExp a -> GPUExp b
@@ -357,7 +357,7 @@ deepFromInteger = FromIntegral . Lit
 -- lam :: forall a b. (GPURep a, Typeable a) => Name a -> (GPUExp a -> GPUExp b) -> GPUExp (a -> b)
 -- lam name f = Lam name (f (Var name))
 
-runIter :: forall a b. (GPURep a, GPURep b) => (a -> Iter b a) -> a -> b
+runIter :: forall a b. (GPURep a, GPURep b) => (b -> Iter a b) -> b -> a
 runIter f = go
   where
     go x =
@@ -377,19 +377,31 @@ class Typeable t => GPURep t where
 
   -- | This should be unapplied type (without type arguments)
 
-  construct :: t -> GPUExp (GPURepTy t)
+  construct :: forall a. a ~ GPURepTy t => t -> GPUExp a
+
+  -- constructRep :: GPUExp (GPURepTy t) -> GPUExp t
+  -- constructRep = ConstructRep
+  -- {-# INLINABLE constructRep #-}
 
   -- NOTE: The INLINABLE pragmas make the unfoldings available to the Core
   -- plugin
 
-  default construct :: (Generic t, GPURep (Rep t Void), GPURep (GPURepTy t), GPURepTy (Rep t Void) ~ GPURepTy t) => t -> GPUExp (GPURepTy t)
+  default construct :: forall a. (a ~ GPURepTy t, Generic t, GPURep (Rep t Void), GPURep (GPURepTy t), GPURepTy (Rep t Void) ~ GPURepTy t) => t -> GPUExp a
   construct = construct . (from :: t -> Rep t Void)
   {-# INLINABLE construct #-}
 
+  -- default constructRep :: (Generic t, GPURep (Rep t Void), GPURepTy t ~ GPURepTy (Rep t Void)) => GPUExp (GPURepTy t) -> GPUExp t
+  -- constructRep = undefined
+
   rep :: t -> GPUExp t
 
+  -- default rep :: (Generic t, GPURepTy t ~ GPURepTy (Rep t Void), GPURep (Rep t Void), GPURep (GPURepTy t)) => t -> GPUExp t
+  -- rep x = -- constructRep . construct
+  --   let x' = from x :: Rep t Void
+  --       y = rep x'
+  --   in _
   default rep :: (GPURep (GPURepTy t)) => t -> GPUExp t
-  rep x = ConstructRep (construct x)
+  rep x = ConstructRep (construct x :: GPUExp (GPURepTy t))
   {-# INLINABLE rep #-}
 
   rep' :: t -> GPURepTy t
@@ -429,24 +441,28 @@ instance GPURep Int where
   rep = Lit
   rep' = id
   unrep' = id
+  -- constructRep = id
 instance GPURep Integer where
   type GPURepTy Integer = Integer
   construct = Lit
   rep = Lit
   rep' = id
   unrep' = id
+  -- constructRep = id
 instance GPURep Float where
   type GPURepTy Float = Float
   construct = Lit
   rep = Lit
   rep' = id
   unrep' = id
+  -- constructRep = id
 instance GPURep Double where
   type GPURepTy Double = Double
   construct = Lit
   rep = Lit
   rep' = id
   unrep' = id
+  -- constructRep = id
 
 instance GPURep Bool where
   type GPURepTy Bool = Bool
@@ -458,6 +474,7 @@ instance GPURep Bool where
   rep True  = TrueExp
   rep' = id
   unrep' = id
+  -- constructRep = id
 
 instance GPURep Char where
   type GPURepTy Char = Char
@@ -467,6 +484,7 @@ instance GPURep Char where
   rep c = CharLit c
   rep' = id
   unrep' = id
+  -- constructRep = id
 
 instance GPURep a => GPURep (Complex a) where
 
@@ -511,15 +529,22 @@ instance (GPURep a, GPURep b) => GPURep (a -> b) where
   rep = Construct
   rep' f x = rep' (f (unrep' x))
   unrep' = error "unrep' for (a->b) instance called"
+  -- constructRep = ConstructRep
 
 -- Generics instances
 instance (Typeable (M1 i c f p), GPURep (f p), GPURep (GPURepTy (f p))) => GPURep (M1 i c f p) where
   type GPURepTy (M1 i c f p) = GPURepTy (f p)
 
+  construct :: M1 i c f p -> GPUExp (GPURepTy (M1 i c f p))
   construct = construct . unM1
 
+  rep' :: M1 i c f p -> GPURepTy (M1 i c f p)
   rep' (M1 x) = rep' x
+
+  unrep' :: GPURepTy (M1 i c f p) -> M1 i c f p
   unrep' = M1 . unrep'
+
+  rep (M1 x) = ConstructRep (construct x)
 
 instance (Typeable ((p :+: q) x), GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy (q x))) => GPURep ((p :+: q) x) where
   type GPURepTy ((p :+: q) x) =  Either (GPURepTy (p x)) (GPURepTy (q x))
@@ -533,6 +558,11 @@ instance (Typeable ((p :+: q) x), GPURep (p x), GPURep (q x), GPURep (GPURepTy (
   unrep' (Left x) = L1 (unrep' x)
   unrep' (Right y) = R1 (unrep' y)
 
+  rep (L1 x) = ConstructRep (LeftExp (construct x))
+  rep (R1 x) = ConstructRep (RightExp (construct x))
+
+  -- constructRep (LeftExp x) = _
+
 instance (Typeable ((p :*: q) x), GPURep (p x), GPURep (q x), GPURep (GPURepTy (p x)), GPURep (GPURepTy (q x))) => GPURep ((p :*: q) x) where
   type GPURepTy ((p :*: q) x) =  (GPURepTy (p x), GPURepTy (q x))
 
@@ -540,6 +570,8 @@ instance (Typeable ((p :*: q) x), GPURep (p x), GPURep (q x), GPURep (GPURepTy (
 
   rep' (x :*: y) = (rep' x, rep' y)
   unrep' (x, y) = (unrep' x :*: unrep' y)
+
+  rep (x :*: y) = ConstructRep (PairExp (construct x) (construct y))
 
 instance (Typeable (K1 i c p), GPURep c) => GPURep (K1 i c p) where
   type GPURepTy (K1 i c p) = c --GPURepTy c
