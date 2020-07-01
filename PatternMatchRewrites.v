@@ -31,6 +31,13 @@ Inductive Literal := .
 Scheme Equality for Literal.
 Hint Resolve Literal_eq_dec : eqdec.
 
+
+Inductive DataCon : Type :=
+| MkDataCon : nat -> DataCon. (* This wraps the data con identifier *)
+
+Scheme Equality for DataCon.
+Hint Resolve DataCon_eq_dec : eqdec.
+
 Inductive Id :=
 | SomeId : VarName -> Id
 | ExternalizeId : Id
@@ -40,7 +47,8 @@ Inductive Id :=
 | ConstructId : Id
 | RunIterId : Id
 | StepId : Id
-| DoneId : Id.
+| DoneId : Id
+| DataConId : Id.
 
 Lemma VarName_dec_eq : eq_dec VarName. auto with eqdec. Defined.
 Hint Resolve VarName_dec_eq : eqdec.
@@ -48,62 +56,6 @@ Hint Resolve VarName_dec_eq : eqdec.
 Lemma Id_dec_eq : eq_dec Id. auto with eqdec. Defined.
 Hint Resolve Id_dec_eq : eqdec.
 
-(*
-Axiom DataCon : Type.
-Axiom DataCon_dec_eq : eq_dec DataCon.
-Hint Resolve DataCon_dec_eq : eqdec.
-*)
-
-(*
-
-Inductive ADT : Type :=
-| ADT_prod : ADT -> ADT -> ADT
-| ADT_sum : ADT -> ADT -> ADT
-| ADT_base : ADT.
-
-Inductive DataConSort : ADT -> Type :=
-| DataCon_base : DataConSort ADT_base (* Base types *)
-| DataConSort_prod : forall t1 t2, DataConSort t1 -> DataConSort t2 -> DataConSort (ADT_sum t1 t2)
-| DataConSort_sum  : forall t1 t2, DataConSort t1 -> DataConSort t2 -> DataConSort (ADT_prod t1 t2).
-
-
-Definition cast {T} (S : T -> Type) {a b : T} (p : a = b) : S a -> S b :=
-  match p with eq_refl => fun a => a end.
-
-Definition eq_sig T (S : T -> Type) (a b : T) x y
-  (p : existT S a x = existT S b y) :
-  {q : a = b & cast S q x = y} :=
-  match p in _ = z return {q : a = projT1 z & cast S q x = projT2 z} with
-  | eq_refl => existT _ eq_refl eq_refl
-  end.
-
-Definition eq_sig_elim T (S : T -> Type) (a b : T) x y
-  (p : existT S a x = existT S b y) :
-  forall (R : forall c, S c -> Prop), R a x -> R b y :=
-  match p in _ = z return forall (R : forall c, S c -> Prop), R a x -> R _ (projT2 z) with
-  | eq_refl => fun R H => H
-  end.
-
-Lemma DataConSort_eq_dec {T} : eq_dec (DataConSort T).
-  unfold eq_dec. intros.
-  induction x; intros. left.
-  dependent induction y; try easy.
-  dependent induction y; try easy.
-  destruct (IHx1 y1); destruct (IHx2 y2). subst. left. easy.
-  right. subst. intro. inversion H.
-  pose (cast projT2 H1).
-  pose (eq_sig _ (fun t2 : ADT => DataConSort t2) _ _ _ _ H1).
-  destruct s. unfold cast in e. simpl in e.
-*)
-
-(* Right-biased *)
-Inductive DataCon : Type :=
-| DataCon_base : DataCon
-| DataCon_inl : DataCon
-| DataCon_inr : DataCon -> DataCon.
-
-Scheme Equality for DataCon.
-Hint Resolve DataCon_eq_dec : eqdec.
 
 Inductive AltCon :=
 | DataAlt : DataCon -> AltCon
@@ -213,89 +165,7 @@ Definition LetRec_phoas {var} (f : var -> expr_phoas var) (x : var -> expr_phoas
   LetNonRec_phoas f (Y_phoas x).
 
 
-
-(*
-Definition LetRec_phoas {var} {n} (f : Vect n var -> expr_phoas var) (bs : Vect1 expr_phoas var n) : expr_phoas var.
-Proof.
-  induction bs.
-  - apply f. constructor.
-  - 
-*)
-
-
-(*
-Definition expr_phoas_size {var} (e : expr_phoas var) : nat.
-Proof.
-  induction e eqn:E.
-  - exact 1.
-  - exact 1.
-  - apply S.
-    apply plus.
-    apply (IHe0_1 e0_1). reflexivity.
-    apply (IHe0_2 e0_2). reflexivity.
-  - 
-*)
-
-(*
-Fixpoint expr_phoas_size {var} (e : expr_phoas var) : nat :=
-  match e with
-  | Var_phoas _ _ => 1
-  | Lit_phoas _ _ => 1
-  | App_phoas _ a b => S (expr_phoas_size a + expr_phoas_size b)
-  | Lam_phoas _ f => 1
-  | LetNonRec_phoas _ f x => S (expr_phoas_size x)
-  | LetRec_phoas _ _ fs xs => S (fold_right (fun x acc => acc + expr_phoas_size x) 0 xs)
-  | _ => 0
-  end.
-*)
-(*
-
-Fixpoint flatten {var} (e : expr_phoas (expr_phoas var)) {struct e} : expr_phoas var.
-Proof.
-  dependent induction e.
-  - exact v.
-  - exact (Lit_phoas _ l).
-  - exact (App_phoas _ (flatten _ e1) (flatten _ e2)).
-  - apply Lam_phoas.
-    intros.
-    apply flatten.
-    apply (e (Var_phoas _ X0)).
-  - apply LetNonRec_phoas.
-    intros v.
-    set (e (Var_phoas _ v)).
-*)
-
-
-(*
-  refine(
-  match e with
-  | Var_phoas _ e' => e'
-  | Lit_phoas _ l => Lit_phoas _ l
-  | App_phoas _ f x => App_phoas _ (flatten _ f) (flatten _ x)
-  | Lam_phoas _ f => Lam_phoas _ (fun x => flatten _ (f (Var_phoas _ x)))
-  | LetNonRec_phoas _ f x => LetNonRec_phoas _ (fun y => flatten _ (f (Var_phoas _ y))) (flatten _ x)
-  | LetRec_phoas _ _ fs xs => LetRec_phoas _ _ (fun ys => flatten _ (fs (vmap (Var_phoas _) ys)))
-                                (vmap (flatten _) xs)
-  | Case_phoas _ s f => Case_phoas _ (flatten _ s)
-      (fun wild ty =>
-         map (fun p =>
-          match p with
-          | (altcon, g) => (altcon,  fun z => _)
-          end) (f (Var_phoas _ wild) ty)
-      )
-  | Cast_phoas _ x co => Cast_phoas _ (flatten _ x) co
-  | Tick_phoas _ t x => Tick_phoas _ t (flatten _ x)
-  | TypeExpr_phoas _ ty => TypeExpr_phoas _ ty
-  | CoercionExpr_phoas _ co => CoercionExpr_phoas _ co
-  end).
-Proof.
-  intros.
-  refine (flatten _ _).
-  apply g.
-  exact (map (Var_phoas _) z).
-Defined.
-*)
-
+(* Definition Case_phoas {var}  *)
 
 (*
 Inductive Expr_phoas_Step : forall var, expr_phoas var -> expr_phoas var -> Type :=

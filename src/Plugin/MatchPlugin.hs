@@ -1371,7 +1371,8 @@ elimRepUnrep_co guts coA_M origType expr@(Var r :@ Type{} :@ dict :@ arg) =
       let co_M =
             case (coA_M, coB_M) of
               (Just coA, Just coB) ->
-                let coB' = mkAppCo (mkReflCo (coercionRole coA) expType) coB
+                let Just coB_N = setNominalRole_maybe (coercionRole coB) coB
+                    coB' = mkAppCo (mkReflCo (coercionRole coB) expType) coB_N
                 in
                 trace ("coercion kind coA: " ++ showPpr dflags (coercionKind coA)) $
                 trace ("coercion kind coB': " ++ showPpr dflags (coercionKind coB')) $
@@ -1379,11 +1380,11 @@ elimRepUnrep_co guts coA_M origType expr@(Var r :@ Type{} :@ dict :@ arg) =
                 trace ("coercion role coB': " ++ showPpr dflags (coercionRole coB')) $
                 let co' = mkTransCo coB' coA
                 in
-                  Just (maybeApply (setNominalRole_maybe (coercionRole co')) co')
+                  Just co'
                 -- Just $ downgradeRole Representational (coercionRole co') co'
               _ -> do
                 co' <- coA_M <|> coB_M
-                return $ maybeApply (setNominalRole_maybe (coercionRole co')) co'
+                return $ co'
 
       -- let co_M = do
       --               guard (isJust coA_M || isJust coB_M)
@@ -1450,7 +1451,7 @@ elimRepUnrep_co guts co_M _ expr = Data.descendM (elimRepUnrep guts) (coerceMayb
 -- TODO: Check this
 coerceMaybe :: Maybe Coercion -> Expr a -> Expr a
 coerceMaybe Nothing e = e
-coerceMaybe (Just co) e = Cast e (maybeApply (setNominalRole_maybe (coercionRole co)) co)
+coerceMaybe (Just co) e = Cast e co
 
 applyUnconstructRep :: ModGuts -> CoreExpr -> Type -> MatchM CoreExpr
 applyUnconstructRep guts e ty = do
