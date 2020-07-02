@@ -8,7 +8,7 @@
 -- {-# LANGUAGE StandaloneDeriving #-}
 -- {-# LANGUAGE FlexibleInstances #-}
 
-{-# OPTIONS_GHC -XNoMonomorphismRestriction -O0 -Wtype-defaults -fexpose-all-unfoldings -dcore-lint -dsuppress-all -fprint-equality-relations -fplugin=Plugin.MatchPlugin #-}
+{-# OPTIONS_GHC -XNoMonomorphismRestriction -O0 -Wtype-defaults -fexpose-all-unfoldings -ddump-simpl -dcore-lint -dsuppress-all -dno-suppress-type-applications -fprint-equality-relations -fplugin=Plugin.MatchPlugin #-}
 
 module Test.PluginExample where
 
@@ -338,6 +338,23 @@ doubleListSumE t = externalize (doubleListSum_helper (0, t))
 -- nonterm_test0 n = nonterm_test1 (n-1)
 
 -- nonterm_test1 :: Int -> Int
+-- nonterm_test1 0 = 1
+-- nonterm_test1 n = nonterm_test0 (n-1)
+
+-- nonterm_test0 :: Int -> Int
+-- nonterm_test0 x =
+--   if x == 0
+--     then 0
+--     else nonterm_test1 (x-1)
+-- -- nonterm_test0 0 = 0
+-- -- nonterm_test0 n = nonterm_test1 (n-1)
+
+-- nonterm_test1 :: Int -> Int
+-- nonterm_test1 x =
+--   if x == 0
+--     then 0
+--     else nonterm_test0 (x-1)
+
 -- nonterm_test1 0 = 1
 -- nonterm_test1 n = nonterm_test0 (n-1)
 
