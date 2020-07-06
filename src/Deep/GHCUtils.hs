@@ -211,10 +211,10 @@ normaliseTypeCo_role guts role ty = do
   return r
 
 
-normaliseCoercion :: ModGuts -> Coercion -> CoreM Coercion
-normaliseCoercion guts co = do
-  (co', ty) <- normaliseTypeCo_role guts (coercionRole co) (coercionRKind co)
-  return (mkTransCo co co')
+-- normaliseCoercion :: ModGuts -> Coercion -> CoreM Coercion
+-- normaliseCoercion guts co = do
+--   (co', ty) <- normaliseTypeCo_role guts (coercionRole co) (coercionRKind co)
+--   return (mkTransCo co co')
 
 
 {-
@@ -750,29 +750,48 @@ getUnfolding_either guts dflags i =
   case lookup i (flattenBinds (mg_binds guts)) of
     Nothing ->
       case unfoldingInfo (idInfo i) of
-        CoreUnfolding { uf_tmpl = uft } -> Right uft
-        dunf@(DFunUnfolding {})         -> Right $ dFunExpr dunf
-        _ -> case idDetails i of
-              ClassOpId cls -> do
-                let selectors = zip [ idName s | s <- classAllSelIds cls] [0..]
-                    msg = getOccString i ++ " is not a method of " ++ getOccString cls ++ "."
-                    idx = maybe (error msg) id $ lookup (idName i) selectors
-                    r = mkDictSelRhs cls idx
-                -- trace ("mkDictSelRhs = "  ++ showPpr dflags r)
-                (Right r)
-              idDet           -> Left $ "Cannot find unfolding for " ++ showPpr dflags i
-                                        ++ "  (idDetails=" ++ showPpr dflags idDet ++ ")"
-    Just e -> Right e
+        CoreUnfolding { uf_tmpl = uft } -> trace ("getUnfolding_either: (CoreUnfolding) i = " ++ showPpr dflags i) $ Right uft
+        dunf@(DFunUnfolding {})         -> trace ("getUnfolding_either: (dfun) i = " ++ showPpr dflags i) $ Right $ dFunExpr dunf
+        _ -> trace ("getUnfolding_either: (other case) i = " ++ showPpr dflags i) $
+              case idDetails i of
+                ClassOpId cls -> do
+                  let selectors = zip [ idName s | s <- classAllSelIds cls] [0..]
+                      msg = getOccString i ++ " is not a method of " ++ getOccString cls ++ "."
+                      idx = maybe (error msg) id $ lookup (idName i) selectors
+                      r = mkDictSelRhs cls idx
+                  -- trace ("mkDictSelRhs = "  ++ showPpr dflags r)
+                  (Right r)
+                idDet           -> Left $ "Cannot find unfolding for " ++ showPpr dflags i
+                                          ++ "  (idDetails=" ++ showPpr dflags idDet ++ ")"
+    Just e -> trace ("getUnfolding_either (Just) i = " ++ showPpr dflags i) $ Right e
   where
     flattenBinds [] = []
     flattenBinds (NonRec b e:rest) = (b, e) : flattenBinds rest
     flattenBinds (Rec bs:rest) = bs ++ flattenBinds rest
+
+getUnfolding_maybe :: HasCallStack => ModGuts -> DynFlags -> Id -> Maybe CoreExpr
+getUnfolding_maybe guts dflags i =
+  case getUnfolding_either guts dflags i of
+    Left _ -> Nothing
+    Right x -> Just x
 
 getUnfolding :: HasCallStack => ModGuts -> DynFlags -> Id -> CoreExpr
 getUnfolding guts dflags i =
   case getUnfolding_either guts dflags i of
     Left e -> error e
     Right x -> x
+
+getCoreUnfolding_maybe :: ModGuts -> DynFlags -> Id -> Maybe CoreExpr
+getCoreUnfolding_maybe guts dflags i =
+  case unfoldingInfo (idInfo i) of
+    CoreUnfolding { uf_tmpl = uft } -> trace ("getCoreUnfolding: " ++ showPpr dflags i) $ Just uft
+    _ -> Nothing
+
+getCoreUnfolding :: ModGuts -> DynFlags -> Id -> CoreExpr
+getCoreUnfolding guts dflags i =
+  case getCoreUnfolding_maybe guts dflags i of
+    Nothing -> Var i
+    Just e -> e
 
 -- | Transform scrutinee of a case. If not a 'case', leave it alone.
 onScrutinee :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
@@ -794,6 +813,10 @@ whenVarHasClassName_maybe _ _ e = Nothing
 onVar_maybe :: (Id -> CoreExpr) -> CoreExpr -> Maybe CoreExpr
 onVar_maybe f (Var x) = Just $ f x
 onVar_maybe _ e = Nothing
+
+onVar_maybeM :: (Id -> Maybe CoreExpr) -> CoreExpr -> Maybe CoreExpr
+onVar_maybeM f (Var x) = f x
+onVar_maybeM _ _ = Nothing
 
 onVar :: (Id -> CoreExpr) -> CoreExpr -> CoreExpr
 onVar = maybeApply  . onVar_maybe
@@ -832,6 +855,13 @@ onCase_maybe _ _ = Nothing
 
 onCase :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
 onCase t = maybeApply (Just . t)
+
+onCaseAlts_maybe :: (CoreAlt -> CoreAlt) -> CoreExpr -> Maybe CoreExpr
+onCaseAlts_maybe f (Case s wild ty alts) = Just $ Case s wild ty (map f alts)
+onCaseAlts_maybe _ _ = Nothing
+
+onCaseAlts :: (CoreAlt -> CoreAlt) -> CoreExpr -> CoreExpr
+onCaseAlts f = maybeApply (onCaseAlts_maybe f)
 
 onTypeM :: Applicative m => (Type -> m Type) -> CoreExpr -> m CoreExpr
 onTypeM f (Type ty) = Type <$> f ty
@@ -1127,37 +1157,40 @@ workDataCon_maybe _ = Nothing
 -- targetParentOfFnAppMaybe (Just fn) t e = targetParentOfFnApp fn t e
 
 -- | $fDict x0 x1 ... xN    ==>   [unfolding of $fDict] x0 x1 ... xN
-unfoldAndReduceDict_either :: ModGuts -> DynFlags -> CoreExpr -> Either String CoreExpr
-unfoldAndReduceDict_either guts dflags e =
+unfoldAndReduceDictWith_either :: (Id -> Maybe CoreExpr) -> DynFlags -> CoreExpr -> Either String CoreExpr
+unfoldAndReduceDictWith_either getUnfolding_ dflags e =
   case collectArgs e of
     -- (_, []) -> Left "unfoldAndReduceDict_either: empty args"
     (fnE@(Var dictFn), dictArgs) ->
       if isDictNotClass dflags fnE
         then
-          case getUnfolding_either guts dflags dictFn of
-            Left err -> Left err
-            Right dictFnUnfolding ->
+          case getUnfolding_ dictFn of
+            Nothing -> Left "unfoldAndReduceDict_either: getUnfolding_"
+            Just dictFnUnfolding ->
               case betaReduceAll dictFnUnfolding dictArgs of
-                (fn, args) -> Right $ mkApps fn args
+                (fn, args) -> trace ("unfolding " ++ showPpr dflags e ++ "\nto " ++ showPpr dflags fn) $ Right $ mkApps fn args
         else
           Left $ "unfoldAndReduceDict_either: not isDictNotClass: " ++ showPpr dflags e
     _ -> Left $ "unfoldAndReduceDict_either: not of form App (... (App (Var v) x) ...) z. Given: " ++ showPpr dflags e
 
 tryUnfoldAndReduceDict :: ModGuts -> DynFlags -> CoreExpr -> CoreExpr
 tryUnfoldAndReduceDict guts dflags e =
-  case unfoldAndReduceDict_either guts dflags e of
+  case unfoldAndReduceDictWith_either (getUnfolding_maybe guts dflags) dflags e of
     Right e' -> e'
     _ -> e
 
-unfoldAndReduceDict_maybe :: ModGuts -> DynFlags -> CoreExpr -> Maybe CoreExpr
-unfoldAndReduceDict_maybe guts dflags e =
-  case unfoldAndReduceDict_either guts dflags e of
+unfoldAndReduceDictWith_maybe :: (Id -> Maybe CoreExpr) -> ModGuts -> DynFlags -> CoreExpr -> Maybe CoreExpr
+unfoldAndReduceDictWith_maybe getUnfolding_ guts dflags e =
+  case unfoldAndReduceDictWith_either getUnfolding_ dflags e of
     Right e' -> Just e'
     _ -> Nothing
 
+unfoldAndReduceDict_maybe :: ModGuts -> DynFlags -> CoreExpr -> Maybe CoreExpr
+unfoldAndReduceDict_maybe guts dflags = unfoldAndReduceDictWith_maybe (getUnfolding_maybe guts dflags) guts dflags
+
 unfoldAndReduceDict :: HasCallStack => ModGuts -> DynFlags -> CoreExpr -> CoreExpr
 unfoldAndReduceDict guts dflags e =
-  case unfoldAndReduceDict_either guts dflags e of
+  case unfoldAndReduceDictWith_either (getUnfolding_maybe guts dflags) dflags e of
     Right e' -> e'
     Left err -> error ("unfoldAndReduceDict: " ++ err)
 
@@ -1268,11 +1301,14 @@ combineCasts_maybe dflags origE@(Cast (Cast e coA) coB) =
   if coercionRole coA /= coercionRole coB
     then error "combineCasts_maybe: *** coercion roles do not match ***"
     else
-      let newCo = mkTransCo coA coB
-      in
-      trace ("combineCasts: " ++ showPpr dflags (coercionKind newCo)) $
-      trace ("===========> {" ++ showPpr dflags e ++ "}") $
-      Just $ Cast e newCo
+      if not (coercionRKind coA `eqType` coercionLKind coB)
+        then error "combineCasts_maybe: *** coercion kinds do not match ***"
+        else
+          let newCo = mkTransCo coA coB
+          in
+          trace ("combineCasts: " ++ showPpr dflags (coercionKind newCo)) $
+          trace ("===========> {" ++ showPpr dflags e ++ "}") $
+          Just $ Cast e newCo
 combineCasts_maybe _ _ = Nothing
 
 combineCasts :: DynFlags -> CoreExpr -> CoreExpr
@@ -1357,6 +1393,7 @@ unfoldAndBetaReduce guts dflags = maybeApply . unfoldAndBetaReduce_maybe guts df
  -- | Substitute all occurrences of a variable with an expression, in an expression.
 substCoreExpr :: Var -> CoreExpr -> (CoreExpr -> CoreExpr)
 substCoreExpr v e expr = substExpr (text "substCoreExpr") (extendSubst emptySub v e) expr
+    -- where emptySub = mkEmptySubst (mkInScopeSet (localFreeVarsExpr expr `delVarSet` v))
     where emptySub = mkEmptySubst (mkInScopeSet (localFreeVarsExpr (Let (NonRec v e) expr)))
 
 -- | Substitute all occurrences of a variable with an expression, in a case alternative.
@@ -1368,13 +1405,33 @@ substCoreAlt v e alt = let (con, vs, rhs) = alt
                         in (con, vs', substExpr (text "alt-rhs") subst' rhs)
 
 repeatCaseFloat :: CoreExpr -> CoreExpr
-repeatCaseFloat = maybeApply (repeatTransform (\e -> caseFloatApp_maybe e <|> caseFloatArg_maybe e {- <|> caseFloatCast_maybe e -}))
+repeatCaseFloat = maybeApply (repeatTransform (\e -> caseFloatApp_maybe e <|> caseFloatArg_maybe e <|> caseFloatCast_maybe e))
 
--- -- | (case s wild of { P ... -> e; ... }) `cast` co  ==>   case s wild of { P ... -> e `cast` co; ... }
--- caseFloatCast_maybe :: CoreExpr -> Maybe CoreExpr
--- caseFloatCast_maybe (Cast (Case s b wild alts) co) =
---   Just $ Case s b wild (mapAlts (`Cast` co) alts)
--- caseFloatCast_maybe _ = Nothing
+-- | (case s wild of { P ... -> e; ... }) `cast` co  ==>   case s wild of { P ... -> e `cast` co; ... }
+caseFloatCast_maybe :: CoreExpr -> Maybe CoreExpr
+caseFloatCast_maybe (Cast (Case s b wild alts) co) =
+  Just $ Case s b wild (mapAlts (`Cast` co) alts)
+caseFloatCast_maybe _ = Nothing
+
+-- | case (case s1 of alt11 -> e11; alt12 -> e12) of alt21 -> e21; alt22 -> e22
+--   ==>
+--   case s1 of
+--     alt11 -> case e11 of alt21 -> e21; alt22 -> e22
+--     alt12 -> case e12 of alt21 -> e21; alt22 -> e22
+caseFloatCase_maybe :: CoreExpr -> Maybe CoreExpr
+caseFloatCase_maybe (Case inner@(Case s wild1 _ty1 alts1) wild2 ty2 alts2) =
+  let altsFVs1 = foldr unionVarSet emptyVarSet $ map (mkVarSet . altVars) alts1
+      altsFVs2 = foldr unionVarSet emptyVarSet $ map (mkVarSet . altVars) alts2
+      innerFVs = freeVarsExpr inner
+  in
+  if wild2 `elemVarSet` innerFVs || not (isEmptyVarSet (intersectVarSet innerFVs altsFVs2)) || not (isEmptyVarSet (intersectVarSet altsFVs1 altsFVs2))
+     -- || wild2 `elemVarSet` (foldr unionVarSet emptyVarSet (map (\(_, _, x) -> freeVarsExpr x) alts2))
+    then error "caseFloatCase_maybe: need alpha conversion"
+    else Just $ Case s wild1 ty2 $ mapAlts (\s' -> Case s' wild2 ty2 alts2) alts1
+caseFloatCase_maybe _ = Nothing
+
+caseFloatCase :: CoreExpr -> CoreExpr
+caseFloatCase = maybeApply caseFloatCase_maybe
 
 -- | ((case s wild of { P ... -> f; ... }) v)   ==>   case s wild of { P ... -> f v; ... }
 caseFloatApp_maybe :: CoreExpr -> Maybe CoreExpr
@@ -1427,6 +1484,49 @@ whenId :: Bool -> (a -> a) -> a -> a
 whenId b f x
   | b = f x
   | otherwise = x
+
+-- phantomReflToNominal :: Coercion -> Coercion
+-- phantomReflToNominal (GRefl Phantom tyCo _) = mkReflCo Nominal tyCo
+-- phantomReflToNominal (GRefl Representational tyCo _) = mkReflCo Nominal tyCo
+-- phantomReflToNominal c = c
+
+reduceDictFn_maybe :: ModGuts -> DynFlags -> Id -> CoreExpr -> Maybe CoreExpr
+reduceDictFn_maybe guts dflags fnId expr
+  | App _ _ <- expr
+  , (Var fn, args) <- collectArgs expr
+  , fn == fnId =
+      Just $ tryUnfoldAndReduceDict' $ mkApps (getUnfolding guts dflags fnId) args--transformMaybe (replaceVarId_maybe fnId (getUnfolding guts dflags fnId)) expr
+  | otherwise = (Data.transform (caseInline dflags) . Data.transform betaReduce . repeatCaseFloat . Data.transform betaReduce . Data.transform letNonRecSubst . tryUnfoldAndReduceDict') <$> Data.descendM (reduceDictFn_maybe guts dflags fnId) expr
+  where
+    tryUnfoldAndReduceDict' = tryUnfoldAndReduceDict guts dflags
+
+-- reduceDictFn_maybe guts dflags fnId expr
+-- -- reduceDictFn_maybe guts dflags fnId expr@(App _ _)
+-- --   | (Var fnId', args) <- collectArgs expr
+-- --   , fnId' == fnId
+--   = let r = Data.transform (maybeApply (fmap (\x -> trace ("got " ++ showPpr dflags x) x) . unfoldAndReduceDictWith_maybe (getCoreUnfolding_maybe guts dflags) guts dflags)) . Data.transform letNonRecSubst {- . tryUnfoldAndReduceDict guts dflags -} . Data.transform (caseInline dflags) . Data.transform (onScrutinee (tryUnfoldAndReduceDict guts dflags)) . Data.transform betaReduce <$> transformMaybe (replaceVarId_maybe fnId (getUnfolding guts dflags fnId)) (inlineCaseDicts expr)
+--         r' = fmap (Data.transform betaReduce . Data.transform (combineCasts dflags) . repeatCaseFloat . Data.transform betaReduce . Data.transform (combineCasts dflags) . repeatCaseFloat . Data.transform letNonRecSubst) r
+--     in
+--       trace ("here r = " ++ showPpr dflags r') $ r'
+--   -- =  untilNothing (fmap (tryUnfoldAndReduceDict guts dflags . inlineCaseDicts) . (transformMaybe (unfoldAndReduceDictWith_maybe (getCoreUnfolding_maybe guts dflags) guts dflags)) . tryUnfoldAndReduceDict guts dflags . inlineCaseDicts) . Data.transform betaReduce <$> transformMaybe (replaceVarId_maybe fnId (getUnfolding guts dflags fnId)) (inlineCaseDicts expr)
+--   where
+--     inlineCaseDicts = Data.transform (caseInline dflags) . Data.transform (onScrutinee (tryUnfoldAndReduceDict guts dflags)) . Data.transform (caseInline dflags)
+--   -- = Just $ onAppFun (onCaseAlts (\(x, y, z) -> (x, y, tryUnfoldAndReduceDict guts dflags z))) $ Data.transform (caseInline dflags) $ Data.transform letNonRecSubst $ tryUnfoldAndReduceDict guts dflags $ Data.transform (caseInline dflags) $ Data.transform (onScrutinee (tryUnfoldAndReduceDict guts dflags)) $ Data.transform betaReduce (mkApps (getUnfolding guts dflags fnId) args)
+
+-- reduceDictFn_maybe guts dflags fnId expr = descendMaybe (reduceDictFn_maybe guts dflags fnId) expr
+
+descendMaybe :: Data a => (a -> Maybe a) -> a -> Maybe a
+descendMaybe f e0 =
+  let (r, Any madeProgress) = runWriter (Data.descendM go e0)
+  in
+    if madeProgress
+      then Just r
+      else Nothing
+  where
+    go e =
+      case f e of
+        Nothing -> return e
+        Just e' -> tell (Any True) >> return e'
 
 transformMaybe :: Data a => (a -> Maybe a) -> a -> Maybe a
 transformMaybe f e0 =
@@ -1573,6 +1673,8 @@ strength3 (x, y, fz) = fmap (\z -> (x, y, z)) fz
 -- betaReduceTypeApps_maybe :: CoreExpr -> Maybe CoreExpr
 -- betaReduceTypeApps_maybe = uncurry betaReduceTypes_maybe . collectArgs
 
+
+
 -- | Beta-reduce as many lambda-binders as possible.
 betaReduceAll :: CoreExpr -> [CoreExpr] -> (CoreExpr, [CoreExpr])
 betaReduceAll e0@(Lam v body) (a:as) =
@@ -1581,6 +1683,9 @@ betaReduceAll e0@(Lam v body) (a:as) =
   -- whenId (isTyCoVar v) (trace ("------------------------------------")) $
   let (r, as') = betaReduceAll (substCoreExpr v a body) as
   in
+    -- (if isTypeArg a then trace ("betaReduce type: " ++ showSDocUnsafe (ppr v) ++ " ==> " ++ showSDocUnsafe (ppr a)) else id) $
+    -- (if isTypeArg a then trace ("betaReduce type: giving " ++ showSDocUnsafe (ppr r)) else id)
+
     -- whenId (isTyCoVar v) (trace ("<------------ " ++ showSDocUnsafe (ppr e0))) $
     -- whenId (isTyCoVar v) (trace ("^-----------> " ++ showSDocUnsafe (ppr r))) $
     (r, as')
@@ -1597,13 +1702,18 @@ betaReduceAll e@(Cast (Lam v body) gamma) (a:as) =
           gamma1 = mkSymCo (mkNthCo rho 3 (mkNthCo Representational 2 gamma))
           gamma2 = mkNthCo Representational 3 gamma
       in
-      betaReduceAll (Lam v (Cast body gamma2)) (Coercion (mkTransCo gamma0 (mkTransCo gamma gamma1)) : as)
+      betaReduceAll (Lam v (Cast body gamma2)) (Coercion (mkTransCo' gamma0 (mkTransCo' gamma gamma1)) : as)
 
     Type tau -> -- S_TPush
       let gamma' = mkSymCo (mkNthCo Nominal 0 gamma)
-          tau' = Cast a gamma'
+          tau' = Type (mkCastTy tau gamma') --Cast a gamma'
           (result, remainingArgs) = betaReduceAll (Lam v body) (tau':as)
       in
+      trace ("S_TPush: v = " ++ showSDocUnsafe (ppr v)) $
+      trace ("S_TPush: gamma' = " ++ showSDocUnsafe (ppr gamma')) $
+      -- trace ("S_TPush: tau' = " ++ showSDocUnsafe (ppr tau')) $
+      trace ("S_TPush: result = " ++ showSDocUnsafe (ppr result)) $
+      trace ("S_TPush: remaining = " ++ showSDocUnsafe (ppr remainingArgs)) $
       (Cast result
            (mkInstCo gamma (mkSymCo (mkGReflCo Nominal tau (MCo gamma'))))
       ,remainingArgs)
@@ -1613,6 +1723,10 @@ betaReduceAll e@(Cast (Lam v body) gamma) (a:as) =
           gamma1 = mkNthCo Representational 3 gamma
       in
       betaReduceAll (Lam v (Cast body gamma1)) ((Cast a gamma0) : as)
+  where
+    mkTransCo' coA coB
+      | not (coercionRKind coA `eqType` coercionLKind coB) = error "betaReduceAll: Coercion kinds do not match"
+      | otherwise = mkTransCo coA coB
 betaReduceAll e            as     = (e,as)
 
 -- getLamInCasts :: CoreExpr -> Maybe (Id, CoreExpr, Coercion)
@@ -1745,12 +1859,19 @@ caseInlineT dflags = Data.transform (caseInline dflags)
 -- caseInline_maybe _ _ = Nothing
 
 caseInline :: DynFlags -> CoreExpr -> CoreExpr
-caseInline dflags expr =
-  caseInline0 dflags init_subst expr
+caseInline dflags = maybeApply (caseInline_maybe dflags)
+
+caseInline_maybe :: DynFlags -> CoreExpr -> Maybe CoreExpr
+caseInline_maybe dflags expr =
+  let (r, Any anyChanged) = runWriter $ caseInline0 dflags init_subst expr
+  in
+    if anyChanged
+      then Just r
+      else Nothing
   where
     init_subst = mkEmptySubst (mkInScopeSet (exprFreeVars expr))
 
-caseInline0 :: DynFlags -> Subst -> CoreExpr -> CoreExpr
+caseInline0 :: DynFlags -> Subst -> CoreExpr -> Writer Any CoreExpr
 caseInline0 dflags subst expr = go expr
   where
 
@@ -1758,17 +1879,20 @@ caseInline0 dflags subst expr = go expr
 
     in_scope_env = (in_scope, simpleUnfoldingFun)
 
+    go :: CoreExpr -> Writer Any CoreExpr
     go (Case e b ty as)
         -- | trace ("wild name = " ++ showPpr dflags b) True
         -- , trace ("as = " ++ showPpr dflags (map (\(_, x, _) -> x) as)) True
         | not (varUnique b `elemVarSetByKey` altFvs)
+        , (e', _w) <- runWriter (go e)
         , Just lit <- exprIsLiteral_maybe in_scope_env e'
         , Just (altcon, bs, rhs) <- findAlt (LitAlt lit) as
-        = caseInline0 dflags subst' rhs
+        = tell (Any True) >> caseInline0 dflags subst' rhs
 
         -- See Note [Getting the map/coerce RULE to work]
         -- | isDeadBinder b
         | not (varUnique b `elemVarSetByKey` altFvs)
+        , (e', _w) <- runWriter (go e)
         , Just (con, _tys, es) <- exprIsConApp_maybe in_scope_env e'
         , Just (altcon, bs, rhs) <- findAlt (DataAlt con) as
         = let (env', mb_prs) = mapAccumL simple_out_bind subst' $
@@ -1776,8 +1900,8 @@ caseInline0 dflags subst expr = go expr
               subst' = extendSubst subst b e
           in --trace ("second case: " ++ showPpr dflags b) $
             case altcon of
-              DEFAULT -> caseInline0 dflags env' rhs --go rhs
-              _       -> foldr substInto (caseInline0 dflags env' rhs) mb_prs
+              DEFAULT -> tell (Any True) >> caseInline0 dflags env' rhs --go rhs
+              _       -> tell (Any True) >> foldr (\x -> fmap (substInto x)) (caseInline0 dflags env' rhs) mb_prs
 
          -- Note [Getting the map/coerce RULE to work]
         -- | isDeadBinder b
@@ -1787,19 +1911,23 @@ caseInline0 dflags subst expr = go expr
         , (Var fun, _args) <- collectArgs e
         , fun `hasKey` coercibleSCSelIdKey
            -- without this last check, we get #11230
-        = caseInline0 dflags subst' rhs --go rhs
+        = tell (Any True) >> caseInline0 dflags subst' rhs --go rhs
 
         | otherwise
-        = Case e' b' (CoreSubst.substTy subst ty)
-                     (map (go_alt subst') as)
+        = do
+            e' <- go e
+            rhs' <- mapM (go_alt subst') as
+            return $ Case e' b' (CoreSubst.substTy subst ty) rhs'
       where
          altFvs = unionVarSets $ map (\(_, _, rhs) -> exprFreeVars rhs) as
-         e' = go e
+         -- e' = go e
          (subst', b') = subst_opt_bndr subst b
-    go e = substExpr (text "caseInline0.go") subst e
+    go e = return $ substExpr (text "caseInline0.go") subst e
 
     go_alt env (con, bndrs, rhs)
-      = (con, bndrs', caseInline0 dflags subst' rhs)
+      = do
+          rhs' <- caseInline0 dflags subst' rhs
+          return (con, bndrs', rhs')
       where
         (subst', bndrs') = subst_opt_bndrs env bndrs
 

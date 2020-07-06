@@ -772,8 +772,9 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
               markedX <- mark x
               markedY <- mark y
 
-              -- dflags <- getDynFlags
+              dflags <- getDynFlags
               -- traceM $ "builtin transformed: " ++ showPpr dflags f
+              -- traceM $ "===================> " ++ showPpr dflags b
 
               return (b :@ ty :@ dict :@ markedX :@ markedY)
 
@@ -795,6 +796,10 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
           | Just b <- builtin f,
             not (hasExprTy expr) = do
               dflags <- getDynFlags
+
+              traceM $ "prim: " ++ showPpr dflags f
+              traceM $ "^===> " ++ showPpr dflags x
+
               -- liftIO $ putStrLn ""
               -- liftIO $ putStrLn $ "---------- builtin: " ++ showPpr dflags b
               -- liftIO $ putStrLn $ "---------- arg:     " ++ showPpr dflags x
@@ -941,13 +946,16 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 -- e''' <- Data.transformM (maybeTransform3M targetTheFnM constructFn (\app -> let (cFn, cArgs) = collectArgs app in fmap (mkApps cFn) (mapM (\x -> trace ("unconstructing " ++ showPpr dflags x) $ applyUnconstructRep guts x (exprType x)) cArgs))) e''
 
-                let simplE' = reduceConstruct e''
+                let simplE' = e'' --reduceConstruct e''
 
 
+                -- traceM $ "simplE' = " ++ showPpr dflags simplE'
 
 
                 let fnE = Data.transform letNonRecSubst
-                            $ whileRight (unfoldAndReduceDict_either guts dflags) simplE'
+                            $ untilNothing (unfoldAndReduceDict_maybe guts dflags) simplE'
+
+                -- traceM $ "fnE = " ++ showPpr dflags fnE
 
                 unreppedArgs <- mapM (applyUnrep guts <=< {- applyUnconstructRep' guts <=< -} mark) markedArgs --args
                 unrepId <- lift $ findIdTH guts 'unrep
@@ -956,6 +964,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                 let fnE' = Data.transform betaReduce $ Data.transform letNonRecSubst $ Data.transform betaReduce $ Data.transform (tryUnfoldAndReduceDict guts dflags) fnE
                 let (newExpr, remainingArgs) = betaReduceAll fnE' [mkApps constr' unreppedArgs]
+
 
                 let internalTypeableModule = Module baseUnitId (mkModuleName "Data.Typeable.Internal")
 
@@ -980,26 +989,28 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                 externalizeId <- lift $ findIdTH guts 'externalize
                 castExpId <- lift $ findIdTH guts 'CastExp
 
-                let elimConstruct = fmap (Data.transform (caseInline dflags)
-                                           . Data.transform betaReduce)
-                                    . transformIgnoringClasses_maybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId))
+                -- let elimConstruct = fmap (Data.transform (caseInline dflags)
+                --                            . Data.transform betaReduce)
+                --                     . transformIgnoringClasses_maybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId))
 
-                let elimTheFn fnId = upOneLevel_maybe (Just
-                                                      . transformIgnoringClasses (onAppFun (Data.transform betaReduce
-                                                                                 . Data.transform letNonRecSubst
-                                                                                 . betaReduce
-                                                                                 . onAppFun tryUnfoldAndReduceDict'
-                                                                                 . Data.transform letNonRecSubst
-                                                                                 . tryUnfoldAndReduceDict')))
-                                          (upOneLevel_maybe (Just
-                                                            . Data.transform (caseInline dflags)
-                                                            . transformIgnoringClasses (onScrutinee tryUnfoldAndReduceDict')
-                                                            . Data.transform betaReduce)
-                                              (upOneLevel_maybe (Just)
-                                                (fmap (Data.transform (caseInline dflags)
-                                                          . Data.transform betaReduce)
-                                                  . transformIgnoringClasses_maybe (replaceVarId_maybe fnId (getUnfolding' fnId)))))
+                -- let elimTheFn fnId = upOneLevel_maybe (Just
+                --                                       . transformIgnoringClasses (onAppFun (Data.transform betaReduce
+                --                                                                  . Data.transform letNonRecSubst
+                --                                                                  . betaReduce
+                --                                                                  . onAppFun tryUnfoldAndReduceDict'
+                --                                                                  . Data.transform letNonRecSubst
+                --                                                                  . tryUnfoldAndReduceDict')))
+                --                           (upOneLevel_maybe (Just
+                --                                             . Data.transform (caseInline dflags)
+                --                                             . transformIgnoringClasses (onScrutinee tryUnfoldAndReduceDict')
+                --                                             . Data.transform betaReduce)
+                --                               (upOneLevel_maybe (Just)
+                --                                 (fmap (Data.transform (caseInline dflags)
+                --                                           . Data.transform betaReduce)
+                --                                   . transformIgnoringClasses_maybe (replaceVarId_maybe fnId (getUnfolding' fnId)))))
 
+
+                let elimFrom = fmap (Data.transform (caseInline dflags) . Data.transform betaReduce . Data.transform (onScrutinee (Data.transform tryUnfoldAndReduceDict')) . Data.transform (caseInline dflags . Data.transform (onScrutinee tryUnfoldAndReduceDict') . betaReduce)) . transformMaybe (onScrutinee_maybe (fmap tryUnfoldAndReduceDict' . transformMaybe (replaceVarId_maybe fromId (getUnfolding' fromId))))
 
 
                 -- traceM $ "fn of newExpr'': " ++ showPpr dflags (fst (collectArgs newExpr''))
@@ -1034,7 +1045,9 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                                   $ betaReduce (simplE' :@ mkApps constr' unreppedArgs)
                     -- traceM $ "simplE'' = " ++ showPpr dflags simplE''
 
-                    traceM $ "collected: " ++ showPpr dflags (collectArgs simplE'')
+                    -- traceM $ "collected: " ++ showPpr dflags (collectArgs simplE'')
+
+                    traceM $ "simplE'' = " ++ showPpr dflags simplE''
 
                     case collectArgs simplE'' of
                       (r, []) -> return r
@@ -1042,7 +1055,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
 
                         let simplE''Arg0 = last simplE''Args0
 
-                            simplE''Arg = untilNothing (elimTheFn constructFnId) simplE''Arg0
+                            simplE''Arg = {- untilNothing (elimTheFn constructFnId)-} simplE''Arg0 -------------------------------------------
                             prepareResult x = mkApps simplE''Fn (init simplE''Args0 ++ [x])
 
 
@@ -1051,8 +1064,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                         -- traceM $ "=== simplE''' ===> " ++ showPpr dflags simplE'''
 
                         -- return simplE''
-
-
+{-
                         let newExpr'''0 =
                               -- transformIgnoringClasses_maybe elimConstruct $
 
@@ -1071,14 +1083,16 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                               Data.transform (combineCasts dflags) $
                               Data.transform betaReduce $
                               Data.transform (combineCasts dflags) $
-                              transformIgnoringClasses (maybeApply (elimTheFn constructFnId)) $
+
+                              untilNothing (transformIgnoringClasses_maybe (elimTheFn constructFnId)) $ ---------------
+
                               Data.transform (caseInline dflags) $
                               Data.transform betaReduce $
                               transformIgnoringClasses (maybeApply (elimTheFn fromId)) $
                               Data.transform letNonRecSubst $
                               -- Data.transform (caseInline dflags) $
                               -- Data.transform betaReduce $
-                              maybeApply
+                              untilNothing --maybeApply
                                 (fmap (Data.transform betaReduce . maybeApply (repeatTransform caseFloatApp_maybe)) -- Eliminate a $dmconstruct
                                  . upOneLevel_maybe (Just . transformIgnoringClasses (onAppFun (Data.transform betaReduce . Data.transform letNonRecSubst . betaReduce . onAppFun tryUnfoldAndReduceDict' . Data.transform letNonRecSubst . tryUnfoldAndReduceDict')))
                                   (upOneLevel_maybe (Just
@@ -1090,9 +1104,31 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                                       (Just . betaReduce)
                                       (transformIgnoringClasses_maybe elimConstruct))))
                                 simplE''Arg
+-}
+
+                        let newExpr'''0
+                              = maybeApply --untilNothing
+                                        ( {-
+                                            fmap ( (\x -> trace ("trying " ++ showPpr dflags x) (tryUnfoldAndReduceDict' x))
+                                              . Data.transform (caseInline dflags . Data.transform betaReduce)
+
+                                              . Data.transform (onScrutinee (Data.transform tryUnfoldAndReduceDict'))
+
+                                              . Data.transform betaReduce
+
+                                              . maybeApply (repeatTransform caseFloatApp_maybe)
+                                              . maybeApply (repeatTransform caseFloatCast_maybe)
+                                              . maybeApply (combineCasts_maybe dflags)
+                                              . Data.transform letNonRecSubst)
+                                              -} id
+                                                  . fmap ((\r -> trace ("reduce: " ++ showPpr dflags r) r) {- . Data.transform (onScrutinee tryUnfoldAndReduceDict') . Data.transform (replaceVarId fromId (getUnfolding' fromId)). Data.transform (onScrutinee (onScrutinee tryUnfoldAndReduceDict')) . {- Data.transform caseFloatCase . -} Data.transform betaReduce . Data.transform (combineCasts dflags) . repeatCaseFloat) -} ) . ({- reduceDictFn_maybe guts dflags fromId <=< -} reduceDictFn_maybe guts dflags constructFnId))
+                                                -- . (transformMaybe ( transformIgnoringClasses_maybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId)))))
+                                    simplE''Arg
+
+                        let unfoldAndInlineCase = Data.transform (caseInline dflags) . Data.transform (onScrutinee tryUnfoldAndReduceDict')
 
                         -- traceM $ "elimRepUnrep: {" ++ showPpr dflags newExpr'''0 ++ "}"
-                        newExpr''' <- elimRepUnrep guts $ Data.transform betaReduce  newExpr'''0
+                        newExpr''' <- fmap (Data.transform betaReduce . repeatCaseFloat) $ elimRepUnrep guts $ Data.transform betaReduce  newExpr'''0
                         traceM $ "before elimRepUnrep: " ++ showPpr dflags newExpr'''0
                         traceM "after elimRepUnrep"
                         traceM $ "newExpr''' = " ++ showPpr dflags newExpr'''
@@ -1298,10 +1334,29 @@ elimRepUnrep_without_cast guts = Data.descendM go' <=< go'
 
     go' = Data.descendM go
 
+thirdF :: Functor f => (c -> f c') -> (a, b, c) -> f (a, b, c')
+thirdF f (x, y, z) = fmap (\z' -> (x, y, z')) (f z)
+
+third :: (a, b, c) -> c
+third (_, _, z) = z
+
 -- | rep (unrep x) `cast` co  ==>  x `cast` ...
 elimRepUnrep_in_cast :: ModGuts -> CoreExpr -> MatchM CoreExpr
 elimRepUnrep_in_cast guts expr0@(Cast e co) = elimRepUnrep_co (elimRepUnrep_in_cast guts) guts (Just co) origType e
   where origType = exprType expr0
+
+elimRepUnrep_in_cast guts expr@(Case s wild ty (alt1:restAlts)) = do
+  alt1' <- thirdF (elimRepUnrep_in_cast guts) alt1
+  restAlts' <- mapM (thirdF (elimRepUnrep_in_cast guts)) restAlts
+  s' <- elimRepUnrep_in_cast guts s
+
+  dflags <- getDynFlags
+
+  -- traceM $ "replacement ty = " ++ showPpr dflags (exprType (third alt1'))
+
+  return $ Case s' wild ty (alt1':restAlts')
+  -- return $ Case s' wild (exprType (third alt1')) (alt1':restAlts')
+
 elimRepUnrep_in_cast guts expr = Data.descendM (elimRepUnrep_in_cast guts) expr
 
 elimRepUnrep_co :: (CoreExpr -> MatchM CoreExpr) -> ModGuts -> Maybe Coercion -> Type -> CoreExpr -> MatchM CoreExpr
@@ -1328,22 +1383,32 @@ elimRepUnrep_co rec guts coA_M origType expr@(Var r :@ Type{} :@ dict :@ arg) =
       -- traceM $ "coB_M = " ++ showPpr dflags (fmap coercionKind coB_M)
       traceM "****** elimRepUnrep_co ******"
 
-      let co_M =
+      co_M <-
             case (coA_M, coB_M) of
-              (Just coA, Just coB) ->
+              (Just coA, Just coB0) -> do
+                let Pair coB_ty1 coB_ty2 = coercionKind coB0
+
+
+                coB <- lift $ buildCo guts coB_ty1 coB_ty2
+
+                traceM ("coercion kind coA: " ++ showPpr dflags (coercionKind coA))
+                traceM ("coercion kind coB: " ++ showPpr dflags (coercionKind coB))
                 let Just coB_N = setNominalRole_maybe (coercionRole coB) coB
-                    coB' = mkAppCo (mkReflCo (coercionRole coB) expType) coB_N
-                in
-                trace ("coercion kind coA: " ++ showPpr dflags (coercionKind coA)) $
-                trace ("coercion kind coB': " ++ showPpr dflags (coercionKind coB')) $
-                trace ("coercion role coA: " ++ showPpr dflags (coercionRole coA)) $
-                trace ("coercion role coB': " ++ showPpr dflags (coercionRole coB')) $
+                    coB' = mkAppCo (mkReflCo (coercionRole coA) expType) coB_N
+                traceM ("coercion kind coA: " ++ showPpr dflags (coercionKind coA))
+                traceM ("coercion kind coB': " ++ showPpr dflags (coercionKind coB'))
+                traceM ("coercion role coB': " ++ showPpr dflags (coercionRole coB'))
+
+                if not (coercionRKind coB' `eqType` coercionLKind coA)
+                  then error "elimRepUnrep_co: not (coercionRKind coB' `eqType` coercionLKind coA)"
+                  else return ()
+
                 let co' = mkTransCo coB' coA
-                in
-                  Just co'
+                return $ Just co'
                 -- Just $ downgradeRole Representational (coercionRole co') co'
-              _ -> do
-                co' <- coA_M <|> coB_M
+              _ -> return $ do
+                co0 <- coA_M <|> coB_M
+                let Just co' = setNominalRole_maybe (coercionRole co0) co0
                 return $ co'
 
       -- let co_M = do
@@ -1405,8 +1470,6 @@ elimRepUnrep_co rec guts coA_M origType expr@(Var r :@ Type{} :@ dict :@ arg) =
             else rec (coerceMaybe co_M x)
         -- else Data.descendM (elimRepUnrep guts) expr--return $ coerceMaybe coA_M expr
         else Data.descendM rec $ coerceMaybe co_M expr
-
-    composeCos = mkTransCo
 
 elimRepUnrep_co rec guts co_M _ expr = Data.descendM rec (coerceMaybe co_M expr)
 
@@ -1975,6 +2038,7 @@ primMapTH =
   ,('(>), 'Gt)
 
   ,('runIter, 'TailRec)
+
   ,('Done, 'DoneExp)
   ,('Step, 'StepExp)
 
@@ -2167,84 +2231,4 @@ bindsOnlyPass_match :: (CoreProgram -> MatchM CoreProgram) -> ModGuts -> MatchM 
 bindsOnlyPass_match pass guts
   = do { binds' <- pass (mg_binds guts)
        ; return (guts { mg_binds = binds' }) }
-
-mkAppCo' :: Coercion -> Coercion -> Coercion
-mkAppCo' coA coB =
-      mkTransAppCo
-        (coercionRole coA)
-        coA
-        (coercionLKind coA)
-        (coercionRKind coA)
-
-        (coercionRole coB)
-        coB
-        (coercionLKind coB)
-        (coercionRKind coB)
-
-        (coercionRole coA)
-
-
--- Taken from an older version of Coercion in the GHC API:
-
--- | Like 'mkAppCo', but allows the second coercion to be other than
--- nominal. See Note [mkTransAppCo]. Role r3 cannot be more stringent
--- than either r1 or r2.
-mkTransAppCo :: Role         -- ^ r1
-             -> Coercion     -- ^ co1 :: ty1a ~r1 ty1b
-             -> Type         -- ^ ty1a
-             -> Type         -- ^ ty1b
-             -> Role         -- ^ r2
-             -> Coercion     -- ^ co2 :: ty2a ~r2 ty2b
-             -> Type         -- ^ ty2a
-             -> Type         -- ^ ty2b
-             -> Role         -- ^ r3
-             -> Coercion     -- ^ :: ty1a ty2a ~r3 ty1b ty2b
-mkTransAppCo r1 co1 ty1a ty1b r2 co2 ty2a ty2b r3
--- How incredibly fiddly! Is there a better way??
-  = case (r1, r2, r3) of
-      (_,                _,                Phantom)
-        -> mkPhantomCo kind_co (mkAppTy ty1a ty2a) (mkAppTy ty1b ty2b)
-        where -- ty1a :: k1a -> k2a
-              -- ty1b :: k1b -> k2b
-              -- ty2a :: k1a
-              -- ty2b :: k1b
-              -- ty1a ty2a :: k2a
-              -- ty1b ty2b :: k2b
-              kind_co1 = mkKindCo co1        -- :: k1a -> k2a ~N k1b -> k2b
-              kind_co  = mkNthCo Nominal 1 kind_co1  -- :: k2a ~N k2b
-
-      (_,                _,                Nominal)
-        -> --ASSERT( r1 == Nominal && r2 == Nominal )
-           mkAppCo co1 co2
-      (Nominal,          Nominal,          Representational)
-        -> mkSubCo (mkAppCo co1 co2)
-      (_,                Nominal,          Representational)
-        -> --ASSERT( r1 == Representational )
-           mkAppCo co1 co2
-      (Nominal,          Representational, Representational)
-        -> go (mkSubCo co1)
-      (_               , _,                Representational)
-        -> --ASSERT( r1 == Representational && r2 == Representational )
-           go co1
-  where
-    go co1_repr
-      | Just (tc1b, tys1b) <- splitTyConApp_maybe ty1b
-      , nextRole ty1b == r2
-      = (mkAppCo co1_repr (mkNomReflCo ty2a)) `mkTransCo`
-        (mkTyConAppCo Representational tc1b
-           (zipWith mkReflCo (tyConRolesRepresentational tc1b) tys1b
-            ++ [co2]))
-
-      | Just (tc1a, tys1a) <- splitTyConApp_maybe ty1a
-      , nextRole ty1a == r2
-      = (mkTyConAppCo Representational tc1a
-           (zipWith mkReflCo (tyConRolesRepresentational tc1a) tys1a
-            ++ [co2]))
-        `mkTransCo`
-        (mkAppCo co1_repr (mkNomReflCo ty2b))
-
-      | otherwise
-      = pprPanic "mkTransAppCo" (vcat [ ppr r1, ppr co1, ppr ty1a, ppr ty1b
-                                      , ppr r2, ppr co2, ppr ty2a, ppr ty2b
-                                      , ppr r3 ])
 
