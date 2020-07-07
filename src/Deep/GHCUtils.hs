@@ -151,7 +151,9 @@ buildDictionaryT guts = \ ty0 -> do
                 _ -> mkCoreLets bnds (varToCoreExpr i)
 
 buildCo :: HasCallStack => ModGuts -> Type -> Type -> CoreM Coercion
-buildCo guts tyA tyB = do
+buildCo guts tyA tyB
+  | tyA `eqType` tyB = return (mkReflCo Nominal tyA)
+  | otherwise = do
   let k = tcTypeKind tyA
       ty = mkTyConApp eqTyCon [k, tyA, tyB]
 
@@ -170,6 +172,7 @@ buildCo guts tyA tyB = do
       --   Cast _ co -> return (Coercion co)
       --   _ -> error "buildCo"
 
+  traceM $ "buildCo tys: " ++ showPpr dflags (tyA, tyB)
   traceM $ "buildCo: r = " ++ showPpr dflags r
   case r of
     Cast _ co ->
@@ -1156,6 +1159,14 @@ workDataCon_maybe _ = Nothing
 -- targetParentOfFnAppMaybe Nothing   _ e = e
 -- targetParentOfFnAppMaybe (Just fn) t e = targetParentOfFnApp fn t e
 
+inCasts :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+inCasts f (Cast e co) = Cast (inCasts f e) co
+inCasts f e = f e
+
+inCasts_maybe :: (CoreExpr -> Maybe CoreExpr) -> CoreExpr -> Maybe CoreExpr
+inCasts_maybe f (Cast e co) = Cast <$> f e <*> pure co
+inCasts_maybe _ _ = Nothing
+
 -- | $fDict x0 x1 ... xN    ==>   [unfolding of $fDict] x0 x1 ... xN
 unfoldAndReduceDictWith_either :: (Id -> Maybe CoreExpr) -> DynFlags -> CoreExpr -> Either String CoreExpr
 unfoldAndReduceDictWith_either getUnfolding_ dflags e =
@@ -1495,10 +1506,60 @@ reduceDictFn_maybe guts dflags fnId expr
   | App _ _ <- expr
   , (Var fn, args) <- collectArgs expr
   , fn == fnId =
-      Just $ tryUnfoldAndReduceDict' $ mkApps (getUnfolding guts dflags fnId) args--transformMaybe (replaceVarId_maybe fnId (getUnfolding guts dflags fnId)) expr
+      Just $ mkApps (getUnfolding guts dflags fnId) args--transformMaybe (replaceVarId_maybe fnId (getUnfolding guts dflags fnId)) expr
+      -- Just $ Data.transform letNonRecSubst $ tryUnfoldAndReduceDict' $ Data.transform (caseInline dflags) $ Data.transform (onScrutinee tryUnfoldAndReduceDict')$ Data.transform betaReduce $ mkApps (getUnfolding guts dflags fnId) args--transformMaybe (replaceVarId_maybe fnId (getUnfolding guts dflags fnId)) expr
   | otherwise = (Data.transform (caseInline dflags) . Data.transform betaReduce . repeatCaseFloat . Data.transform betaReduce . Data.transform letNonRecSubst . tryUnfoldAndReduceDict') <$> Data.descendM (reduceDictFn_maybe guts dflags fnId) expr
   where
     tryUnfoldAndReduceDict' = tryUnfoldAndReduceDict guts dflags
+
+unfoldAndReduceId :: ModGuts -> DynFlags -> Id -> CoreExpr -> CoreExpr
+unfoldAndReduceId guts dflags fnId expr
+  | App _ _ <- expr
+  , (Var fn, args) <- collectArgs expr
+  , fn == fnId =
+      betaReduce $ mkApps (getUnfolding guts dflags fnId) args
+unfoldAndReduceId guts dflags fnId expr = Data.descend (unfoldAndReduceId guts dflags fnId) expr
+
+-- | Try several reductions to try to simplify an unfolded function
+-- TODO: Maybe this should take some kind of predicate or `Maybe`-returning
+-- rewrite as an argument to determine if it needs to stop early
+reduceUnfolded :: ModGuts -> DynFlags -> CoreExpr -> CoreExpr
+reduceUnfolded guts dflags =
+  -- Data.transform (maybeApply (fmap (tryUnfoldAndReduceDict guts dflags) . transformMaybe (onAppFun_maybe (inCasts_maybe (caseInline_maybe dflags)))))
+  Data.transform (caseInline dflags) .
+  Data.transform (onScrutinee (inCasts (tryUnfoldAndReduceDict guts dflags))) .
+  Data.transform betaReduce .
+  repeatCaseFloat .
+  Data.transform (caseInline dflags) .
+  Data.transform betaReduce .
+  Data.transform (caseInline dflags) .
+  Data.transform (onScrutinee (tryUnfoldAndReduceDict guts dflags)) .
+  Data.transform (combineCasts dflags)
+
+overAltRhs :: (CoreExpr -> CoreExpr) -> CoreAlt -> CoreAlt
+overAltRhs f (x, y, z) = (x, y, f z)
+
+onCaseAltsRhs_maybe :: (CoreExpr -> CoreExpr) -> CoreExpr -> Maybe CoreExpr
+onCaseAltsRhs_maybe _ (Case _ _ _ []) = Nothing
+onCaseAltsRhs_maybe f (Case s wild ty alts) = Just $ Case s wild ty (mapAlts f alts)
+onCaseAltsRhs_maybe _ _ = Nothing
+
+onCaseAltsRhs :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+onCaseAltsRhs f = maybeApply (onCaseAltsRhs_maybe f)
+
+inCoercionCase_maybe :: (CoreExpr -> CoreExpr) -> CoreExpr -> Maybe CoreExpr
+inCoercionCase_maybe _ (Case _ _ _ []) = Nothing
+inCoercionCase_maybe f (Case s wild ty [(altCon, patVars, e@(Case _ wild2 _ _))])
+  | isCoercionTy (idType wild) && isCoercionTy (idType wild2) = do
+      e' <- inCoercionCase_maybe f e
+      Just $ Case s wild ty [(altCon, patVars, e')]
+inCoercionCase_maybe f (Case s wild ty [alt])
+  | isCoercionTy (idType wild) =
+      Just $ Case s wild ty [overAltRhs f alt]
+inCoercionCase_maybe _ _ = Nothing
+
+inCoercionCase :: (CoreExpr -> CoreExpr) -> CoreExpr -> CoreExpr
+inCoercionCase f = maybeApply (inCoercionCase_maybe f)
 
 -- reduceDictFn_maybe guts dflags fnId expr
 -- -- reduceDictFn_maybe guts dflags fnId expr@(App _ _)

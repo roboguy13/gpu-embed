@@ -1121,7 +1121,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
                                               . maybeApply (combineCasts_maybe dflags)
                                               . Data.transform letNonRecSubst)
                                               -} id
-                                                  . fmap ((\r -> trace ("reduce: " ++ showPpr dflags r) r) {- . Data.transform (onScrutinee tryUnfoldAndReduceDict') . Data.transform (replaceVarId fromId (getUnfolding' fromId)). Data.transform (onScrutinee (onScrutinee tryUnfoldAndReduceDict')) . {- Data.transform caseFloatCase . -} Data.transform betaReduce . Data.transform (combineCasts dflags) . repeatCaseFloat) -} ) . ({- reduceDictFn_maybe guts dflags fromId <=< -} reduceDictFn_maybe guts dflags constructFnId))
+                                                  . fmap ((\r -> trace ("reduce(" ++ showPpr dflags currName ++ "): " ++ showPpr dflags r) r) {- . Data.transform (onScrutinee tryUnfoldAndReduceDict') . Data.transform (replaceVarId fromId (getUnfolding' fromId)). Data.transform (onScrutinee (onScrutinee tryUnfoldAndReduceDict')) . {- Data.transform caseFloatCase . -} Data.transform betaReduce . Data.transform (combineCasts dflags) . repeatCaseFloat) -} ) . ({- reduceDictFn_maybe guts dflags fromId <=< -} fmap (Data.transform (combineCasts dflags) . reduceUnfolded guts dflags . unfoldAndReduceId guts dflags constructFnId . reduceUnfolded guts dflags . unfoldAndReduceId guts dflags constructFnId . reduceUnfolded guts dflags . unfoldAndReduceId guts dflags fromId . Data.transform (applyWhen (hasExprTy' expTyCon) tryUnfoldAndReduceDict') . Data.transform (onScrutinee (unfoldAndReduceId guts dflags fromId)) . reduceUnfolded guts dflags . unfoldAndReduceId guts dflags constructFnId . Data.transform betaReduce . reduceUnfolded guts dflags . unfoldAndReduceId guts dflags constructFnId . Data.transform betaReduce . reduceUnfolded guts dflags . unfoldAndReduceId guts dflags constructFnId . Data.transform betaReduce . Data.transform (combineCasts dflags) . repeatCaseFloat . Data.transform letNonRecSubst . tryUnfoldAndReduceDict' . Data.transform letNonRecSubst . tryUnfoldAndReduceDict' . Data.transform (caseInline dflags) . Data.transform (onScrutinee tryUnfoldAndReduceDict') . betaReduce) . reduceDictFn_maybe guts dflags constructFnId))
                                                 -- . (transformMaybe ( transformIgnoringClasses_maybe (replaceVarId_maybe constructFnId (getUnfolding' constructFnId)))))
                                     simplE''Arg
 
@@ -1249,6 +1249,7 @@ transformPrims0 guts currName recName primMap exprVars e = {- transformLams guts
           , not (isConstructor f)
           , not (isUnrep f)
           , Nothing <- builtin f
+          , not (isDict expr)
           , not (hasExprTy expr) = do
 
             internalizeId <- lift $ findIdTH guts 'internalize
@@ -1406,10 +1407,17 @@ elimRepUnrep_co rec guts coA_M origType expr@(Var r :@ Type{} :@ dict :@ arg) =
                 let co' = mkTransCo coB' coA
                 return $ Just co'
                 -- Just $ downgradeRole Representational (coercionRole co') co'
-              _ -> return $ do
-                co0 <- coA_M <|> coB_M
-                let Just co' = setNominalRole_maybe (coercionRole co0) co0
-                return $ co'
+              _ -> return (coA_M <|> coB_M)
+                -- case coA_M <|> coB_M of
+                --   Nothing -> return $ Nothing
+                --   Just co0 -> do
+                --     case setNominalRole_maybe (coercionRole co0) co0 of
+                --       Just co' -> return $ Just co'
+                --       Nothing -> do
+                --         co <- lift $ buildCo guts (coercionLKind co0) (coercionRKind co0)
+
+                --         let Just co' = setNominalRole_maybe (coercionRole co) co
+                --         return $ Just co'
 
       -- let co_M = do
       --               guard (isJust coA_M || isJust coB_M)

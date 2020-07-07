@@ -377,7 +377,7 @@ class Typeable t => GPURep t where
 
   -- | This should be unapplied type (without type arguments)
 
-  construct :: forall a. a ~ GPURepTy t => t -> GPUExp a
+  construct :: t -> GPUExp (GPURepTy t)
 
   -- constructRep :: GPUExp (GPURepTy t) -> GPUExp t
   -- constructRep = ConstructRep
@@ -386,7 +386,7 @@ class Typeable t => GPURep t where
   -- NOTE: The INLINABLE pragmas make the unfoldings available to the Core
   -- plugin
 
-  default construct :: forall a. (a ~ GPURepTy t, Generic t, GPURep (Rep t Void), GPURep (GPURepTy t), GPURepTy (Rep t Void) ~ GPURepTy t) => t -> GPUExp a
+  default construct :: (Generic t, GPURep (Rep t Void), GPURep (GPURepTy t), GPURepTy (Rep t Void) ~ GPURepTy t) => t -> GPUExp (GPURepTy t)
   construct = construct . (from :: t -> Rep t Void)
   {-# INLINABLE construct #-}
 
@@ -437,28 +437,28 @@ class Typeable t => GPURep t where
 
 instance GPURep Int where
   type GPURepTy Int = Int
-  construct = Lit
+  construct = rep --Lit
   rep = Lit
   rep' = id
   unrep' = id
   -- constructRep = id
 instance GPURep Integer where
   type GPURepTy Integer = Integer
-  construct = Lit
+  construct = rep --Lit
   rep = Lit
   rep' = id
   unrep' = id
   -- constructRep = id
 instance GPURep Float where
   type GPURepTy Float = Float
-  construct = Lit
+  construct = rep --Lit
   rep = Lit
   rep' = id
   unrep' = id
   -- constructRep = id
 instance GPURep Double where
   type GPURepTy Double = Double
-  construct = Lit
+  construct = rep --Lit
   rep = Lit
   rep' = id
   unrep' = id
@@ -467,8 +467,10 @@ instance GPURep Double where
 instance GPURep Bool where
   type GPURepTy Bool = Bool
 
-  construct True = TrueExp
-  construct False = FalseExp
+  construct = rep
+
+  -- construct True = TrueExp
+  -- construct False = FalseExp
 
   rep False = FalseExp
   rep True  = TrueExp
@@ -479,7 +481,7 @@ instance GPURep Bool where
 instance GPURep Char where
   type GPURepTy Char = Char
 
-  construct = CharLit
+  construct = rep --CharLit
 
   rep c = CharLit c
   rep' = id
