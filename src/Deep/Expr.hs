@@ -265,6 +265,7 @@ transformE tr0 = tr
     go e@UnitExp = e
     go e@(ConstructRep _) = e
     go (CastExp x) = CastExp (tr (coerce x))
+    go (App f x) = App (tr f) (tr x)
 
 transformEA :: forall a m. Monad m
   => (forall r. GPUExp r -> m (GPUExp r)) -> GPUExp a -> m (GPUExp a)
@@ -314,6 +315,7 @@ transformEA tr0 = tr
     go e@UnitExp = pure e
     go e@(ConstructRep _) = pure e
     go (CastExp x) = CastExp <$> tr (coerce x)
+    go (App f x) = App <$> tr f <*> tr x
 
 -- convertE :: Coercible a b => GPUExp a -> GPUExp b
 -- convertE (CaseExp x f) = CaseExp x (convertE f)
