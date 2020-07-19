@@ -695,7 +695,66 @@ newtype ProdMatch a b =
 
 \subsection{Connection to Church encodings}
 \begin{todo}
-  Write this subsection
+  Work on this subsection
+\end{todo}
+
+Algebraic datatypes can be represented as lambda calculus terms using
+\textit{Church encodings}. For example, the pair constructor can be
+represented as
+
+\begin{lstlisting}
+church_mkPair
+  :: a -> b -> (a -> b -> r) -> r
+church_mkPair = \ x y f -> f x y
+\end{lstlisting}
+
+with the eliminators
+
+\begin{lstlisting}
+church_fst :: ((a -> b -> a) -> r) -> r
+church_fst = \ p -> p (\ x y -> x)
+
+church_snd :: ((a -> b -> b) -> r) -> r
+church_snd = \ p -> p (\ x y -> y)
+\end{lstlisting}
+
+
+Coproducts can be represented with the constructors
+
+\begin{lstlisting}
+church_mkLeft
+  :: a -> (a -> r) -> (b -> r) -> r
+church_mkLeft = \ x f g -> f x
+
+church_mkRight
+  :: b -> (a -> r) -> (b -> r) -> r
+church_mkRight = \ y f g -> g y
+\end{lstlisting}
+
+and the eliminator
+
+\begin{lstlisting}
+church_eitherElim
+  :: (a -> b -> r) -> a -> b -> r
+church_eitherElim = \ e f g -> e f g
+\end{lstlisting}
+
+In this representation:
+
+\begin{itemize}
+  \item A pair of type \ttt{A} and type \ttt{B} is represented with a value of type
+\ttt{forall r. (A -> B -> r) -> r}.
+
+  \item A coproduct of type \ttt{A} and type \ttt{B} is represented with a value of type
+\ttt{forall r. (A -> r) -> (B -> r) -> r}.
+\end{itemize}
+
+More generally, an algebraic datatype can be thought of as a sum of products
+(that is, a coproduct of products).
+
+\begin{todo}
+  Maybe it could make sense to essentially derive the pattern matching representation
+  from this Church encoding. If so, this could be described around here.
 \end{todo}
 
 \subsection{An aside on \ttt{ProdMatch} and \ttt{SumMatch} values}
