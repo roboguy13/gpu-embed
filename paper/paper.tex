@@ -169,9 +169,35 @@ Conference on Generative Programming: Concepts and Experiences (GPCE '20)
 %% The abstract is a short summary of the work to be presented in the
 %% article.
 \begin{abstract}
+  %Say what problem is
+  The data flow in deeply embedded domain specific langauges  falls out naturally.
+
+  Capturing control flow in embbed
+  is critical for 
+  Using a deep embedding of 
+ Programs that write programs 
+  Sometimes,  
+Embedded Domain Specific Languages are the killer app of functional languages.
+%Say why it is an interesting problem
+Languages with reification of code fragments allows
+for high-level abstractions that directly support
+diverse applications incuding machine learning and hardware description generation.
+% 
+  Haskell in particual has been used for many embeded code generators, such
+as Lava, SunRoof, Conal work, CCC, AD, ... (finally tagless) diagrams?
+%Say what our solution achieves
+In this paper, we expand the capabilies of traditional,
+Haskell-based, deep embeddings with a compiler extension
+for capturing the useful abstraction of pattern matching. 
+%Here is why the world will be a better place
+With this new support, the Haskell that we capture for expressing
+embededed-based solutions can be cleaner, more Haskell idiomatic,
+and more declaritive in nature.
+
+
   Domain specific languages (DSLs) provide a powerful tool for abstracting over
-  a class of problems. In this paper, we introduce a technique for representing
-  algebraic data types and pattern matching in a DSL embedded in Haskell. This
+  a class of problems.
+  This
   representation is mechanized through the use of GHC Generics and a GHC Core plugin.
 \end{abstract}
 
