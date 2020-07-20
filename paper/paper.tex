@@ -170,29 +170,48 @@ Conference on Generative Programming: Concepts and Experiences (GPCE '20)
 %% article.
 \begin{abstract}
   %Say what problem is
-  The data flow in deeply embedded domain specific langauges  falls out naturally.
 
-  Capturing control flow in embbed
+  Capturing control flow in an embedded domain specific language is crucial for
+  writing programs in a "natural" style. This enables the programmer to use the
+  constructs that are already builtin to the base language, such as pattern
+  matching and recursion.
+
+  In addition to control flow, when these features are reified, the data flow in
+  a deeply embedded domain specific langauge also falls out naturally.
+
   is critical for 
   Using a deep embedding of 
  Programs that write programs 
   Sometimes,  
 Embedded Domain Specific Languages are the killer app of functional languages.
+
 %Say why it is an interesting problem
-Languages with reification of code fragments allows
+
+In embedded domain specific languages which do not capture control flow
+constructs, workarounds must be employed which will be less familiar
+than the builtin control flow mechanisms of the host language. When
+control flow mechanisms are represented in the embedded language,
+a much more natural style of programming is offered to the programmer.
+
+Languages with reification of code fragments allow
 for high-level abstractions that directly support
 diverse applications incuding machine learning and hardware description generation.
 % 
-  Haskell in particual has been used for many embeded code generators, such
-as Lava, SunRoof, Conal work, CCC, AD, ... (finally tagless) diagrams?
+  Haskell in particular has been used for many embedded code generators, such
+  as Lava, SunRoof, Conal work, CCC, AD, ... (finally tagless) diagrams? Feldspar (note: Feldspar has some form of \ttt{switch} primitive)?
+
 %Say what our solution achieves
+
 In this paper, we expand the capabilies of traditional,
 Haskell-based, deep embeddings with a compiler extension
-for capturing the useful abstraction of pattern matching. 
+for capturing the useful abstraction of pattern matching. This is accomplished
+using a deeply embedded representation of the pattern match construct.
+
 %Here is why the world will be a better place
+
 With this new support, the Haskell that we capture for expressing
-embededed-based solutions can be cleaner, more Haskell idiomatic,
-and more declaritive in nature.
+embedded-based solutions can be cleaner, more Haskell idiomatic,
+and more declarative in nature.
 
 
   Domain specific languages (DSLs) provide a powerful tool for abstracting over
