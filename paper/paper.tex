@@ -961,6 +961,21 @@ church_matchEval
     (ChurchLam f) = \ x -> f x
 \end{lstlisting}
 
+\begin{todo}
+  Explicitly mention how the constructs in this last part
+  relate to their counterparts in the main part of the paper.
+\end{todo}
+
+\begin{todo}
+  Figure out how recursive types fit into this framework. Church encodings can
+  handle recursive types and so can our representation. This is also the case
+  for Scott encodings, etc, and is the difference between Church and Scott
+  encodings.
+
+  Does our way of handling recursive types correspond to how any of
+  those encodings handle recursive types?
+\end{todo}
+
 % \begin{lstlisting}
 % data ChurchMatch t where
 %   ChurchCoproductMatch
