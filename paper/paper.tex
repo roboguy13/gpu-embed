@@ -749,6 +749,53 @@ In this representation:
 \ttt{forall r. (A -> r) -> (B -> r) -> r}.
 \end{itemize}
 
+Both of those representations represent the type as a function that performs the
+corresponding case analysis. A deep embedding for the operations
+\ttt{church\_mkLeft} and \\ \ttt{church\_mkRight} would look
+like:
+
+\begin{lstlisting}
+data ChurchCoproduct r where
+  Church_MkLeft
+    :: a -> (a -> r) -> (b -> r) ->
+       ChurchCoproduct r
+  Church_MkRight
+    :: b -> (a -> r) -> (b -> r) ->
+       ChurchCoproduct r
+
+church_coproductEval
+  :: ChurchCoproduct r -> r
+church_coproductEval (Church_MkLeft x f g)
+  = f x
+church_coproductEval (Church_MkRight y f g)
+  = g y
+\end{lstlisting}
+
+If we factor out the data contained in these coproducts so that it is separated from the
+case analysis functions, we can obtain
+
+\begin{lstlisting}
+data ChurchCoproductMatch t r where
+  ChurchCoproductMatch
+    :: (a -> r) -> (b -> r) ->
+       ChurchCoproductMatch (Either a b) r
+
+church_coproductMatchEval
+  :: Either a b ->
+     ChurchCoproductMatch (Either a b) r ->
+     r
+church_coproductMatchEval
+    (Left x)
+    (ChurchCoproductMatch f g)
+  = f x
+church_coproductMatchEval
+    (Right y)
+    (ChurchCoproductMatch f g)
+  = g y
+\end{lstlisting}
+
+
+
 More generally, an algebraic datatype can be thought of as a sum of products
 (that is, a coproduct of products).
 
