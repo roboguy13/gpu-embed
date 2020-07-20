@@ -820,15 +820,158 @@ church_coproductMatchEval
   = g y
 \end{lstlisting}
 
+The type signature of \ttt{church\_coProductMatchEval} can be rewritten in the same form as a
+typical deep embedding evaluation function by moving the second argument into the right-hand
+side of the definition:
+
+\begin{lstlisting}
+church_coproductMatchEval
+  :: ChurchCoproductMatch t -> t
+
+church_coproductMatchEval
+    (ChurchCoproductMatch f g)
+  = \ c ->
+      case c of
+        Left x  -> f x
+        Right y -> g y
+\end{lstlisting}
+
+An embedding for product matches can be similarly derived from the Church encoding for product
+types:
+
+\begin{lstlisting}
+data ChurchProductMatch t where
+  ChurchProductMatch
+    :: (a -> b -> r) ->
+       ChurchProductMatch ((a, b) -> r)
+
+church_productMatchEval
+  :: ChurchProductMatch t -> t
+
+church_productMatchEval
+    (ChurchProductMatch f)
+  = \ p ->
+      case p of
+        (x, y) -> f x y
+\end{lstlisting}
+
+As we will have another notion of function types embedded in our language, we define two
+types to distinguish between these. We define two of them so that we can also distinguish
+between coproduct matches and product matches.
+
+\begin{lstlisting}
+newtype CoproductMatch a r
+  = CoproductMatch (a -> r)
+
+newtype ProductMatch a r
+  = ProductMatch (a -> r)
+
+data ChurchCoproductMatch t where
+  ChurchCoproductMatch
+    :: (a -> r) -> (b -> r) ->
+       ChurchCoproductMatch
+         (CoproductMatch (Either a b) r)
+
+church_coproductMatchEval
+  :: ChurchCoproductMatch t -> t
+
+church_coproductMatchEval
+    (ChurchCoproductMatch f g)
+  = CoproductMatch (\ c ->
+      case c of
+        Left x  -> f x
+        Right y -> g y)
+\end{lstlisting}
+
+The definition for product follows similarly, using \\ \ttt{ProductMatch}.
+
+Here we make the observation that algebraic datatypes are structured as coproducts of products. With
+this information in hand, we can combine \ttt{ChurchCoproductMatch} and \ttt{ChurchProductMatch}.
+
+\begin{lstlisting}
+newtype CoproductMatch a r
+  = CoproductMatch
+      { runCoproductMatch :: a -> r }
+
+newtype ProductMatch a r
+  = ProductMatch
+      { runProductMatch :: a -> r }
+
+data ChurchMatch t where
+  ChurchCoproductMatch
+    :: ChurchMatch (ProductMatch a r) ->
+       ChurchMatch (CoproductMatch b r) ->
+       ChurchMatch
+         (CoproductMatch (Either a b) r)
+
+  ChurchProductMatch
+    :: ChurchMatch (a -> ProductMatch b r)
+       -> ChurchMatch (ProductMatch (a, b) r)
+
+  ChurchOneCoproductMatch
+    :: ChurchMatch (ProductMatch a r) ->
+       ChurchMatch (CoproductMatch a r)
+
+  ChurchOneProductMatch
+    :: (a -> r) ->
+       ChurchMatch (ProductMatch a r)
+
+  ChurchNullaryProductMatch
+    :: r -> ChurchMatch (ProductMatch a r)
+
+  ChurchLam
+    :: (a -> b) -> ChurchMatch (a -> b)
+
+church_matchEval :: ChurchMatch t -> t
+church_matchEval
+    (ChurchCoproductMatch f g) =
+  CoproductMatch (\ c ->
+    case c of
+      Left x  ->
+        runProductMatch
+          (church_matchEval f) x
+      Right y ->
+        runCoproductMatch
+          (church_matchEval g) y)
+
+church_matchEval
+    (ChurchProductMatch f) =
+  ProductMatch (\ p ->
+    case p of
+      (x, y) ->
+        runProductMatch
+          (church_matchEval f x) y)
+
+church_matchEval
+    (ChurchOneCoproductMatch f) =
+  CoproductMatch (\ x ->
+    runProductMatch
+      (church_matchEval f) x)
+
+church_matchEval
+    (ChurchOneProductMatch f) =
+  ProductMatch (\ x -> f x)
+
+church_matchEval
+    (ChurchNullaryProductMatch x) =
+  ProductMatch (\ _ -> x)
+
+church_matchEval
+    (ChurchLam f) = \ x -> f x
+\end{lstlisting}
+
+% \begin{lstlisting}
+% data ChurchMatch t where
+%   ChurchCoproductMatch
+%     :: ChurchMatch ((a, b) -> r) -> ChurchMatch (Either b c -> r) ->
+%        ChurchCoproductMatch (Either
+% \end{lstlisting}
 
 
-More generally, an algebraic datatype can be thought of as a sum of products
-(that is, a coproduct of products).
-
-\begin{todo}
-  Maybe it could make sense to essentially derive the pattern matching representation
-  from this Church encoding. If so, this could be described around here.
-\end{todo}
+% \begin{todo}
+%   Maybe it could make sense to essentially derive the pattern matching representation
+%   from this Church encoding. If so, this could be described around here.
+% \end{todo}
 
 \subsection{An aside on \ttt{ProdMatch} and \ttt{SumMatch} values}
 
