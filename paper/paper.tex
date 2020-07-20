@@ -795,6 +795,32 @@ church_coproductMatchEval
 \end{lstlisting}
 
 
+Note that a value of type \ttt{ChurchCoproductMatch (Either a b) r} is very similar to
+a function from \ttt{Either a b} to \ttt{r}, with \ttt{church\_coproductMatchEval} allowing
+us to apply it to an argument. We can make this fact more explicit in the types with the
+change:
+
+\begin{lstlisting}
+data ChurchCoproductMatch t where
+  ChurchCoproductMatch
+    :: (a -> r) -> (b -> r) ->
+       ChurchCoproductMatch
+          (Either a b -> r)
+
+church_coproductMatchEval
+  :: ChurchCoproductMatch (t -> r) ->
+     t -> r
+church_coproductMatchEval
+    (ChurchCoproductMatch f g)
+    (Left x)
+  = f x
+church_coproductMatchEval
+    (ChurchCoproductMatch f g)
+    (Right y)
+  = g y
+\end{lstlisting}
+
+
 
 More generally, an algebraic datatype can be thought of as a sum of products
 (that is, a coproduct of products).
