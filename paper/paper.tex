@@ -906,7 +906,8 @@ data ChurchMatch t where
 
   ChurchProductMatch
     :: ChurchMatch (a -> ProductMatch b r)
-       -> ChurchMatch (ProductMatch (a, b) r)
+       -> ChurchMatch
+            (ProductMatch (a, b) r)
 
   ChurchOneCoproductMatch
     :: ChurchMatch (ProductMatch a r) ->
