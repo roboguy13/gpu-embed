@@ -171,13 +171,14 @@ Conference on Generative Programming: Concepts and Experiences (GPCE '20)
 \begin{abstract}
 % Say what problem is
   Capturing control flow is the Achilles heel of Haskell-based
-  deeply embedded domain specific languages. Clunky, awkward workarounds must be
-  employed which will be less familiar than the builtin control flow mechanisms
-  of the host language.
+  deeply embedded domain specific languages.
+  Rather than use
+  the builtin control flow mechanisms, artifical control flow combinators
+  are used instead.
 
 % Say why it is an interesting problem
-  However, capturing control flow in an embedded domain specific language is crucial for
-  writing programs in a natural style, and enables the programmer to use the
+  However, capturing traditional control flow in an deeply embedded domain specific language
+  would allow for writing programs in a natural style, and enables the programmer to use the
   constructs that are already builtin to the base language, such as pattern
   matching and recursion.
 % Say what our solution achieves
@@ -187,7 +188,7 @@ Conference on Generative Programming: Concepts and Experiences (GPCE '20)
   for reifying conditionals and pattern matching.
 % Here is why the world will be a better place
   With this new support, the Haskell that we capture for expressing
-  deeply embedded domain specific languages can be cleaner, more Haskell idiomatic,
+  deeply embedded domain specific languages can be cleaner, Haskell-idiomatic,
   and more declarative in nature.
 
 \end{abstract}
