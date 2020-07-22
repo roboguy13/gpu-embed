@@ -1453,7 +1453,8 @@ calls to \ttt{unrep :: E a -> a} are only used internally and will not exist in 
   &P\expr{\ttt{x $\rarr$ body}} \rewrites \ttt{OneProdMatchExp }A\expr{\ttt{$\lambda$ x $\rarr$ body}}\\
   &P\expr{\ttt{ $\rarr$ body}} \rewrites \ttt{NullaryMatch $M\expr{\ttt{body}}$}\\
   &\\
-  &A\expr{\ttt{$\lambda$(x :: a) $\rarr$ body}} \rewrites \ttt{Lam (Name @a uniq) $M\expr{\ttt{body$[\ttt{x} \mapsto \ttt{Var uniq}]$}}$}\text{\;\;\;\;\;(where \ttt{uniq} is a globally unique identifier)}\\
+  &A\expr{\ttt{$\lambda$(x :: a) $\rarr$ body}} \rewrites \ttt{Lam (Name @a uniq) $M\expr{\ttt{body$[\ttt{x} \mapsto \ttt{unrep (Var @a uniq)}]$}}$}\\
+  &\text{\;\;\;\;\;(where \ttt{uniq} is a globally unique identifier)}\\
   &\\
   &M\expr{\ttt{x :: a}} \rewrites
     \begin{cases}
