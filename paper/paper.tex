@@ -1108,7 +1108,7 @@ runIter f = go
   \ttt{runIter} has the following alternate implementation. Would this be
   useful to use somewhere?
 
-  \begin{lstlisting}
+  \begin{lstlisting}[otherkeywords={}]
   runIter f = getDone . fix (f >=>)
 
   getDone :: Iter b a -> b
