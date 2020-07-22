@@ -715,7 +715,8 @@ newtype ProdMatch a b =
 
 \subsection{Connection to Church encodings}
 \begin{todo}
-  Work on this subsection
+  Work on this subsection. Maybe this shouldn't be a separate section at all and
+  maybe its contents should be incorporated throughout the rest of the paper.
 \end{todo}
 
 Algebraic datatypes can be represented as lambda calculus terms using
@@ -981,6 +982,18 @@ church_matchEval
     (ChurchLam f) = \ x -> f x
 \end{lstlisting}
 
+Comparing this back to our larger encoding, there is the correspondence: \\
+
+\begin{tabular}{|l|l|}
+  \hline
+  \ttt{ChurchCoproductMatch} & \ttt{SumMatchExp} \\
+  \ttt{ChurchProductMach} & \ttt{ProdMatchExp} \\
+  \ttt{CoproductMatch} & \ttt{SumMatch} \\
+  \ttt{ProductMatch} & \ttt{ProdMatch} \\
+  \ttt{ChurchLam} & \ttt{Lam} \\
+  \hline
+\end{tabular} \\
+
 \begin{todo}
   Explicitly mention how the constructs in this last part
   relate to their counterparts in the main part of the paper.
@@ -994,6 +1007,8 @@ church_matchEval
 
   Does our way of handling recursive types correspond to how any of
   those encodings handle recursive types?
+
+  Maybe this is relevant: \href{https://www.reddit.com/r/haskell/comments/hvlh6a/generalized_church_encoding_is_the_curryhoward_of/}{\color{blue}{Generalized Church encoding is the Curry-Howard of Knaster-Tarski}}
 \end{todo}
 
 % \begin{lstlisting}
