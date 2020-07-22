@@ -1116,6 +1116,10 @@ runIter f = go
   getDone _ = error "getDone"
   \end{lstlisting}
 
+  where \verb|Iter| is given a standard \verb|Monad| instance (essentially the
+  same as the \verb|Either| \verb|Monad| instance). \\
+
+
   Maybe this could be useful in some proofs or derivations somewhere (in this
   paper or elsewhere)?
 
