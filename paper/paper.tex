@@ -1104,6 +1104,25 @@ runIter f = go
         Step x' -> go x'
 \end{lstlisting}
 
+\begin{todo}
+  \ttt{runIter} has the following alternate implementation. Would this be
+  useful to use somewhere?
+
+  \begin{lstlisting}
+  runIter f = getDone . fix (f >=>)
+
+  getDone :: Iter b a -> b
+  getDone (Done x) = x
+  getDone _ = error "getDone"
+  \end{lstlisting}
+
+  Maybe this could be useful in some proofs or derivations somewhere (in this
+  paper or elsewhere)?
+
+  Note that \verb|error| is never called under any circumstance in this
+  implementation of \verb|runIter|.
+\end{todo}
+
 This technique can be contrasted with the more traditional trampolining
 technique for implementing tail recursion. Conventional trampolining uses a
 sum type of the result type and a thunk with the code necessary to continue
