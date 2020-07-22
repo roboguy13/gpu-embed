@@ -1442,6 +1442,7 @@ calls to \ttt{unrep :: E a -> a} are only used internally and will not exist in 
   &C\expr{\ttt{case scrutinee of \{ ... \}}} \rewrites \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{ ... }}\\
   &C\expr{\ttt{$\lambda$x $\rarr$ body}} \rewrites A\expr{\lambda \ttt{x} \rarr \ttt{body}}\\
   &C\expr{\ttt{K x0 ... xN }} \rewrites \ttt{construct (K (unrep $M\expr{\ttt{x0}}$) ... (unrep $M\expr{\ttt{xN}}$))}\;\;\;\;\text{(Where \ttt{K} is a constructor)}\\
+  &C\expr{\ttt{f x}} \rewrites \ttt{App $M\expr{f}$ $M\expr{x}$}\\
   % &C\expr{\ttt{f x}} \rewrites \ttt{ConstructAp $M\expr{\ttt{f}}$ $M\expr{\ttt{x}}$}\;\;\;\;\text{(Where \ttt{f} is not a primitive or an application of a primitive)}\\
   % &C\expr{\ttt{x}} \rewrites \ttt{Construct x}\;\;\;\;\text{(Where \ttt{x} is a variable which is not a primitive)}\\
   &\\
@@ -1449,7 +1450,7 @@ calls to \ttt{unrep :: E a -> a} are only used internally and will not exist in 
   &B\expr{\ttt{K x0 ... xN $\rarr$ body}} \rewrites \ttt{OneSumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body}}\\
   &B\expr{\ttt{$\varepsilon$}} \rewrites \ttt{EmptyMatch}\\
   &\\
-  &P\expr{\ttt{x0 x1 ... $\rarr$ body}} \rewrites \ttt{ProdMatchExp }A\expr{\ttt{$\lambda$ x0 $\rarr$ $P\expr{\ttt{x1 ... $\rarr$ body}}$}}\\
+  &P\expr{\ttt{x0 x1 ... xN $\rarr$ body}} \rewrites \ttt{ProdMatchExp }A\expr{\ttt{$\lambda$ x0 $\rarr$ $P\expr{\ttt{x1 ... xN $\rarr$ body}}$}}\\
   &P\expr{\ttt{x $\rarr$ body}} \rewrites \ttt{OneProdMatchExp }A\expr{\ttt{$\lambda$ x $\rarr$ body}}\\
   &P\expr{\ttt{ $\rarr$ body}} \rewrites \ttt{NullaryMatch $M\expr{\ttt{body}}$}\\
   &\\
