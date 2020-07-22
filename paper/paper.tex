@@ -346,6 +346,7 @@ either difficult or impossible to use a language that has these benefits.
 \end{todo}
 
 \subsection{Overview}
+\label{sec:Overview}
 
 In this EDSL, the type representing values in the expression language is \ttt{E
 t} and there are two basic functions which translate values to and from this
@@ -1451,6 +1452,30 @@ a compiler plugin. As a result of GHC's desugared Core (which does not have
 compound patterns), there is no need to directly express compound patterns at
 the representation-level.
 
+There is other recent work using deep embeddings in functional languages for 
+system development.  One example is the Ivory language \cite{Elliott2015-Ivory} 
+which provides a deeply embedded DSL for use in programming high assurance
+systems,  However, it's syntax is typical of a deep EDSL and requires additional 
+keywords and structures above idiomatic Haskell.
+
+The Feldspar project~\cite{Axelsson:10:Feldspar,Axelsson,Svenningsson:13:Combining}
+is a Haskell embedding of a monadic interface
+that targets C, and focuses on high-performance. Interestingly, this work
+also attempt to make use of both deep and shallow embeddings inside a single
+implementation. Both Feldspar and and our work use some form
+of monadic reification technology~\cite{Persson:11:MonadicDSL,Svenningsson:13:Compositional,Sculthorpe:13:ConstrainedMonad}.
+
+Svenningsson and Axelsson~\cite{Svenningsson:13:Combining}
+explored combining deep and shallow embedding.  They used
+a deep embedding as a low level language, then extended
+the deep embedding with a shallow embedding written on top
+of it. Haskell type classes were used to minimize the effort of adding
+new features to the language.
+
+Elliott developed GHC plugins~\cite{github:lambda-ccc}\cite{github:reification-rules}
+for compiling Haskell to hardware~\cite{github:Elliott:Talk:2015},
+using worker-wrapper style transformations equivalent to the \verb|abs| and
+\verb|rep| transformations described in Section \ref{sec:Overview}. These plugins were later generalized to enable additional interpretations~\cite{Elliott:2017}.
 
 % \section{Citations and Bibliographies}
 
