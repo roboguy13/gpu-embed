@@ -726,17 +726,17 @@ represented as
 \begin{lstlisting}
 church_mkPair
   :: a -> b -> (a -> b -> r) -> r
-church_mkPair = \ x y f -> f x y
+church_mkPair x y = \ f -> f x y
 \end{lstlisting}
 
 with the eliminators
 
 \begin{lstlisting}
 church_fst :: ((a -> b -> a) -> r) -> r
-church_fst = \ p -> p (\ x y -> x)
+church_fst p = p (\ x y -> x)
 
 church_snd :: ((a -> b -> b) -> r) -> r
-church_snd = \ p -> p (\ x y -> y)
+church_snd p = p (\ x y -> y)
 \end{lstlisting}
 
 
@@ -745,19 +745,19 @@ Coproducts can be represented with the constructors
 \begin{lstlisting}
 church_mkLeft
   :: a -> (a -> r) -> (b -> r) -> r
-church_mkLeft = \ x f g -> f x
+church_mkLeft x = \ f g -> f x
 
 church_mkRight
   :: b -> (a -> r) -> (b -> r) -> r
-church_mkRight = \ y f g -> g y
+church_mkRight y = \ f g -> g y
 \end{lstlisting}
 
 and the eliminator
 
 \begin{lstlisting}
 church_eitherElim
-  :: (a -> b -> r) -> a -> b -> r
-church_eitherElim = \ e f g -> e f g
+  :: ((a -> r) -> (b -> r) -> r) -> r
+church_eitherElim e = \ f g -> e f g
 \end{lstlisting}
 
 In this representation:
