@@ -468,10 +468,8 @@ realSum p =
                 a_real + b_real))
 \end{lstlisting}
 
-\begin{todo}
-  Should we use a single nested pattern match in the above block? Both
-  are functional (and equivalent) from a technical perspective.
-\end{todo}
+Note that the above pattern matches can be written as a single nested pattern
+match. Both forms compile down to the same Core representation.
 
 An additional benefit of this is that recursive types require no special handling. For
 example, consider:
