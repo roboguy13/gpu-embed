@@ -294,7 +294,9 @@ frequently a desirable feature for many EDSLs.
 Additionally, lambdas can also be difficult to implement in EDSLs. A major reason
 for this is that control flow constructs which are typically \textit{outside} the EDSL,
 such as pattern matching and tail recursion, can make it challenging to "look inside"
-the lambda.
+the lambda. When these control structures are reified within the EDSL, it is
+easier to also reify lambdas, as you can simply apply them to a dummy argument
+to access their body (with the dummy value substituted for the argument).
 \begin{todo}
   Maybe add brief summary of relationship to lambdas?
 \end{todo}
@@ -324,22 +326,21 @@ the transformation performed by the Core plugin are described in Section 8.
 \end{todo}
 
 A major benefit of the Haskell language is that it is frequently possible derive
-a Haskell implementation from a specification, either partially or fully. When
-it is not possible to fully derive an implementation from a specification, it is
-often easier to check a Haskell implementation against a specification than it
-is in many imperative languages due, in part, to the management of side effects
-in Haskell. This is more difficult to do using an imperative language such as C,
-as they provide no restrictions on where side effects can occur.
+a Haskell implementation from a specification, either partially or fully.
+Examples of this technique include the work in \cite{Elliott-2018-ad-icfp} as
+well as the work in \cite{Elliott2019-convolution-extended}.  When it is not
+possible to fully derive an implementation from a specification, it is often
+easier to check a Haskell implementation against a specification than it is in
+many imperative languages due, in part, to the management of side effects in
+Haskell. This is more difficult to do using an imperative language such as C, as
+they provide no restrictions on where side effects can occur.
 
 Haskell EDSLs that support powerful language features like pattern matching
 allow these advantages to be brought to problem domains where it is currently
 either difficult or impossible to use a language that has these benefits.
 
 \begin{todo}
-  Cite examples where Haskell implementations have been derived specifications.
-  Conal Elliott's latest two papers (as of May 2020),
-  \cite{Elliott-2018-ad-icfp} and \cite{Elliott2019-convolution-extended}, would
-  be good examples of this.
+  Cite examples where Haskell implementations have been derived specifications.  Conal Elliott's latest two papers (as of May 2020), \cite{Elliott-2018-ad-icfp} and \cite{Elliott2019-convolution-extended}, would be good examples of this. (This is now cited)
 
   A paper which describes a Haskell implementation derived from an operational
   semantics would also be a good example.
@@ -993,11 +994,6 @@ Comparing this back to our larger encoding, there is the correspondence: \\
 \end{tabular} \\
 
 \begin{todo}
-  Explicitly mention how the constructs in this last part
-  relate to their counterparts in the main part of the paper.
-\end{todo}
-
-\begin{todo}
   Figure out how recursive types fit into this framework. Church encodings can
   handle recursive types and so can our representation. This is also the case
   for Scott encodings, etc, and is the difference between Church and Scott
@@ -1059,11 +1055,6 @@ which pattern matches according to its input value.
 Likewise for \ttt{ProdMatch a b} values.
 
 \section{Representing tail recursion}
-\begin{todo}
-  Is the explanation in this section sufficient since we cite the Haskino paper,
-  which describes how the tail recursion transformation was used in that project?
-\end{todo}
-
 Tail recursion is given a direct-style representation using a simple sum type,
 using the technique described in~\cite{Grebe:2017:RSD:3136040.3136048}.
 
@@ -1076,7 +1067,8 @@ We can take advantage of this view by transforming a tail recursive function
 \ttt{f :: a -> b} into a function \ttt{f' :: a -> Iter b a}. \ttt{Iter b a} is a
 type which can either correspond to an argument "update" (in the sense mentioned
 previously) or a final result. This type is implemented as a sum of the types
-\ttt{a} and \ttt{b}.
+\ttt{a} and \ttt{b}. Recursive calls are transformed to \ttt{Step} applications
+and non-recursive branches are wrapped in \ttt{Done} applications.
 
 \begin{lstlisting}
 data Iter a b = Step b | Done a
