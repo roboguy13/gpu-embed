@@ -7,7 +7,6 @@
 *.cut
 *.aux
 *.out
-*.pdf
 *.bbl
 *.blg
 dist
