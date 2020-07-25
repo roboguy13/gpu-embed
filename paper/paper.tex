@@ -1313,6 +1313,21 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \ttt{a}), then the marking procedure ignores it and does not wrap it with
 \ttt{externalize} (see $M$ in Section 8.2).
 
+In the flowchart given in Figure~\ref{fig:CorePlugin}, the names in parentheses in a node refers
+to the names of transformations given in the rewrite rules in Figure~\ref{fig:Rewrites}. Calls
+to \ttt{unrep :: E a -> a} are only used internally and will not exist in
+the final result of the transformation.
+
+Note that:
+\begin{itemize}
+  \item The tail recursion transformation given by $D$, $T'_{\ttt{f}}$ and $T_{\ttt{f}}$ is completely independent of the \ttt{E} type and the transformations associated to the \ttt{E} type. As a result, the tail recursion transformation can be used on its own.
+
+  \item The total number of marks introduced is upper bounded by the number of
+subexpressions in the original Core given to the transformation by GHC and each
+full transformation step (that is, $C$) eliminates one mark. Therefore, the
+transformation will terminate.
+\end{itemize}
+
 \clearpage
 \begin{figure*}
   \centering 
@@ -1321,85 +1336,17 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
    \label{fig:CorePlugin}
 \end{figure*}
 
-\subsection{Overall Control Flow of the Core Plugin}
-
-In the following flowchart, the names in parentheses in a node refers to the names of transformations from the following section (Section 8.2). Note that
-calls to \ttt{unrep :: E a -> a} are only used internally and will not exist in the final result of the transformation.
-
-\begin{tikzpicture}[node distance=2cm]
-\node (start) [startstop] {Core from GHC};
-  \node (tailrec) [process, below of=start, yshift=-0.5cm]{($D, T_{\ttt{f}}, T'_{\ttt{f}}$) Transform tail recursion of definitions that have a mark (when applicable)};
-  \node (findmark) [process, below of=tailrec, yshift=-0.5cm]{($C^*$) Find marked expression and erase mark};
-    \node (handlecase) [process, below of=findmark]{($C, M$) Mark scrutinee};
-    \node (handleprim) [process, right of=handlecase, xshift=1.6cm]{($C$) Encode as EDSL primitive};
-    \node (handleconstr) [process, right of=handleprim, xshift=1.6cm]{($C$) Wrap with \ttt{construct}};
-
-    \node (marksubs1) [process, below of=handleprim]{($C, M$) Mark sub-expressions};
-    \node (marksubs2) [process, below of=handleconstr]{($C, M$) Mark sub-expressions and wrap with \ttt{unrep}};
-    \node (betareduce) [process, below of=marksubs2]{Beta reduce \ttt{(construct ...)} expression and simplify};
-    \node (repunrep) [process, below of=betareduce]{Replace expressions of the form \ttt{(rep (unrep x))} with \ttt{x}};
-
-    \node (onebranch) [process, below of=handlecase]{($B$) Transform one branch};
-    \node (prodmatch) [process, below of=onebranch]{($P$) Transform one field in product match of current branch};
-    \node (abstractvar) [process, below of=prodmatch, yshift=-0.5cm]{($P, A$) Abstract the pattern variable of the field with \ttt{Lam} and \ttt{Var}};
-    \node (markbody) [process, below of=abstractvar]{($P, M$) Mark branch body};
-    \node (endstep) [process, below of=markbody, right of=markbody, xshift=1.6cm]{End of one transformation step};
-
-  \draw [arrow] (start) -- (tailrec);
-  \draw [arrow] (tailrec) -- (findmark);
-  \draw [arrow] (findmark) -- node[anchor=east] {Primitive} (handleprim);
-  \draw [arrow] (findmark) -- node[anchor=west, yshift=0.1cm] {Constructor/constructor application} (handleconstr);
-  \draw [arrow] (findmark) -- node[anchor=east] {\ttt{case}} (handlecase);
-
-  \draw [arrow] (handleprim) -- (marksubs1);
-
-  \draw [arrow] (handleconstr) -- (marksubs2);
-
-  \draw [arrow] (handlecase) -- (onebranch);
-  \draw [arrow] (onebranch) -- (prodmatch);
-  \draw [arrow] (prodmatch) -- (abstractvar);
-  \draw [arrow] (abstractvar) -- (markbody);
-
-  \draw [arrow] (marksubs2) -- (betareduce);
-  \draw [arrow] (betareduce) -- (repunrep);
-
-  \draw [arrow] (marksubs1) -- (endstep);
-  \draw [arrow] (repunrep) -- (endstep);
-  \draw [arrow] (markbody) -- (endstep);
-
-
-
-  % \draw (prodmatch) edge[bend right, left] node {While fields remain} (abstractvar);
-  % \draw [arrow] (abstractvar.east) to ++(0.5,0) |- node[anchor=west] {While fields remain} (prodmatch.east);
-  \draw [arrow] (abstractvar.west) -| ++(-1.5,0) |- node[anchor=south] {While fields remain} (prodmatch.west);
-
-  \draw [arrow] (markbody.west) -| ++(-3,0) |- node[anchor=east, anchor=south] {While branches remain} (onebranch.west);
-
-  \draw [arrow] (endstep.west) -| ++(-8.5,0) |- node[anchor=west, anchor=south] {While marked expressions remain} (findmark.west);
-
-  % \draw (findmark)  edge[loop left] node {While marked expressions remain} (findmark);
-
-  % \draw (findmark)  edge[loop left] node {While marked expressions remain} (findmark);
-  % \draw (onebranch) edge[loop left] node {While branches remain} (onebranch);
-  % \Loop[label=\(While\, fields\, remain\), labelstyle={left=5pt}](prodmatch);
-  % \path (bodylam) edge [left] (onebranch);
-  % \path (bodylam) edge [loop above] node {test} (onebranch);
-  % \Loop[label=\(While\, remaining\, branches\, exist\), labelstyle={left=5pt}](onebranch)
-  % \draw [arrow] (bodylam) -- (onebranch);
-  % \draw [arrow] (bodylam.east) to  ++ (1.5,0) |- node[anchor=south] {While branches remain} (onebranch);
-  % \draw [arrow] (bodylam.east) to  ++ (1.5,0) |- node[anchor=south] {While branches remain} (onebranch);
-  % \Loop[label=\(While\, branches\, remain\), labelstyle={left=5pt}](onebranch);
-  % \Loop[label=\(While\, marked\, expressions\, remain\), labelstyle={left=5pt}](findmark);
-\end{tikzpicture}
-
 \clearpage
-\subsection{Syntactic Transformations of the Core Plugin}
+
+% \subsection{Syntactic Transformations of the Core Plugin}
 
 % \begin{todo}
 %   Should we use Oxford brackets here? Maybe a bit unusual, but we are operating syntactically and mapping from \ttt{a} to \ttt{E a} (could \ttt{E a} be considered an "intermediary" semantic domain?).
 % \end{todo}
 % \vspace*{-0.6cm}
 
+\begin{figure}[hp]
+  \centering
 \begin{align*}
   D&\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
       &\rewrites \begin{cases}
@@ -1462,17 +1409,12 @@ calls to \ttt{unrep :: E a -> a} are only used internally and will not exist in 
     \end{cases}
 \end{align*}
 
-\clearpage
+\captionsetup{justification=centering}
+\caption{Rewrite rules}
+\label{fig:Rewrites}
+\end{figure}
 
-Note that:
-\begin{itemize}
-  \item The tail recursion transformation given by $D$, $T'_{\ttt{f}}$ and $T_{\ttt{f}}$ is completely independent of the \ttt{E} type and the transformations associated to the \ttt{E} type. As a result, the tail recursion transformation can be used on its own.
-
-  \item The total number of marks introduced is upper bounded by the number of
-subexpressions in the original Core given to the transformation by GHC and each
-full transformation step (that is, $C$) eliminates one mark. Therefore, the
-transformation will terminate.
-\end{itemize}
+% \clearpage
 
 \clearpage
 \section{Related Work}
