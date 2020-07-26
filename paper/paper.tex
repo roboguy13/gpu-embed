@@ -728,17 +728,6 @@ church_mkPair
 church_mkPair x y = \ f -> f x y
 \end{lstlisting}
 
-with the eliminators
-
-\begin{lstlisting}
-church_fst :: ((a -> b -> a) -> r) -> r
-church_fst p = p (\ x y -> x)
-
-church_snd :: ((a -> b -> b) -> r) -> r
-church_snd p = p (\ x y -> y)
-\end{lstlisting}
-
-
 Coproducts can be represented with the constructors
 
 \begin{lstlisting}
@@ -749,14 +738,6 @@ church_mkLeft x = \ f g -> f x
 church_mkRight
   :: b -> (a -> r) -> (b -> r) -> r
 church_mkRight y = \ f g -> g y
-\end{lstlisting}
-
-and the eliminator
-
-\begin{lstlisting}
-church_eitherElim
-  :: ((a -> r) -> (b -> r) -> r) -> r
-church_eitherElim e = \ f g -> e f g
 \end{lstlisting}
 
 In this representation:
@@ -770,228 +751,55 @@ In this representation:
 \end{itemize}
 
 Both of those representations represent the type as a function that performs the
-corresponding case analysis. A deep embedding for the operations
-\ttt{church\_mkLeft} and \\ \ttt{church\_mkRight} would look
-like:
+corresponding case analysis. A deep embedding of the operations
+\ttt{churchMkPair}, \ttt{church\_mkLeft} and \ttt{church\_mkRight} is given
+by the type
 
 \begin{lstlisting}
-data ChurchCoproduct r where
-  Church_MkLeft
+data Church r where
+  ChurchPair
+    :: a -> b -> (a -> b -> r) ->
+       Church r
+  ChurchLeft
     :: a -> (a -> r) -> (b -> r) ->
-       ChurchCoproduct r
-  Church_MkRight
+       Church r
+  ChurchRight
     :: b -> (a -> r) -> (b -> r) ->
-       ChurchCoproduct r
-
-church_coproductEval
-  :: ChurchCoproduct r -> r
-church_coproductEval (Church_MkLeft x f g)
-  = f x
-church_coproductEval (Church_MkRight y f g)
-  = g y
+       Church r
 \end{lstlisting}
 
-If we factor out the data contained in these coproducts so that it is separated from the
-case analysis functions, we can obtain
+with the evaluation function
 
 \begin{lstlisting}
-data ChurchCoproductMatch t r where
-  ChurchCoproductMatch
-    :: (a -> r) -> (b -> r) ->
-       ChurchCoproductMatch (Either a b) r
-
-church_coproductMatchEval
-  :: Either a b ->
-     ChurchCoproductMatch (Either a b) r ->
-     r
-church_coproductMatchEval
-    (Left x)
-    (ChurchCoproductMatch f g)
-  = f x
-church_coproductMatchEval
-    (Right y)
-    (ChurchCoproductMatch f g)
-  = g y
+churchEval :: Church r -> r
+churchEval (ChurchPair x y f) = f x y
+churchEval (ChurchLeft x f g) = f x
+churchEval (ChurchRight y f g) = g y
 \end{lstlisting}
 
-
-Note that a value of type \ttt{ChurchCoproductMatch (Either a b) r} is very similar to
-a function from \ttt{Either a b} to \ttt{r}, with \ttt{church\_coproductMatchEval} allowing
-us to apply it to an argument. We can make this fact more explicit in the types with the
-change:
+However, we only want to keep track of the functions used for elimination. By moving
+the values actually being contained in the products and coproducts out to the
+evaluation function, we arrive at
 
 \begin{lstlisting}
-data ChurchCoproductMatch t where
-  ChurchCoproductMatch
-    :: (a -> r) -> (b -> r) ->
-       ChurchCoproductMatch
-          (Either a b -> r)
-
-church_coproductMatchEval
-  :: ChurchCoproductMatch (t -> r) ->
-     t -> r
-church_coproductMatchEval
-    (ChurchCoproductMatch f g)
-    (Left x)
-  = f x
-church_coproductMatchEval
-    (ChurchCoproductMatch f g)
-    (Right y)
-  = g y
-\end{lstlisting}
-
-The type signature of \ttt{church\_coProductMatchEval} can be rewritten in the same form as a
-typical deep embedding evaluation function by moving the second argument into the right-hand
-side of the definition:
-
-\begin{lstlisting}
-church_coproductMatchEval
-  :: ChurchCoproductMatch t -> t
-
-church_coproductMatchEval
-    (ChurchCoproductMatch f g)
-  = \ c ->
-      case c of
-        Left x  -> f x
-        Right y -> g y
-\end{lstlisting}
-
-An embedding for product matches can be similarly derived from the Church encoding for product
-types:
-
-\begin{lstlisting}
-data ChurchProductMatch t where
-  ChurchProductMatch
+data Church' t r where
+  ChurchPair'
     :: (a -> b -> r) ->
-       ChurchProductMatch ((a, b) -> r)
+       Church' (a, b) r
 
-church_productMatchEval
-  :: ChurchProductMatch t -> t
-
-church_productMatchEval
-    (ChurchProductMatch f)
-  = \ p ->
-      case p of
-        (x, y) -> f x y
-\end{lstlisting}
-
-As we will have another notion of function types embedded in our language, we define two
-types to distinguish between these. We define two of them so that we can also distinguish
-between coproduct matches and product matches.
-
-\begin{lstlisting}
-newtype CoproductMatch a r
-  = CoproductMatch (a -> r)
-
-newtype ProductMatch a r
-  = ProductMatch (a -> r)
-
-data ChurchCoproductMatch t where
-  ChurchCoproductMatch
+  ChurchEither'
     :: (a -> r) -> (b -> r) ->
-       ChurchCoproductMatch
-         (CoproductMatch (Either a b) r)
+       Church' (Either a b) r
 
-church_coproductMatchEval
-  :: ChurchCoproductMatch t -> t
-
-church_coproductMatchEval
-    (ChurchCoproductMatch f g)
-  = CoproductMatch (\ c ->
-      case c of
-        Left x  -> f x
-        Right y -> g y)
+churchEval' :: Church' t r -> t -> r
+churchEval' (ChurchPair' f) (x, y) = f x y
+churchEval' (ChurchEither' f g) e =
+  case e of
+    Left  x -> f x
+    Right y -> g y
 \end{lstlisting}
 
-The definition for product follows similarly, using \\ \ttt{ProductMatch}.
 
-Here we make the observation that algebraic datatypes are structured as coproducts of products. With
-this information in hand, we can combine \ttt{ChurchCoproductMatch} and \ttt{ChurchProductMatch}.
-
-\begin{lstlisting}
-newtype CoproductMatch a r
-  = CoproductMatch
-      { runCoproductMatch :: a -> r }
-
-newtype ProductMatch a r
-  = ProductMatch
-      { runProductMatch :: a -> r }
-
-data ChurchMatch t where
-  ChurchCoproductMatch
-    :: ChurchMatch (ProductMatch a r) ->
-       ChurchMatch (CoproductMatch b r) ->
-       ChurchMatch
-         (CoproductMatch (Either a b) r)
-
-  ChurchProductMatch
-    :: ChurchMatch (a -> ProductMatch b r)
-       -> ChurchMatch
-            (ProductMatch (a, b) r)
-
-  ChurchOneCoproductMatch
-    :: ChurchMatch (ProductMatch a r) ->
-       ChurchMatch (CoproductMatch a r)
-
-  ChurchOneProductMatch
-    :: (a -> r) ->
-       ChurchMatch (ProductMatch a r)
-
-  ChurchNullaryProductMatch
-    :: r -> ChurchMatch (ProductMatch a r)
-
-  ChurchLam
-    :: (a -> b) -> ChurchMatch (a -> b)
-
-church_matchEval :: ChurchMatch t -> t
-church_matchEval
-    (ChurchCoproductMatch f g) =
-  CoproductMatch (\ c ->
-    case c of
-      Left x  ->
-        runProductMatch
-          (church_matchEval f) x
-      Right y ->
-        runCoproductMatch
-          (church_matchEval g) y)
-
-church_matchEval
-    (ChurchProductMatch f) =
-  ProductMatch (\ p ->
-    case p of
-      (x, y) ->
-        runProductMatch
-          (church_matchEval f x) y)
-
-church_matchEval
-    (ChurchOneCoproductMatch f) =
-  CoproductMatch (\ x ->
-    runProductMatch
-      (church_matchEval f) x)
-
-church_matchEval
-    (ChurchOneProductMatch f) =
-  ProductMatch (\ x -> f x)
-
-church_matchEval
-    (ChurchNullaryProductMatch x) =
-  ProductMatch (\ _ -> x)
-
-church_matchEval
-    (ChurchLam f) = \ x -> f x
-\end{lstlisting}
-
-Comparing this back to our larger encoding, there is the correspondence: \\
-
-\begin{tabular}{|l|l|}
-  \hline
-  \ttt{ChurchCoproductMatch} & \ttt{SumMatchExp} \\
-  \ttt{ChurchProductMach} & \ttt{ProdMatchExp} \\
-  \ttt{CoproductMatch} & \ttt{SumMatch} \\
-  \ttt{ProductMatch} & \ttt{ProdMatch} \\
-  \ttt{ChurchLam} & \ttt{Lam} \\
-  \hline
-\end{tabular} \\
 
 \begin{todo}
   Figure out how recursive types fit into this framework. Church encodings can
