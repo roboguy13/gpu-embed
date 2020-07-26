@@ -61,11 +61,12 @@
 
 \newcommand{\ttt}{\texttt}
 
+\newcommand{\showtodos}{}  % Comment out to hide todos
+
 \newenvironment{todo}
-  {\begin{tcolorbox}
-   \textbf{TODO}:
-  }
-  {\end{tcolorbox}
+  {\ifthenelse{\isundefined{\showtodos}}{\comment}{\begin{tcolorbox}
+    \textbf{TODO}:}}
+  {\ifthenelse{\isundefined{\showtodos}}{\endcomment}{\end{tcolorbox}}
   }
 
 % \newenvironment<>{todo}[1][]{
