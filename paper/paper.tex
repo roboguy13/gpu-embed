@@ -945,11 +945,11 @@ sum type of the result type and a thunk with the code necessary to continue
 execution.~\cite{Ganz:99:Trampolined}
 
 In the technique presented here, we do not need to allocate thunks or closures.
-We actually do not to use higher-order functions at all in this tail recursion
+We actually do not need to use higher-order functions at all in this tail recursion
 representation.
 
-In the \ttt{E} type, this is used to represent tail recursion by
-the following constructors:
+In the \ttt{E} type of our DSL, these types of data structures are used to represent tail 
+recursion by using the following constructors.   
 
 \begin{lstlisting}
 data E t where
@@ -961,6 +961,54 @@ data E t where
                => E (b -> Iter a b)
                   -> E (b -> a)
   ...
+\end{lstlisting}
+
+The process of transforming a tail recursive function in the DSL to a 
+representation which could be passed into the C backend and used
+to generate a traditional iterative loop goes as follows.
+
+Starting with the tail recursive function  \ttt{isEven}:
+
+\begin{lstlisting}
+isEven :: Int -> Bool
+isEven x =
+    case x == 0 of
+      True -> True
+      False ->
+        case x == 1 of
+          True -> False
+          False -> isEven (x - 2)
+\end{lstlisting}
+
+We translate this to the expression language, and then apply two of
+the constructors we have defined.  The first of these is an initial 
+\ttt{DoneExp} which we then wrap with a \ttt{TailRec} to provide the
+representation of the iteration execution:
+
+\begin{lstlisting}
+isEven' :: E Int -> E (Int -> Bool)
+isEven' x =
+  TailRec ( DoneExp (
+    IfThenElseExp (Equal x (rep 0))
+      TrueExp
+      (IfThenElseExp (Equal x (rep 1))
+        FalseExp
+        (IsEven' (Sub x (rep 2))))
+\end{lstlisting}
+
+The transformation then proceeds by pushing the DoneExp constructor through
+the conditionals, and the recursive call is transformed into a StepExp constructor.
+This leaves us the the transformed example:
+
+\begin{lstlisting}
+isEven'' :: E Int -> E (Int -> Bool)
+isEven'' x =
+  TailRec (
+    IfThenElseExp (Equal x (rep 0))
+      (DoneExp TrueExp)
+      (IfThenElseExp (Equal x (rep 1))
+        (DoneExp FalseExp)
+        (StepExp (Sub x (rep 2))))
 \end{lstlisting}
 
 \section{Representing lambdas}
