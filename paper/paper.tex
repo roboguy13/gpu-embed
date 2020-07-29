@@ -714,10 +714,10 @@ newtype ProdMatch a b =
 \end{lstlisting}
 
 \subsection{Connection to Church encodings}
-\begin{todo}
-  Work on this subsection. Maybe this shouldn't be a separate section at all and
-  maybe its contents should be incorporated throughout the rest of the paper.
-\end{todo}
+% \begin{todo}
+%   Work on this subsection. Maybe this shouldn't be a separate section at all and
+%   maybe its contents should be incorporated throughout the rest of the paper.
+% \end{todo}
 
 Algebraic datatypes can be represented as lambda calculus terms using
 \textit{Church encodings}. For example, the pair constructor can be
@@ -800,6 +800,19 @@ churchEval' (ChurchEither' f g) e =
     Right y -> g y
 \end{lstlisting}
 
+The \verb|Church'| type forms a large part of the foundation of the pattern
+matching aspect of the \verb|E| type. A correspondence between the two
+is given in the table below.\\
+
+{\small
+\noindent\begin{tabular}{|p{3.4cm}|p{4.4cm}|}
+  \hline
+  \ttt{Church' (a, b) r} & \ttt{E (SumMatch (a, b) r} \\
+  \hline
+  \ttt{Church' (Either a b) r} & \ttt{E (ProdMatch (Either a b) r)}\\
+  \hline
+\end{tabular}
+}
 
 
 \begin{todo}
