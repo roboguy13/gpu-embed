@@ -973,43 +973,70 @@ Starting with the tail recursive function  \ttt{isEven}:
 \begin{lstlisting}
 isEven :: Int -> Bool
 isEven x =
+  internalize (externalize (
     case x == 0 of
       True -> True
       False ->
         case x == 1 of
           True -> False
-          False -> isEven (x - 2)
+          False -> isEven (x - 2)))
 \end{lstlisting}
 
-We translate this to the expression language, and then apply two of
-the constructors we have defined.  The first of these is an initial 
-\ttt{DoneExp} which we then wrap with a \ttt{TailRec} to provide the
-representation of the iteration execution:
+% We translate this to the expression language, and then apply two of
+% the constructors we have defined.  The first of these is an initial 
+% \ttt{Done} which we then wrap with a \ttt{runIter} to provide the
+% representation of the iteration execution.
+% The transformation then proceeds by pushing the DoneExp constructor through
+% the conditionals, and the recursive call is transformed into a StepExp constructor.
+% This leaves us the the transformed example:
+
+We first translate this to use the \verb|Iter| type. The lambda is brought
+inside of the \ttt{internalize (externalize ...)} call and wrapped in a call to
+\ttt{runIter}. This inner expression is then eta expanded. Finally, each \verb|case|
+branch which does not contain a recursive call is wrapped in a \verb|Done| and
+every recursive call is substitute for an application of the \verb|Step| constructor.
+
+In the following code, \verb|eta| is a fresh variable.
 
 \begin{lstlisting}
-isEven' :: E Int -> E (Int -> Bool)
-isEven' x =
-  TailRec ( DoneExp (
-    IfThenElseExp (Equal x (rep 0))
-      TrueExp
-      (IfThenElseExp (Equal x (rep 1))
-        FalseExp
-        (isEven' (Sub x (rep 2))))
+isEven' :: Int -> Bool
+isEven' =
+  internalize (externalize
+    (\ eta ->
+      runIter (
+        \ x ->
+          case x == 0 of
+            True -> Done True
+            False ->
+              case x == 1 of
+                True -> Done False
+                False -> Step (x - 2))
+        eta))
 \end{lstlisting}
 
-The transformation then proceeds by pushing the DoneExp constructor through
-the conditionals, and the recursive call is transformed into a StepExp constructor.
-This leaves us the the transformed example:
+After this initial tail recursion transformation, the rest of the plugin brings this
+result into the expression language. \verb|TailRec| is substituted for \verb|runIter|,
+\verb|DoneExp| is substituted for \verb|Done| and \verb|StepExp| is substituted for \verb|Step|.
+Next, the pattern matching transformation occurs, producing the final result:
+
+\break
 
 \begin{lstlisting}
-isEven'' :: E Int -> E (Int -> Bool)
-isEven'' x =
-  TailRec (
-    IfThenElseExp (Equal x (rep 0))
-      (DoneExp TrueExp)
-      (IfThenElseExp (Equal x (rep 1))
-        (DoneExp FalseExp)
-        (StepExp (Sub x (rep 2))))
+isEven'' :: Int -> Bool
+isEven'' =
+  internalize (
+    (Lam (Var 1)
+      (App
+        (TailRec (Lam (Var 2)
+          (IfThenElseExp (Equal (Var 2)
+                                (rep 0))
+            (DoneExp TrueExp)
+            (IfThenElseExp (Equal (Var 1)
+                                  (rep 1))
+              (DoneExp FalseExp)
+              (StepExp (Sub (Var 2)
+                            (rep 2)))))))
+        (Var 1))))
 \end{lstlisting}
 
 \section{Representing lambdas}
