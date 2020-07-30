@@ -1143,7 +1143,7 @@ prodMatchAbs :: (ERep s)
 ...
 \end{lstlisting}
 
-See Appendix A for more implementation details of \ttt{absEnv}.
+See Appendix A for implementation details of \ttt{absEnv}.
 
 
 \section{C Backend}
@@ -1195,6 +1195,31 @@ in the EDSL to be brought over to the generated C code. In our implementation, t
 used to distinguish between pairs of \ttt{Double}s and \ttt{Complex Double} values. In the
 case of a \ttt{Complex Double}, the \ttt{var\_t} would have a \ttt{tag} field with the value
 \ttt{EXPR\_PAIR} and a \ttt{semantic\_tag} field with the value \ttt{EXPR\_COMPLEX}.
+
+A C code generation function \ttt{genC} is implemented
+
+\begin{lstlisting}
+genC :: E a -> String
+...
+\end{lstlisting}
+
+To use this, for example, with the previously mentioned \ttt{isEven} implementation we
+can write:
+
+\begin{lstlisting}
+isEvenE :: E (Int -> Bool)
+isEvenE =
+  externalize (
+    case x == 0 of
+      True -> True
+      False ->
+        case x == 1 of
+          True -> False
+          False -> isEvenE (x - 2))
+
+isEvenC :: String
+isEvenC = genC isEvenE
+\end{lstlisting}
 
 \section{Core Plugin}
 
