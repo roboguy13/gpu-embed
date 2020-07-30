@@ -373,9 +373,10 @@ data constructors of this type will be described incrementally as they
 are needed.
 
 \subsection{Translation Example}
-\begin{todo}
-  Does it make sense for this to be a subsection of the intro?
-\end{todo}
+
+% \begin{todo}
+%   Does it make sense for this to be a subsection of the intro?
+% \end{todo}
 
 In the example below, the Core plugin transforms \ttt{example} into \ttt{example'}:
 \begin{lstlisting}[deletekeywords={Ord}]
@@ -406,9 +407,9 @@ example' =
 
 \section{Representing Algebraic Datatypes}
 
-\begin{todo}
-  Look into \ttt{generic-sop} and compare then cite corresponding paper.
-\end{todo}
+% \begin{todo}
+%   Look into \ttt{generic-sop} and compare then cite corresponding paper.
+% \end{todo}
 
 Briefly, a algebraic type \ttt{T} with an automatically generated \ttt{ERep}
 instance is given a representation in terms of \ttt{Either}, \ttt{(,)}, \ttt{()}
@@ -617,14 +618,14 @@ data E t where
 
 The equality constraint ensures that a canonical type is its own canonical type.
 
-\begin{todo}
-  Should we make a synonym for this constraint since it is used in
-multiple places? Like this:
-\begin{lstlisting}
-type CanonicalIsIdem t =
-  ERepTy (ERepTy t) ~ ERepTy t
-\end{lstlisting}
-\end{todo}
+% \begin{todo}
+%   Should we make a synonym for this constraint since it is used in
+% multiple places? Like this:
+% \begin{lstlisting}
+% type CanonicalIsIdem t =
+%   ERepTy (ERepTy t) ~ ERepTy t
+% \end{lstlisting}
+% \end{todo}
 
 (The above code block is a slight simplification of the actual implementation,
 which has an additional type variable which is used at an "intermediate" point.
@@ -801,7 +802,7 @@ churchEval' (ChurchEither' f g) e =
 \end{lstlisting}
 
 The \verb|Church'| type forms a large part of the foundation of the pattern
-matching aspect of the \verb|E| type. A correspondence between the two
+matching aspect of the \verb|E| type. A rough correspondence between the two
 is given in the table below.\\
 
 {\small
@@ -1288,9 +1289,10 @@ transformation will terminate.
 
 \clearpage
 \section{Related Work}
-\begin{todo}
-  Does this need more fleshing out?
-\end{todo}
+
+% \begin{todo}
+%   Does this need more fleshing out?
+% \end{todo}
 
 A similar EDSL-oriented representation of pattern matching is given in
 ~\cite[Section~3.3]{Atkey:09:Unembedding}. In that paper, patterns were given their own
@@ -1412,7 +1414,8 @@ stmt = (<> ";")
 
 cCall :: CName -> [CCode] -> CCode
 cCall fnName args =
-  fnName <> "(" <> intercalate ", " args <> ")"
+  fnName
+  <> "(" <> intercalate ", " args <> ")"
 
 derefPtr :: CCode -> CCode
 derefPtr x = "*(" <> x <> ")"
@@ -1422,7 +1425,8 @@ cCast toType x =
   "((" <> toType <> ")" <> x <> ")"
 
 cIndex :: CCode -> Int -> CCode
-cIndex x i = "(" <> x <> ")[" <> show i <> "]"
+cIndex x i =
+  "(" <> x <> ")[" <> show i <> "]"
 
 (!) :: CCode -> Int -> CCode
 (!) = cIndex
@@ -1436,7 +1440,9 @@ cDecl cType v = stmt (cType <> " " <> v)
 (#) :: CCode -> CName -> CCode
 x # fieldName = x <> "." <> fieldName
 
-macroDef :: CName -> [CName] -> [CCode] -> CCode
+macroDef
+  :: CName -> [CName] -> [CCode]
+     -> CCode
 macroDef name args theLines =
   unlines
     [ "#define " <> name
