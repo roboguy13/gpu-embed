@@ -471,7 +471,7 @@ realSum p =
                 a_real + b_real))
 \end{lstlisting}
 
-Note that the above pattern matches can be written as a single nested pattern
+The above pattern matches could also be written as a single nested pattern
 match. Both forms compile down to the same Core representation.
 
 An additional benefit of this is that recursive types require no special handling. For
@@ -684,7 +684,7 @@ Note the \ttt{ERepTy a \typeeq a} constraints. This constraint ensures that the 
 \subsection{\ttt{E (ProdMatch s t)}}
 
 \ttt{E (ProdMatch x y)} is equivalent to a curried function from \ttt{x} to
-\ttt{y} in the expression language .  Note that \ttt{s} is a (potentially
+\ttt{y} in the expression language.  \ttt{s} is a (potentially
 nested) pair type. For example, \ttt{E (ProdMatch (a, (b, c)) r)} is
 equivalent to \ttt{E (a -> E (b -> E (c -> E r)))}.
 
