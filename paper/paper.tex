@@ -993,7 +993,7 @@ isEven' x =
       TrueExp
       (IfThenElseExp (Equal x (rep 1))
         FalseExp
-        (IsEven' (Sub x (rep 2))))
+        (isEven' (Sub x (rep 2))))
 \end{lstlisting}
 
 The transformation then proceeds by pushing the DoneExp constructor through
