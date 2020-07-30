@@ -305,20 +305,20 @@ easier to also reify lambdas using the dummy argument technique described in~\ci
 The following contributions are made by this paper:
 
 \begin{itemize}
-\item A representation of pattern matching in a Haskell EDSL (Section 3)
-\item A representation of lambdas (Section 5) in the EDSL, taking advantage of
+  \item A representation of pattern matching in a Haskell EDSL (Section~\ref{sec:PatRep})
+  \item A representation of lambdas (Section~\ref{sec:LamRep}) in the EDSL, taking advantage of
   the fact that both pattern matching and tail recursion are already captured in
   the EDSL.
 \item A GHC Core plugin which transforms a subset of standard Haskell code
   into this EDSL for pattern matching, extended with tail recursion,
-  lambdas and primitive operations (Section 8)
-\item An implementation of a interpreter for the "standard" semantics of the EDSL (Section 6).
-\item An outline of a C backend for this EDSL (Section 7).
+  lambdas and primitive operations (Section~\ref{sec:CorePlugin})
+\item An implementation of a interpreter for the "standard" semantics of the EDSL (Section~\ref{sec:StdSemantics}).
+\item An outline of a C backend for this EDSL (Section~\ref{sec:CBackend}).
 \end{itemize}
 
 Readers who are primarily interested only in the encoding of pattern matching itself can direct
-most of their attention to Sections 2, 3 and 6. Most of the technical aspects of
-the transformation performed by the Core plugin are described in Section 8.
+most of their attention to Sections~\ref{sec:ADTRep},~\ref{sec:PatRep} and~\ref{sec:StdSemantics}. Most of the technical aspects of
+the transformation performed by the Core plugin are described in Section~\ref{sec:CorePlugin}.
 
 \subsection{Motivation}
 
@@ -406,6 +406,7 @@ example' =
 \end{lstlisting}
 
 \section{Representing Algebraic Datatypes}
+\label{sec:ADTRep}
 
 % \begin{todo}
 %   Look into \ttt{generic-sop} and compare then cite corresponding paper.
@@ -520,7 +521,7 @@ family associated to the \ttt{ERep} type class, which represents a "canonical fo
 of the given type. This canonical form can be immediately constructed in the EDSL.
 Canonical form types crucially include \ttt{Either} and \ttt{(,)}, which
 allow all combinations of basic sum types and product types to be encoded, in the
-manner described at the beginning of Section 2.
+manner described at the beginning of Section~\ref{sec:ADTRep}.
 
 With GHC Generics, any data type \ttt{T} with a \ttt{Generic} instance has a
 corresponding \ttt{Rep T} type, which gives a generic representation of \ttt{T}.
@@ -601,6 +602,7 @@ instance (ERep a, ERep b)
 
 
 \section{Representing pattern matches}
+\label{sec:PatRep}
 
 Within the \ttt{E} expression language, a pattern match is represented by the
 \ttt{CaseExp} constructor:
@@ -842,6 +844,7 @@ is given in the table below.\\
 % \end{todo}
 
 \subsection{An aside on \ttt{ProdMatch} and \ttt{SumMatch} values}
+\label{sec:MatchAside}
 
 Though \ttt{ProdMatch} and \ttt{SumMatch} are used throughout this EDSL as type
 tags, they do have values and they are not trivial values. The reason for this
@@ -1040,6 +1043,8 @@ isEven'' =
 \end{lstlisting}
 
 \section{Representing lambdas}
+\label{sec:LamRep}
+
 This representation of pattern matching depends on the ability to bring
 function values into the expression language. This is accomplished
 with the following constructors:
@@ -1116,12 +1121,13 @@ envLookup (Env maps) = go maps
 
 
 \section{Recovering standard semantics for pattern matches}
+\label{sec:StdSemantics}
 
 The standard semantics for the EDSL is given by \ttt{abs}. Two helper
 functions, \ttt{sumMatchAbs} and \ttt{prodMatchAbs}, are used to provide
 the standard semantics for matches on sum types and matches on product
 types, respectively. These helper functions are based on the mechanism
-described in section 3.4.
+described in Section~\ref{sec:MatchAside}.
 
 \begin{lstlisting}
 abs :: forall t. E t -> t
@@ -1147,6 +1153,8 @@ See Appendix A for implementation details of \ttt{absEnv}.
 
 
 \section{C Backend}
+\label{sec:CBackend}
+
 \begin{todo}
   Should this section be expanded?
 \end{todo}
@@ -1222,6 +1230,7 @@ isEvenC = genC isEvenE
 \end{lstlisting}
 
 \section{Core Plugin}
+\label{sec:CorePlugin}
 
 The Core plugin translates marked expressions. Expressions are marked by
 the \ttt{externalize} function:
@@ -1234,7 +1243,7 @@ For example, \ttt{externalize x} marks the expression \ttt{x}.
 
 If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \ttt{a}), then the marking procedure ignores it and does not wrap it with
-\ttt{externalize} (see $M$ in Section 8.2).
+\ttt{externalize} (see $M$ in Figure~\ref{fig:Rewrites}).
 
 In the flowchart given in Figure~\ref{fig:CorePlugin}, the names in parentheses in a node refers
 to the names of transformations given in the rewrite rules in Figure~\ref{fig:Rewrites}. Calls
@@ -1395,7 +1404,7 @@ Elliott developed GHC plugins~\cite{github:lambda-ccc}\cite{github:reification-r
 for compiling Haskell to hardware~\cite{github:Elliott:Talk:2015},
 using worker-wrapper style transformations~\cite{Gill:09:WW}
 equivalent to the \verb|abs| and
-\verb|rep| transformations described in Section \ref{sec:Overview}. These plugins were later generalized to enable additional interpretations~\cite{Elliott:2017}.
+\verb|rep| transformations described in Section~\ref{sec:Overview}. These plugins were later generalized to enable additional interpretations~\cite{Elliott:2017}.
 
 % \section{Citations and Bibliographies}
 
