@@ -562,7 +562,6 @@ class Typeable t => ERep t where
   type ERepTy t
 
   construct :: t -> E (ERepTy t)
-
   rep :: t -> E t
 
   default rep ::
@@ -572,7 +571,6 @@ class Typeable t => ERep t where
   {-# INLINABLE rep #-}
 
   unrep' :: ERepTy t -> t
-
   rep' :: t -> ERepTy t
 \end{lstlisting}
 
@@ -586,7 +584,6 @@ instance (ERep a, ERep b)
 
   rep (Left x)  = LeftExp (rep x)
   rep (Right y) = RightExp (rep y)
-
   unrep' = id
   rep'   = id
 
@@ -1204,7 +1201,7 @@ used to distinguish between pairs of \ttt{Double}s and \ttt{Complex Double} valu
 case of a \ttt{Complex Double}, the \ttt{var\_t} would have a \ttt{tag} field with the value
 \ttt{EXPR\_PAIR} and a \ttt{semantic\_tag} field with the value \ttt{EXPR\_COMPLEX}.
 
-A C code generation function \ttt{genC} is implemented
+A C code generation function \ttt{genC} is implemented:
 
 \begin{lstlisting}
 genC :: E a -> String
