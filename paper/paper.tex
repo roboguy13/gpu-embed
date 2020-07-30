@@ -341,7 +341,7 @@ allow these advantages to be brought to problem domains where it is currently
 either difficult or impossible to use a language that has these benefits.
 
 \begin{todo}
-  Cite examples where Haskell implementations have been derived specifications.  Conal Elliott's latest two papers (as of May 2020), \cite{Elliott-2018-ad-icfp} and \cite{Elliott2019-convolution-extended}, would be good examples of this. (This is now cited)
+  % Cite examples where Haskell implementations have been derived specifications.  Conal Elliott's latest two papers (as of May 2020), \cite{Elliott-2018-ad-icfp} and \cite{Elliott2019-convolution-extended}, would be good examples of this. (This is now cited)
 
   A paper which describes a Haskell implementation derived from an operational
   semantics would also be a good example.
@@ -816,17 +816,17 @@ is given in the table below.\\
 }
 
 
-\begin{todo}
-  Figure out how recursive types fit into this framework. Church encodings can
-  handle recursive types and so can our representation. This is also the case
-  for Scott encodings, etc, and is the difference between Church and Scott
-  encodings.
+% \begin{todo}
+%   Figure out how recursive types fit into this framework. Church encodings can
+%   handle recursive types and so can our representation. This is also the case
+%   for Scott encodings, etc, and is the difference between Church and Scott
+%   encodings.
 
-  Does our way of handling recursive types correspond to how any of
-  those encodings handle recursive types?
+%   Does our way of handling recursive types correspond to how any of
+%   those encodings handle recursive types?
 
-  Maybe this is relevant: \href{https://www.reddit.com/r/haskell/comments/hvlh6a/generalized_church_encoding_is_the_curryhoward_of/}{\color{blue}{Generalized Church encoding is the Curry-Howard of Knaster-Tarski}}
-\end{todo}
+%   Maybe this is relevant: \href{https://www.reddit.com/r/haskell/comments/hvlh6a/generalized_church_encoding_is_the_curryhoward_of/}{\color{blue}{Generalized Church encoding is the Curry-Howard of Knaster-Tarski}}
+% \end{todo}
 
 % \begin{lstlisting}
 % data ChurchMatch t where
@@ -917,28 +917,28 @@ runIter f = go
         Step x' -> go x'
 \end{lstlisting}
 
-\begin{todo}
-  \ttt{runIter} has the following alternate implementation. Would this be
-  useful to use somewhere?
+% \begin{todo}
+%   \ttt{runIter} has the following alternate implementation. Would this be
+%   useful to use somewhere?
 
-  \begin{lstlisting}[otherkeywords={}]
-  runIter f = getDone . fix (f >=>)
+%   \begin{lstlisting}[otherkeywords={}]
+%   runIter f = getDone . fix (f >=>)
 
-  getDone :: Iter b a -> b
-  getDone (Done x) = x
-  getDone _ = error "getDone"
-  \end{lstlisting}
+%   getDone :: Iter b a -> b
+%   getDone (Done x) = x
+%   getDone _ = error "getDone"
+%   \end{lstlisting}
 
-  where \verb|Iter| is given a standard \verb|Monad| instance (essentially the
-  same as the \verb|Either| \verb|Monad| instance). \\
+%   where \verb|Iter| is given a standard \verb|Monad| instance (essentially the
+%   same as the \verb|Either| \verb|Monad| instance). \\
 
 
-  Maybe this could be useful in some proofs or derivations somewhere (in this
-  paper or elsewhere)?
+%   Maybe this could be useful in some proofs or derivations somewhere (in this
+%   paper or elsewhere)?
 
-  Note that \verb|error| is never called under any circumstance in this
-  implementation of \verb|runIter|.
-\end{todo}
+%   Note that \verb|error| is never called under any circumstance in this
+%   implementation of \verb|runIter|.
+% \end{todo}
 
 This technique can be contrasted with the more traditional trampolining
 technique for implementing tail recursion. Conventional trampolining uses a
@@ -1352,7 +1352,7 @@ equivalent to the \verb|abs| and
 
 \appendix
 \section{Additional Code for Standard Haskell Semantics Implementation}
-\begin{lstlisting}
+\begin{lstlisting}[basicstyle=\tiny]
 absEnv :: forall t. Env -> E t -> t
 absEnv env (CaseExp x f) =
   sumMatchAbs f (absEnv env x)
@@ -1404,8 +1404,10 @@ absEnv env (ConstructRep x) =
 ...
 \end{lstlisting}
 
+\vfill\break
+
 \section{A small EDSL for C code generation used internally by the C backend}
-\begin{lstlisting}
+\begin{lstlisting}[basicstyle=\tiny]
 type CCode = String
 type CName = String
 
