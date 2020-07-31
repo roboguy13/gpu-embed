@@ -608,7 +608,8 @@ Within the \ttt{E} expression language, a pattern match is represented by the
 data E t where
   ...
   CaseExp ::
-    (ERep t, ERepTy (ERepTy t) ~ ERepTy t)
+    (ERep t,
+     ERepTy (ERepTy t) ~ ERepTy t)
       => ERep t
          -> E (SumMatch (ERepTy t) r)
          -> E r
@@ -656,6 +657,7 @@ exactly to one branch in the original \ttt{case} match.
 The following constructors generate \ttt{SumMatch}-tagged values in the
 expression language:
 
+\newpage
 \begin{lstlisting}
 data E t where
   ...
@@ -976,8 +978,7 @@ isEven x =
   internalize (externalize (
     case x == 0 of
       True -> True
-      False ->
-        case x == 1 of
+      False -> case x == 1 of
           True -> False
           False -> isEven (x - 2)))
 \end{lstlisting}
@@ -1007,8 +1008,7 @@ isEven' =
         \ x ->
           case x == 0 of
             True -> Done True
-            False ->
-              case x == 1 of
+            False -> case x == 1 of
                 True -> Done False
                 False -> Step (x - 2))
         eta))
@@ -1068,7 +1068,9 @@ newtype Name a = Name Int
 
 namesEq :: forall a b.
   (Typeable a, Typeable b)
-    => Name a -> Name b -> Maybe (a :~: b)
+   => Name a
+   -> Name b
+   -> Maybe (a :~: b)
 namesEq (Name n) (Name n') =
   case eqT :: Maybe (a :~: b) of
     Just Refl
@@ -1094,7 +1096,7 @@ This type encodes a single variable binding, with values of the form
 \ttt{n :=> v}, where \ttt{n} is a typed name and \ttt{v} is the value it is bound to.
 
 These bindings are grouped together in the \ttt{Env} type:
-
+\newpage
 \begin{lstlisting}
 newtype Env = Env [EnvMapping]
 
@@ -1149,12 +1151,13 @@ prodMatchAbs :: (ERep s)
 See Appendix A for implementation details of \ttt{absEnv}.
 
 
+\newpage
 \section{C Backend}
 \label{sec:CBackend}
 
-\begin{todo}
+\begin{todont}
   Should this section be expanded?
-\end{todo}
+\end{todont}
 
 The C backend makes use of a small EDSL for generating C code. See
 Appendix B for implementation details of this ESDL.
@@ -1210,7 +1213,7 @@ genC :: E a -> String
 
 To use this, for example, with the previously mentioned \ttt{isEven} implementation we
 can write:
-
+\newpage
 \begin{lstlisting}
 isEvenE :: E (Int -> Bool)
 isEvenE =
