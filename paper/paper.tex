@@ -1350,6 +1350,10 @@ transformation will terminate.
 %   Does this need more fleshing out?
 % \end{todo}
 
+The basis of deep embeddings in functional languages is well understood.
+\cite{Elliott:03:CompileDSEL-JFP} explains the basic idea, and \cite{Gill:2014:DSLSynth}
+gives an acceessable and more recent account of the area.
+
 A similar EDSL-oriented representation of pattern matching is given in
 ~\cite[Section~3.3]{Atkey:09:Unembedding}. In that paper, patterns were given their own
 representation which allows for compound patterns. This is useful in the context
@@ -1363,8 +1367,8 @@ the representation-level.
 There is other recent work using deep embeddings in functional languages for 
 system development.  One example is the Ivory language \cite{Elliott2015-Ivory} 
 which provides a deeply embedded DSL for use in programming high assurance
-systems,  However, it's syntax is typical of a deep EDSL and requires additional 
-keywords and structures above idiomatic Haskell.
+systems,  However, it's syntax is typical of a deep EDSL and requires additional
+keywords and structures above idiomatic Haskell. 
 
 The Feldspar project~\cite{Axelsson:10:Feldspar,Svenningsson:13:Combining}
 is a Haskell embedding of a monadic interface
