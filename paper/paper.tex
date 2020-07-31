@@ -1279,7 +1279,8 @@ transformation will terminate.
 \begin{align*}
   D&\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
       &\rewrites \begin{cases}
-        \ttt{f = internalize $C^{*}\expr{\ttt{externalize (runIter ($\lambda \ttt{x} \rarr \ttt{case s of \{ $T'_{\ttt{f}}\exprdots$}$ \}))}}$} & \text{if \ttt{f} occurs free in \ttt{\{ ... \}}}\\
+        \ttt{f = internalize $C^{*}\expr{\ttt{externalize ($\lambda \eta \rarr$ runIter ($\lambda \ttt{x} \rarr \ttt{case s of \{ $T'_{\ttt{f}}\exprdots$}$ \}) $\eta$)}}$} & \text{\parbox{2.5cm}{if \ttt{f} occurs free in \ttt{\{ ... \}}, where $\eta$ is a fresh name}}\\
+        \\
         \ttt{f x = internalize $C^{*}\expr{\ttt{externalize (case s of \{ ... \})}}$} & \text{otherwise}
       \end{cases}
 \end{align*}
