@@ -1279,40 +1279,37 @@ transformation will terminate.
 \begin{figure}[hp]
   \centering
 \begin{align*}
-  D&\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
-      &\rewrites \begin{cases}
-        \ttt{f = internalize $C^{*}\expr{\ttt{externalize ($\lambda \eta \rarr$ runIter ($\lambda \ttt{x} \rarr \ttt{case s of \{ $T'_{\ttt{f}}\exprdots$}$ \}) $\eta$)}}$} & \text{\parbox{2.5cm}{if \ttt{f} occurs free in \ttt{\{ ... \}}, where $\eta$ is a fresh name}}\\
+  &D\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}
+      \rewrites I(D(\ttt{f x = externalize (case s of \{ ... \})}))\\
+  &D\expr{\ttt{f x = externalize (case s of \{ ... \})}}\\
+      &\quad\rewrites \begin{cases}
+        \ttt{f = $C^{*}\expr{\ttt{externalize ($\lambda \eta \rarr$ runIter ($\lambda \ttt{x} \rarr \ttt{case s of \{ $T'_{\ttt{f}}\exprdots$}$ \}) $\eta$)}}$} & \text{\parbox{5cm}{if \ttt{f} occurs free in \ttt{\{ ... \}}, where $\eta$ is a fresh name}}\\
         \\
-        \ttt{f x = internalize $C^{*}\expr{\ttt{externalize (case s of \{ ... \})}}$} & \text{otherwise}
-      \end{cases}
-\end{align*}
-
-\begin{align*}
-  T'_{\ttt{f}}&\expr{\ttt{K x0 ...$_U$ xN $\rarr$ case s of \{ ...$_V$ \}; ...$_W$}}\\
-    &\rewrites
+        \ttt{f x = $C^{*}\expr{\ttt{externalize (case s of \{ ... \})}}$} & \text{otherwise}
+      \end{cases}\\
+  &I\expr{\ttt{f x = externalize e}} \rewrites \ttt{f x = internalize (externalize e)}\\
+  &I\expr{\ttt{f = externalize e}} \rewrites \ttt{f = internalize (externalize e)}\\
+  &T'_{\ttt{f}}\expr{\ttt{K x0 ...$_U$ xN $\rarr$ case s of \{ ...$_V$ \}; ...$_W$}}\\
+    &\quad\rewrites
         \ttt{K x0 ...$_U$ xN $\rarr$ $T_{\ttt{f}}\expr{\ttt{case s of \{ ...$_V$ \}}}$; $T'_{\ttt{f}}\expr{\ttt{ ...$_W$ }}$}\\
-  T'_{\ttt{f}}&\expr{\ttt{K x0 ...$_U$ xN $\rarr$ body0; ...$_V$ }}\\
-    &\rewrites
+  &T'_{\ttt{f}}\expr{\ttt{K x0 ...$_U$ xN $\rarr$ body0; ...$_V$ }}\\
+    &\quad\rewrites
       \begin{cases}
         \ttt{K x0 ...$_U$ xN $\rarr$ body0}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T'_{\ttt{f}}\expr{\ttt{ ...$_V$ }} & \text{if \ttt{f} occurs free in \ttt{body0}}\\
         \ttt{K x0 ...$_U$ xN $\rarr$ Done body0; $T'_{\ttt{f}}\expr{\ttt{ ...$_V$ }}$} & \text{otherwise}
       \end{cases}\\
-  T'_{\ttt{f}}&\expr{\varepsilon} \rewrites \varepsilon\;\;\; \text{(Note: $\varepsilon$ represents the empty string)}\\
-  T_{\ttt{f}}&\expr{\ttt{case s of \{ ... \}}}\\
-    &\rewrites
+  &T'_{\ttt{f}}\expr{\varepsilon} \rewrites \varepsilon\;\;\; \text{(Note: $\varepsilon$ represents the empty string)}\\
+  &T_{\ttt{f}}\expr{\ttt{case s of \{ ... \}}}\\
+    &\quad\rewrites
       \begin{cases}
         \ttt{case s of \{ $T'_{\ttt{f}}\expr{\ttt{ ... }}$ \}} & \text{if \ttt{f} occurs free in \ttt{\{ ... \}}}\\
         \ttt{Done (case s of \{ ... \})} & \text{otherwise}
-      \end{cases}
-\end{align*}
-\begin{align*}
+      \end{cases}\\
   &C^{*}\expr{\ttt{x}} \rewrites
     \begin{cases}
       \ttt{x} & \text{if \ttt{x} has no subexpressions marked with \ttt{externalize}}\\
       C^{*}\expr{C\expr{\ttt{y}}} & \text{if \ttt{externalize y} is the first marked subexpression of \ttt{x}}\\
     \end{cases}\\
-\end{align*}
-\begin{align*}
   &C\expr{\ttt{runIter x}} \rewrites \ttt{TailRec $M\expr{\ttt{x}}$}\\
   &C\expr{\ttt{x + y}} \rewrites \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
   &C\expr{\ttt{case scrutinee of \{ ... \}}} \rewrites \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{ ... }}\\
@@ -1321,18 +1318,14 @@ transformation will terminate.
   &C\expr{\ttt{f x}} \rewrites \ttt{App $M\expr{f}$ $M\expr{x}$}\\
   % &C\expr{\ttt{f x}} \rewrites \ttt{ConstructAp $M\expr{\ttt{f}}$ $M\expr{\ttt{x}}$}\;\;\;\;\text{(Where \ttt{f} is not a primitive or an application of a primitive)}\\
   % &C\expr{\ttt{x}} \rewrites \ttt{Construct x}\;\;\;\;\text{(Where \ttt{x} is a variable which is not a primitive)}\\
-  &\\
   &B\expr{\ttt{K x0 ...$_U$ xN $\rarr$ body0; ...$_V$}} \rewrites \ttt{SumMatchExp }P\expr{\ttt{x0 ...$_U$ xN $\rarr$ body0}}\; B\expr{\ttt{ ...$_V$ }}\\
   &B\expr{\ttt{K x0 ... xN $\rarr$ body}} \rewrites \ttt{OneSumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body}}\\
   &B\expr{\ttt{$\varepsilon$}} \rewrites \ttt{EmptyMatch}\\
-  &\\
   &P\expr{\ttt{x0 x1 ... xN $\rarr$ body}} \rewrites \ttt{ProdMatchExp }A\expr{\ttt{$\lambda$ x0 $\rarr$ $P\expr{\ttt{x1 ... xN $\rarr$ body}}$}}\\
   &P\expr{\ttt{x $\rarr$ body}} \rewrites \ttt{OneProdMatchExp }A\expr{\ttt{$\lambda$ x $\rarr$ body}}\\
   &P\expr{\ttt{ $\rarr$ body}} \rewrites \ttt{NullaryMatch $M\expr{\ttt{body}}$}\\
-  &\\
   &A\expr{\ttt{$\lambda$(x :: a) $\rarr$ body}} \rewrites \ttt{Lam (Name @a uniq) $M\expr{\ttt{body$[\ttt{x} \mapsto \ttt{unrep (Var @a uniq)}]$}}$}\\
   &\text{\;\;\;\;\;(where \ttt{uniq} is a globally unique identifier)}\\
-  &\\
   &M\expr{\ttt{unrep x}} \rewrites \ttt{x}\\
   &M\expr{\ttt{x :: a}} \rewrites
     \begin{cases}
