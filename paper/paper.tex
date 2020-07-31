@@ -1310,7 +1310,7 @@ transformation will terminate.
       \ttt{x} & \text{if \ttt{x} has no subexpressions marked with \ttt{externalize}}\\
       C^{*}\expr{C\expr{\ttt{y}}} & \text{if \ttt{externalize y} is the first marked subexpression of \ttt{x}}\\
     \end{cases}\\
-  &C\expr{\ttt{runIter x}} \rewrites \ttt{TailRec $M\expr{\ttt{x}}$}\\
+  &C\expr{\ttt{runIter f x}} \rewrites \ttt{App (TailRec $M\expr{\ttt{f}}$) $M\expr{\ttt{x}}$}\\
   &C\expr{\ttt{x + y}} \rewrites \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
   &C\expr{\ttt{case scrutinee of \{ ... \}}} \rewrites \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{ ... }}\\
   &C\expr{\ttt{$\lambda$x $\rarr$ body}} \rewrites A\expr{\lambda \ttt{x} \rarr \ttt{body}}\\
