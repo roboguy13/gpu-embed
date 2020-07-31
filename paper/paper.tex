@@ -68,7 +68,10 @@
     \textbf{TODO}:}}
   {\ifthenelse{\isundefined{\showtodos}}{\endcomment}{\end{tcolorbox}}
   }
-
+\newenvironment{todont}
+               {\comment}
+               {\endcomment}
+  
 % \newenvironment<>{todo}[1][]{
 %     \setbeamercolor{block body example}{fg=black,bg=blue}
 %     \setbeamercolor{block title example}{fg=white,bg=red!75!black}
@@ -320,9 +323,9 @@ the transformation performed by the Core plugin are described in Section~\ref{se
 
 \subsection{Motivation}
 
-\begin{todo}
+\begin{todont}
   Expand?
-\end{todo}
+\end{todont}
 
 A major benefit of the Haskell language is that it is frequently possible derive
 a Haskell implementation from a specification, either partially or fully.
@@ -334,6 +337,7 @@ many imperative languages due, in part, to the management of side effects in
 Haskell. This is more difficult to do using an imperative language such as C, as
 they provide no restrictions on where side effects can occur.
 
+\newpage
 Haskell EDSLs that support powerful language features like pattern matching
 allow these advantages to be brought to problem domains where it is currently
 either difficult or impossible to use a language that has these benefits.
