@@ -682,8 +682,8 @@ Note the \ttt{ERepTy a \typeeq a} constraints. This constraint ensures that the 
 
 \subsection{\ttt{E (ProdMatch s t)}}
 
-\ttt{E (ProdMatch x y)} is equivalent to a curried function from \ttt{x} to
-\ttt{y} in the expression language.  \ttt{s} is a (potentially
+\ttt{E (ProdMatch s t)} is equivalent to a curried function from \ttt{s} to
+\ttt{t} in the expression language.  \ttt{s} is a (potentially
 nested) pair type. For example, \ttt{E (ProdMatch (a, (b, c)) r)} is
 equivalent to \ttt{E (a -> E (b -> E (c -> E r)))}.
 
