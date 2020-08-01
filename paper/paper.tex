@@ -1246,7 +1246,8 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \ttt{externalize} (see $M$ in Figure~\ref{fig:Rewrites}).
 
 In the flowchart given in Figure~\ref{fig:CorePlugin}, the names in parentheses in a node refers
-to the names of transformations given in the rewrite rules in Figure~\ref{fig:Rewrites}. Calls
+to the names of transformations given in the rewrite rules in Figure~\ref{fig:Rewrites}. In Figure~\ref{fig:Rewrites},
+$\varepsilon$ represents an empty term (in the context of the term rewriting system used in that Figure). Calls
 to \ttt{unrep :: E a -> a} are only used internally and will not exist in
 the final result of the transformation.
 
@@ -1300,7 +1301,7 @@ transformation will terminate.
         \ttt{K x0 ...$_U$ xN $\rarr$ body0}[\ttt{f} \mapsto \ttt{Step}]\ttt{; }T'_{\ttt{f}}\expr{\ttt{ ...$_V$ }} & \text{if \ttt{f} occurs free in \ttt{body0}}\\
         \ttt{K x0 ...$_U$ xN $\rarr$ Done body0; $T'_{\ttt{f}}\expr{\ttt{ ...$_V$ }}$} & \text{otherwise}
       \end{cases}\\
-  &T'_{\ttt{f}}\expr{\varepsilon} \rewrites \varepsilon\;\;\; \text{(Note: $\varepsilon$ represents the empty string)}\\
+  &T'_{\ttt{f}}\expr{\varepsilon} \rewrites \varepsilon\\
   &T_{\ttt{f}}\expr{\ttt{case s of \{ ... \}}}\\
     &\quad\rewrites
       \begin{cases}
