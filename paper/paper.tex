@@ -1161,8 +1161,8 @@ See Appendix A for implementation details of \ttt{absEnv}.
 The C backend makes use of a small EDSL for generating C code. See
 Appendix B for implementation details of this ESDL.
 
-This backend is based on a globally unique name generator. Similar to
-static single assignment (SSA) form~\cite{Rosen:1988:SSA}, a new C variable is created for each Haskell subexpression.
+This backend is based on a globally unique name generator. A new C variable is created for each Haskell subexpression.
+The result appears similar to static single assignment (SSA) form~\cite{Rosen:1988:SSA}.
 It differs from SSA, however, in that these variables can be assigned multiple
 times. In particular, a variable can be assigned in multiple branches of
 an \ttt{if} statement or inside of a \ttt{while} loop. This simplifies
