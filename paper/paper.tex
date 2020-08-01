@@ -950,8 +950,8 @@ execution.~\cite{Ganz:99:Trampolined}
 In the technique presented here, we do not need to allocate thunks or closures.
 We do not need to use higher-order functions for this representation, other than \ttt{runIter} itself.
 
-In the \ttt{E} type of our DSL, these types of data structures are used to represent tail 
-recursion by using the following constructors.   
+In the \ttt{E} type of our DSL, this form of tail recursion representation is
+given a deep embedding by the following constructors:
 
 \begin{lstlisting}
 data E t where
@@ -990,11 +990,11 @@ isEven x =
 % the conditionals, and the recursive call is transformed into a StepExp constructor.
 % This leaves us the the transformed example:
 
-We first translate this to use the \verb|Iter| type. The lambda is brought
+We first transform this to use the \verb|Iter| type. The lambda is brought
 inside of the \ttt{internalize (externalize ...)} call and wrapped in a call to
 \ttt{runIter}. This inner expression is then eta expanded. Finally, each \verb|case|
 branch which does not contain a recursive call is wrapped in a \verb|Done| and
-every recursive call is substitute for an application of the \verb|Step| constructor.
+every recursive call is transformed into an application of the \verb|Step| constructor.
 
 In the following code, \verb|eta| is a fresh variable.
 
