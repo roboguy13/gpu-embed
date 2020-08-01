@@ -1288,6 +1288,7 @@ transformation will terminate.
         \\
         \ttt{f x = $C^{*}\expr{\ttt{externalize (case s of \{ ... \})}}$} & \text{otherwise}
       \end{cases}\\
+  &\\
   &I\expr{\ttt{f x = externalize e}} \rewrites \ttt{f x = internalize (externalize e)}\\
   &I\expr{\ttt{f = externalize e}} \rewrites \ttt{f = internalize (externalize e)}\\
   &T'_{\ttt{f}}\expr{\ttt{K x0 ...$_U$ xN $\rarr$ case s of \{ ...$_V$ \}; ...$_W$}}\\
