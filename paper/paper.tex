@@ -948,7 +948,7 @@ sum type of the result type and a thunk with the code necessary to continue
 execution.~\cite{Ganz:99:Trampolined}
 
 In the technique presented here, we do not need to allocate thunks or closures.
-We do not need to use higher-order functions for this representation, other than \ttt{runIter}.
+We do not need to use higher-order functions for this representation, other than \ttt{runIter} itself.
 
 In the \ttt{E} type of our DSL, these types of data structures are used to represent tail 
 recursion by using the following constructors.   
