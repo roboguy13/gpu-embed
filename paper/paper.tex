@@ -717,6 +717,7 @@ newtype ProdMatch a b =
 \end{lstlisting}
 
 \subsection{Connection to Church encodings}
+\label{sec:Church}
 % \begin{todo}
 %   Work on this subsection. Maybe this shouldn't be a separate section at all and
 %   maybe its contents should be incorporated throughout the rest of the paper.
@@ -1345,6 +1346,41 @@ transformation will terminate.
 % \clearpage
 
 \clearpage
+
+\section{Conclusion}
+
+\begin{todo}
+Should some of this go into the introduction?
+\end{todo}
+
+
+In this paper:
+\begin{itemize}
+  \item We address the goal of translating Haskell pattern matching into an
+    EDSL. An example usage of this mechanism is given in Section
+    \ref{sec:CBackend} in the form of a transformation of a subset of Haskell
+    into an EDSL that is then used to generate C code, effectively compiling
+    that subset of Haskell into C.
+
+  \item A representation of pattern matching via a deep embedding of Church
+    encodings of products and coproducts presented in Section \ref{sec:Church}.
+    This encoding relies on having a uniform representation of algebraic data
+    types.
+
+  \item To provide the uniform representation of algebraic data types mentioned
+    in the previous point, we describe a mechanism for automatically encoding
+    ADTs as compositions of \verb|(,)|, \verb|Either| and \verb|()| using
+    \verb|ERep| and \verb|ERepTy| in Section \ref{sec:ADTRep}.
+
+  \item A GHC plugin is outlined in Section \ref{sec:CorePlugin} which provides automation for the translation of
+    Haskell code into these EDSL representations.
+
+\end{itemize}
+
+\begin{todo}
+Should we have a diagram somewhere in the paper to show how these pieces all fit together?
+\end{todo}
+
 \section{Related Work}
 
 % \begin{todo}
