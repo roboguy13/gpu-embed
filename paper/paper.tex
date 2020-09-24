@@ -327,14 +327,16 @@ the transformation performed by the Core plugin are described in Section~\ref{se
 \end{todont}
 
 A major benefit of the Haskell language is that it is frequently possible derive
-a Haskell implementation from a specification, either partially or fully.
-Examples of this technique include the work in \cite{Elliott-2018-ad-icfp} as
-well as the work in \cite{Elliott2019-convolution-extended}.  When it is not
-possible to fully derive an implementation from a specification, it is often
-easier to check a Haskell implementation against a specification than it is in
-many imperative languages due, in part, to the management of side effects in
-Haskell. This is more difficult to do using an imperative language such as C, as
-they provide no restrictions on where side effects can occur.
+a Haskell implementation from a specification, either partially or fully.  This
+technique is used extensively, for example, in \cite{Bird:2010:Pearls} and
+\cite{Gibbons:2002:Calc}.  Recent examples of this technique include the work in
+\cite{Elliott-2018-ad-icfp} as well as the work in
+\cite{Elliott2019-convolution-extended}.  When it is not possible to fully
+derive an implementation from a specification, it is often easier to check a
+Haskell implementation against a specification than it is in many imperative
+languages due, in part, to the management of side effects in Haskell. This is
+more difficult to do using an imperative language such as C, as they provide no
+restrictions on where side effects can occur.
 
 \newpage
 Haskell EDSLs that support powerful language features like pattern matching
