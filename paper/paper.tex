@@ -1158,6 +1158,25 @@ prodMatchAbs :: (ERep s)
 ...
 \end{lstlisting}
 
+Recall that the internal representations of \verb|SumMatch a b| and \verb|ProdMatch a b|
+are functions of type \verb|a -> b|. These types are unwrapped by the functions
+
+\begin{lstlisting}
+runSumMatch :: SumMatch a b -> (a -> b)
+runProdMatch :: ProdMatch a b -> (a -> b)
+\end{lstlisting}
+
+Given this, the \verb|ProdMatchExp| case of the \verb|prodMatchAbs| function can be
+implemented as follows:
+
+\begin{lstlisting}
+prodMatchAbs env (ProdMatchExp f) =
+  \ pair ->
+    case pair of
+      (x, y) ->
+        runProdMatch (absEnv env f x) y
+\end{lstlisting}
+
 See Appendix A for implementation details of \ttt{absEnv}.
 
 
