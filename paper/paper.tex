@@ -302,6 +302,12 @@ easier to also reify lambdas using the dummy argument technique described in~\ci
 %   Maybe add brief summary of relationship to lambdas?
 % \end{todo}
 
+\begin{todo}
+  Make it more clear how to integrate these concepts with other EDSLs. Maybe we should
+  add a feature to the underlying implementation that allows an existing EDSL to be
+  "enriched" with pattern matching support.
+\end{todo}
+
 The following contributions are made by this paper:
 
 \begin{itemize}
@@ -390,7 +396,11 @@ are needed.
 %   Does it make sense for this to be a subsection of the intro?
 % \end{todo}
 
-In the example below, the Core plugin transforms \ttt{example} into \ttt{example'}:
+In the example below, the Core plugin transforms \verb|example| into
+\verb|example'|. Note that \verb|example'| is an EDSL expression which is then
+used by the EDSL interpreter function \verb|abs| to produce the final result,
+\verb|example''|:
+
 \begin{lstlisting}[deletekeywords={Ord}]
 import Data.Char (ord)
 
@@ -399,14 +409,14 @@ x = Left 'a'
 
 example :: Int
 example =
-  internalize (externalize
+  externalize
     (case x of
       Left  c -> ord c
-      Right i -> i))
+      Right i -> i)
 
-example' :: Int
+example' :: E Int
 example' =
-  abs (CaseExp
+  CaseExp
         (LeftExp 'a')
         (SumMatchExp (OneProdMatch
                        (Lam 1
@@ -415,6 +425,9 @@ example' =
                        (OneProdMatch
                          (Lam 2
                            (Var 2)))))
+
+example'' :: Int
+example'' = abs example'
 \end{lstlisting}
 
 \section{Representing Algebraic Datatypes}
@@ -828,17 +841,17 @@ is given in the table below.\\
 }
 
 
-% \begin{todo}
-%   Figure out how recursive types fit into this framework. Church encodings can
-%   handle recursive types and so can our representation. This is also the case
-%   for Scott encodings, etc, and is the difference between Church and Scott
-%   encodings.
+\begin{todo}
+  Figure out how recursive types fit into this framework. Church encodings can
+  handle recursive types and so can our representation. This is also the case
+  for Scott encodings, etc, and is the difference between Church and Scott
+  encodings.
 
-%   Does our way of handling recursive types correspond to how any of
-%   those encodings handle recursive types?
+  Does our way of handling recursive types correspond to how any of
+  those encodings handle recursive types?
 
-%   Maybe this is relevant: \href{https://www.reddit.com/r/haskell/comments/hvlh6a/generalized_church_encoding_is_the_curryhoward_of/}{\color{blue}{Generalized Church encoding is the Curry-Howard of Knaster-Tarski}}
-% \end{todo}
+  Maybe this is relevant: \href{https://www.reddit.com/r/haskell/comments/hvlh6a/generalized_church_encoding_is_the_curryhoward_of/}{\color{blue}{Generalized Church encoding is the Curry-Howard of Knaster-Tarski}}
+\end{todo}
 
 % \begin{lstlisting}
 % data ChurchMatch t where
