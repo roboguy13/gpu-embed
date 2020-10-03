@@ -7,3 +7,6 @@ paper: paper/paper.pdf
 paper/paper.pdf: paper/paper.tex paper/paper.bib
 	(cd paper && make)
 
+paperclean:
+	(cd paper && make clean)
+

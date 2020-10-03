@@ -22,15 +22,18 @@
 %% in the same archive or directory.)
 %%
 %% The first command in your LaTeX source must be the \documentclass command.
-\documentclass[sigplan,anonymous,review]{acmart}
-\usepackage[switch]{lineno}
+\RequirePackage{amsmath,amssymb}
+% \RequirePackage{stmaryrd}
+\documentclass[runningheads, a4paper]{llncs}
+% \usepackage{biblatex}
+% \usepackage[switch]{lineno}
 \usepackage{booktabs}
 \usepackage{listings}
 \usepackage{tcolorbox}
 \usepackage{tikz}
 \usepackage{tkz-graph}
 \usepackage{stmaryrd}
-\usepackage{amsmath}
+% \usepackage{amsmath}
 
 % \lstset{basicstyle=\ttfamily}
 \usetikzlibrary{shapes.geometric, arrows}
@@ -91,24 +94,24 @@
 %% the commands and values with those provided to you when you
 %% complete the rights form.
 
-\setcopyright{acmcopyright}
-\copyrightyear{2020}
-\acmYear{2020}
-\acmDOI{XX.XXXX/XXXXXXX}
+% \setcopyright{acmcopyright}
+% \copyrightyear{2020}
+% \acmYear{2020}
+% \acmDOI{XX.XXXX/XXXXXXX}
 
 
 %% These commands are for a PROCEEDINGS abstract or paper.
 
-\acmConference[GPCE '20]{GPCE '20: Proceedings of the 13th
-  ACM SIGPLAN International Symposium on Haskell}{November 15 -- 20, 2020}{Chicago, Illinois, United States}
-\acmBooktitle{Proceedings of the 19th ACM SIGPLAN International
-Conference on Generative Programming: Concepts and Experiences (GPCE '20)
-  November 15 -- 20, 2020, Chicago, Illinois, United States}
-\acmPrice{15.00}
-\acmISBN{XXX-X-XXXX-XXXX-X/XX/XX}
+% \acmConference[GPCE '20]{GPCE '20: Proceedings of the 13th
+%   ACM SIGPLAN International Symposium on Haskell}{November 15 -- 20, 2020}{Chicago, Illinois, United States}
+% \acmBooktitle{Proceedings of the 19th ACM SIGPLAN International
+% Conference on Generative Programming: Concepts and Experiences (GPCE '20)
+%   November 15 -- 20, 2020, Chicago, Illinois, United States}
+% \acmPrice{15.00}
+% \acmISBN{XXX-X-XXXX-XXXX-X/XX/XX}
 
 
-\citestyle{acmauthoryear}
+% \citestyle{acmauthoryear}
 
 %%
 %% Submission ID.
@@ -137,8 +140,10 @@ Conference on Generative Programming: Concepts and Experiences (GPCE '20)
 %%
 %% The "title" command has an optional parameter,
 %% allowing the author to define a "short title" to be used in page headers.
-\title[On Adding Pattern Matching to Haskell-based EDSLs]{On Adding Pattern Matching to Haskell-based
+\title{On Adding Pattern Matching to Haskell-based
   Deeply Embedded Domain Specific Languages}
+
+\titlerunning{On Adding Pattern Matching to Haskell-based EDSLs}
 
 %%
 %% The "author" command and its associated commands are used to define
@@ -146,18 +151,19 @@ Conference on Generative Programming: Concepts and Experiences (GPCE '20)
 %% Of note is the shared affiliation of the first two authors, and the
 %% "authornote" and "authornotemark" commands
 %% used to denote shared contribution to the research.
-\author{David Young}
-\email{d063y800@ku.edu}
+\author{David Young\inst{1} \and Mark Grebe\inst{2} \and Andrew Gill\inst{1}}
+\institute{University of Kansas \and University of Central Missouri}
 
+\maketitle
 % \authornote{Both authors contributed equally to this research.}
 % \email{trovato@corporation.com}
 % \orcid{1234-5678-9012}
 
-\author{Mark Grebe}
-\email{grebe@ucmo.edu}
+% \author{Mark Grebe}
+% \email{grebe@ucmo.edu}
 
-\author{Andrew Gill}
-\email{andygill@ku.edu}
+% \author{Andrew Gill}
+% \email{andygill@ku.edu}
 
 %%
 %% By default, the full list of authors will be used in the page
@@ -166,7 +172,8 @@ Conference on Generative Programming: Concepts and Experiences (GPCE '20)
 %% the author to define a more concise list
 %% of authors' names for this purpose.
 % \renewcommand{\shortauthors}{Trovato and Tobin, et al.}
-\renewcommand{\shortauthors}{Young, Grebe and Gill}
+
+% \renewcommand{\shortauthors}{Young, Grebe and Gill}
 
 %%
 %% The abstract is a short summary of the work to be presented in the
@@ -194,29 +201,29 @@ Conference on Generative Programming: Concepts and Experiences (GPCE '20)
 
 \end{abstract}
 
-\begin{CCSXML}
-<ccs2012>
-   <concept>
-       <concept_id>10011007.10011006.10011041.10011046</concept_id>
-       <concept_desc>Software and its engineering~Translator writing systems and compiler generators</concept_desc>
-       <concept_significance>300</concept_significance>
-       </concept>
-   <concept>
-       <concept_id>10011007.10011006.10011041.10011047</concept_id>
-       <concept_desc>Software and its engineering~Source code generation</concept_desc>
-       <concept_significance>300</concept_significance>
-       </concept>
-   <concept>
-       <concept_id>10011007.10011006.10011050.10011017</concept_id>
-       <concept_desc>Software and its engineering~Domain specific languages</concept_desc>
-       <concept_significance>500</concept_significance>
-       </concept>
- </ccs2012>
-\end{CCSXML}
+% \begin{CCSXML}
+% <ccs2012>
+%    <concept>
+%        <concept_id>10011007.10011006.10011041.10011046</concept_id>
+%        <concept_desc>Software and its engineering~Translator writing systems and compiler generators</concept_desc>
+%        <concept_significance>300</concept_significance>
+%        </concept>
+%    <concept>
+%        <concept_id>10011007.10011006.10011041.10011047</concept_id>
+%        <concept_desc>Software and its engineering~Source code generation</concept_desc>
+%        <concept_significance>300</concept_significance>
+%        </concept>
+%    <concept>
+%        <concept_id>10011007.10011006.10011050.10011017</concept_id>
+%        <concept_desc>Software and its engineering~Domain specific languages</concept_desc>
+%        <concept_significance>500</concept_significance>
+%        </concept>
+%  </ccs2012>
+% \end{CCSXML}
 
-\ccsdesc[300]{Software and its engineering~Translator writing systems and compiler generators}
-\ccsdesc[300]{Software and its engineering~Source code generation}
-\ccsdesc[500]{Software and its engineering~Domain specific languages}
+% \ccsdesc[300]{Software and its engineering~Translator writing systems and compiler generators}
+% \ccsdesc[300]{Software and its engineering~Source code generation}
+% \ccsdesc[500]{Software and its engineering~Domain specific languages}
 
 
 % \begin{CCSXML}
@@ -276,7 +283,6 @@ Conference on Generative Programming: Concepts and Experiences (GPCE '20)
 %%
 %% This command processes the author and affiliation and title
 %% information and builds the first part of the formatted document.
-\maketitle
 
 \section{Introduction}
 
@@ -350,7 +356,7 @@ languages due, in part, to the management of side effects in Haskell. This is
 more difficult to do using an imperative language such as C, as they provide no
 restrictions on where side effects can occur.
 
-\newpage
+% \newpage
 Haskell EDSLs that support powerful language features like pattern matching
 allow these advantages to be brought to problem domains where it is currently
 either difficult or impossible to use a language that has these benefits.
@@ -680,7 +686,7 @@ exactly to one branch in the original \ttt{case} match.
 The following constructors generate \ttt{SumMatch}-tagged values in the
 expression language:
 
-\newpage
+% \newpage
 \begin{lstlisting}
 data E t where
   ...
@@ -850,7 +856,7 @@ is given in the table below.\\
   Does our way of handling recursive types correspond to how any of
   those encodings handle recursive types?
 
-  Maybe this is relevant: \href{https://www.reddit.com/r/haskell/comments/hvlh6a/generalized_church_encoding_is_the_curryhoward_of/}{\color{blue}{Generalized Church encoding is the Curry-Howard of Knaster-Tarski}}
+  % Maybe this is relevant: \href{https://www.reddit.com/r/haskell/comments/hvlh6a/generalized_church_encoding_is_the_curryhoward_of/}{\color{blue}{Generalized Church encoding is the Curry-Howard of Knaster-Tarski}}
 \end{todo}
 
 % \begin{lstlisting}
@@ -1119,7 +1125,7 @@ This type encodes a single variable binding, with values of the form
 \ttt{n :=> v}, where \ttt{n} is a typed name and \ttt{v} is the value it is bound to.
 
 These bindings are grouped together in the \ttt{Env} type:
-\newpage
+% \newpage
 \begin{lstlisting}
 newtype Env = Env [EnvMapping]
 
@@ -1193,7 +1199,7 @@ prodMatchAbs env (ProdMatchExp f) =
 See Appendix A for implementation details of \ttt{absEnv}.
 
 
-\newpage
+% \newpage
 \section{C Backend}
 \label{sec:CBackend}
 
@@ -1248,7 +1254,7 @@ genC :: E a -> String
 
 To use this, for example, with the previously mentioned \ttt{isEven} implementation we
 can write:
-\newpage
+% \newpage
 \begin{lstlisting}
 isEvenE :: E (Int -> Bool)
 isEvenE =
@@ -1296,15 +1302,16 @@ full transformation step (that is, $C$) eliminates one mark. Therefore, the
 transformation will terminate.
 \end{itemize}
 
-\clearpage
+% \clearpage
 \begin{figure*}
   \centering 
-  \resizebox{2.0\columnwidth}{20cm}{\includegraphics{Diagrams/Flowchart.pdf}}
+  \resizebox{0.8\columnwidth}{10cm}{\includegraphics{Diagrams/Flowchart.pdf}}
+  % \includegraphics{Diagrams/Flowchart.pdf}
    \caption{Control Flow of the Core Plugin}
    \label{fig:CorePlugin}
 \end{figure*}
 
-\clearpage
+% \clearpage
 
 % \subsection{Syntactic Transformations of the Core Plugin}
 
@@ -1313,11 +1320,12 @@ transformation will terminate.
 % \end{todo}
 % \vspace*{-0.6cm}
 
+
 \begin{figure*}[hp]
   \centering
 \begin{align*}
-  &D\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}
-      \rewrites I(D(\ttt{f x = externalize (case s of \{ ... \})}))\\
+  &D\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
+      &\quad\rewrites I(D(\ttt{f x = externalize (case s of \{ ... \})}))\\
   &D\expr{\ttt{f x = externalize (case s of \{ ... \})}}\\
       &\quad\rewrites \begin{cases}
         \ttt{f = $C^{*}\expr{\ttt{externalize ($\lambda \eta \rarr$ runIter ($\lambda \ttt{x} \rarr \ttt{case s of \{ $T'_{\ttt{f}}\exprdots$}$ \}) $\eta$)}}$} & \text{\parbox{5cm}{if \ttt{f} occurs free in \ttt{\{ ... \}}, where $\eta$ is a fresh name}}\\
@@ -1372,14 +1380,14 @@ transformation will terminate.
     \end{cases}
 \end{align*}
 
-\captionsetup{justification=centering}
+% \captionsetup{justification=centering}
 \caption{Rewrite rules}
 \label{fig:Rewrites}
 \end{figure*}
 
 % \clearpage
 
-\clearpage
+% \clearpage
 
 \section{Conclusion}
 
@@ -1478,7 +1486,7 @@ equivalent to the \verb|abs| and
 
 % \section{Citations and Bibliographies}
 
-\bibliographystyle{ACM-Reference-Format}
+\bibliographystyle{splncs04}
 \bibliography{paper}
 
 \appendix
