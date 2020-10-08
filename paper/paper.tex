@@ -734,107 +734,107 @@ newtype ProdMatch a b =
   MkProdMatch { runProdMatch :: a -> b }
 \end{lstlisting}
 
-\subsection{Connection to Church encodings}
-\label{sec:Church}
-% \begin{todo}
-%   Work on this subsection. Maybe this shouldn't be a separate section at all and
-%   maybe its contents should be incorporated throughout the rest of the paper.
-% \end{todo}
+% \subsection{Connection to Church encodings}
+% \label{sec:Church}
+% % \begin{todo}
+% %   Work on this subsection. Maybe this shouldn't be a separate section at all and
+% %   maybe its contents should be incorporated throughout the rest of the paper.
+% % \end{todo}
 
-Algebraic datatypes can be represented as lambda calculus terms using
-\textit{Church encodings}.~\cite{Boehm:1985:AutoSynth} For example, the pair constructor can be
-represented as
+% Algebraic datatypes can be represented as lambda calculus terms using
+% \textit{Church encodings}.~\cite{Boehm:1985:AutoSynth} For example, the pair constructor can be
+% represented as
 
-\begin{lstlisting}
-church_mkPair
-  :: a -> b -> (a -> b -> r) -> r
-church_mkPair x y = \ f -> f x y
-\end{lstlisting}
+% \begin{lstlisting}
+% church_mkPair
+%   :: a -> b -> (a -> b -> r) -> r
+% church_mkPair x y = \ f -> f x y
+% \end{lstlisting}
 
-Coproducts can be represented with the constructors
+% Coproducts can be represented with the constructors
 
-\begin{lstlisting}
-church_mkLeft
-  :: a -> (a -> r) -> (b -> r) -> r
-church_mkLeft x = \ f g -> f x
+% \begin{lstlisting}
+% church_mkLeft
+%   :: a -> (a -> r) -> (b -> r) -> r
+% church_mkLeft x = \ f g -> f x
 
-church_mkRight
-  :: b -> (a -> r) -> (b -> r) -> r
-church_mkRight y = \ f g -> g y
-\end{lstlisting}
+% church_mkRight
+%   :: b -> (a -> r) -> (b -> r) -> r
+% church_mkRight y = \ f g -> g y
+% \end{lstlisting}
 
-In this representation:
+% In this representation:
 
-\begin{itemize}
-  \item A pair of type \ttt{A} and type \ttt{B} is represented with a value of type
-\ttt{forall r. (A -> B -> r) -> r}.
+% \begin{itemize}
+%   \item A pair of type \ttt{A} and type \ttt{B} is represented with a value of type
+% \ttt{forall r. (A -> B -> r) -> r}.
 
-  \item A coproduct of type \ttt{A} and type \ttt{B} is represented with a value of type
-\ttt{forall r. (A -> r) -> (B -> r) -> r}.
-\end{itemize}
+%   \item A coproduct of type \ttt{A} and type \ttt{B} is represented with a value of type
+% \ttt{forall r. (A -> r) -> (B -> r) -> r}.
+% \end{itemize}
 
-Both of those representations represent the type as a function that performs the
-corresponding case analysis. A deep embedding of the operations
-\ttt{churchMkPair}, \ttt{church\_mkLeft} and \ttt{church\_mkRight} is given
-by the type
+% Both of those representations represent the type as a function that performs the
+% corresponding case analysis. A deep embedding of the operations
+% \ttt{churchMkPair}, \ttt{church\_mkLeft} and \ttt{church\_mkRight} is given
+% by the type
 
-\begin{lstlisting}
-data Church r where
-  ChurchPair
-    :: a -> b -> (a -> b -> r) ->
-       Church r
-  ChurchLeft
-    :: a -> (a -> r) -> (b -> r) ->
-       Church r
-  ChurchRight
-    :: b -> (a -> r) -> (b -> r) ->
-       Church r
-\end{lstlisting}
+% \begin{lstlisting}
+% data Church r where
+%   ChurchPair
+%     :: a -> b -> (a -> b -> r) ->
+%        Church r
+%   ChurchLeft
+%     :: a -> (a -> r) -> (b -> r) ->
+%        Church r
+%   ChurchRight
+%     :: b -> (a -> r) -> (b -> r) ->
+%        Church r
+% \end{lstlisting}
 
-with the evaluation function
+% with the evaluation function
 
-\begin{lstlisting}
-churchEval :: Church r -> r
-churchEval (ChurchPair x y f) = f x y
-churchEval (ChurchLeft x f g) = f x
-churchEval (ChurchRight y f g) = g y
-\end{lstlisting}
+% \begin{lstlisting}
+% churchEval :: Church r -> r
+% churchEval (ChurchPair x y f) = f x y
+% churchEval (ChurchLeft x f g) = f x
+% churchEval (ChurchRight y f g) = g y
+% \end{lstlisting}
 
-However, we only want to keep track of the functions used for elimination. By moving
-the values actually being contained in the products and coproducts out to the
-evaluation function, we arrive at
+% However, we only want to keep track of the functions used for elimination. By moving
+% the values actually being contained in the products and coproducts out to the
+% evaluation function, we arrive at
 
-\begin{lstlisting}
-data Church' t r where
-  ChurchPair'
-    :: (a -> b -> r) ->
-       Church' (a, b) r
+% \begin{lstlisting}
+% data Church' t r where
+%   ChurchPair'
+%     :: (a -> b -> r) ->
+%        Church' (a, b) r
 
-  ChurchEither'
-    :: (a -> r) -> (b -> r) ->
-       Church' (Either a b) r
+%   ChurchEither'
+%     :: (a -> r) -> (b -> r) ->
+%        Church' (Either a b) r
 
-churchEval' :: Church' t r -> t -> r
-churchEval' (ChurchPair' f) (x, y) = f x y
-churchEval' (ChurchEither' f g) e =
-  case e of
-    Left  x -> f x
-    Right y -> g y
-\end{lstlisting}
+% churchEval' :: Church' t r -> t -> r
+% churchEval' (ChurchPair' f) (x, y) = f x y
+% churchEval' (ChurchEither' f g) e =
+%   case e of
+%     Left  x -> f x
+%     Right y -> g y
+% \end{lstlisting}
 
-The \verb|Church'| type forms a large part of the foundation of the pattern
-matching aspect of the \verb|E| type. A rough correspondence between the two
-is given in the table below.\\
+% The \verb|Church'| type forms a large part of the foundation of the pattern
+% matching aspect of the \verb|E| type. A rough correspondence between the two
+% is given in the table below.\\
 
-{\small
-\noindent\begin{tabular}{|p{3.4cm}|p{4.4cm}|}
-  \hline
-  \ttt{Church' (a, b) r} & \ttt{E (SumMatch (a, b) r} \\
-  \hline
-  \ttt{Church' (Either a b) r} & \ttt{E (ProdMatch (Either a b) r)}\\
-  \hline
-\end{tabular}
-}
+% {\small
+% \noindent\begin{tabular}{|p{3.4cm}|p{4.4cm}|}
+%   \hline
+%   \ttt{Church' (a, b) r} & \ttt{E (SumMatch (a, b) r} \\
+%   \hline
+%   \ttt{Church' (Either a b) r} & \ttt{E (ProdMatch (Either a b) r)}\\
+%   \hline
+% \end{tabular}
+% }
 
 
 \begin{todo}
@@ -1190,75 +1190,76 @@ See Appendix A for implementation details of \ttt{absEnv}.
 
 
 % \newpage
-\section{C Backend}
-\label{sec:CBackend}
 
-\begin{todont}
-  Should this section be expanded?
-\end{todont}
+% \section{C Backend}
+% \label{sec:CBackend}
 
-The C backend makes use of a small EDSL for generating C code. See
-Appendix B for implementation details of this ESDL.
+% \begin{todont}
+%   Should this section be expanded?
+% \end{todont}
 
-The following \ttt{struct}s provide the C representation for Haskell expressions:
+% The C backend makes use of a small EDSL for generating C code. See
+% Appendix B for implementation details of this ESDL.
 
-\begin{lstlisting}
-typedef enum var_type_tag {
-  EXPR_INT
-, EXPR_PAIR
-...
-, EXPR_UNIT
-} var_type_tag;
+% The following \ttt{struct}s provide the C representation for Haskell expressions:
 
-typedef enum semantic_type_tag {
-  NO_SEMANTIC_TAG
-, EXPR_COMPLEX     // Complex numbers
-} semantic_type_tag;
+% \begin{lstlisting}
+% typedef enum var_type_tag {
+%   EXPR_INT
+% , EXPR_PAIR
+% ...
+% , EXPR_UNIT
+% } var_type_tag;
 
-struct closure_t;
+% typedef enum semantic_type_tag {
+%   NO_SEMANTIC_TAG
+% , EXPR_COMPLEX     // Complex numbers
+% } semantic_type_tag;
 
-typedef struct var_t {
-  var_type_tag tag;
-  semantic_type_tag semantic_tag;
-  void* value;
-} var_t;
+% struct closure_t;
 
-typedef struct closure_t {
-  var_t* fv_env;
-  var_t (*fn)(var_t, struct closure_t*);
-} closure_t;
-\end{lstlisting}
+% typedef struct var_t {
+%   var_type_tag tag;
+%   semantic_type_tag semantic_tag;
+%   void* value;
+% } var_t;
 
-The \ttt{semantic\_tag} allows type information preserved by the \ttt{Typeable} constraints
-in the EDSL to be brought over to the generated C code. In our implementation, this is
-used to distinguish between pairs of \ttt{Double}s and \ttt{Complex Double} values. In the
-case of a \ttt{Complex Double}, the \ttt{var\_t} would have a \ttt{tag} field with the value
-\ttt{EXPR\_PAIR} and a \ttt{semantic\_tag} field with the value \ttt{EXPR\_COMPLEX}.
+% typedef struct closure_t {
+%   var_t* fv_env;
+%   var_t (*fn)(var_t, struct closure_t*);
+% } closure_t;
+% \end{lstlisting}
 
-A C code generation function \ttt{genC} is implemented:
+% The \ttt{semantic\_tag} allows type information preserved by the \ttt{Typeable} constraints
+% in the EDSL to be brought over to the generated C code. In our implementation, this is
+% used to distinguish between pairs of \ttt{Double}s and \ttt{Complex Double} values. In the
+% case of a \ttt{Complex Double}, the \ttt{var\_t} would have a \ttt{tag} field with the value
+% \ttt{EXPR\_PAIR} and a \ttt{semantic\_tag} field with the value \ttt{EXPR\_COMPLEX}.
 
-\begin{lstlisting}
-genC :: E a -> String
-...
-\end{lstlisting}
+% A C code generation function \ttt{genC} is implemented:
 
-To use this, for example, with the previously mentioned \ttt{isEven} implementation we
-can write:
-% \newpage
-\begin{lstlisting}
-isEvenE :: E (Int -> Bool)
-isEvenE =
-  externalize (
-    case x == 0 of
-      True -> True
-      False ->
-        case x == 1 of
-          True -> False
-          False -> isEvenE (x - 2))
+% \begin{lstlisting}
+% genC :: E a -> String
+% ...
+% \end{lstlisting}
 
-isEvenC :: String
-isEvenC = genC isEvenE
-\end{lstlisting}
+% To use this, for example, with the previously mentioned \ttt{isEven} implementation we
+% can write:
+% % \newpage
+% \begin{lstlisting}
+% isEvenE :: E (Int -> Bool)
+% isEvenE =
+%   externalize (
+%     case x == 0 of
+%       True -> True
+%       False ->
+%         case x == 1 of
+%           True -> False
+%           False -> isEvenE (x - 2))
+
+% isEvenC :: String
+% isEvenC = genC isEvenE
+% \end{lstlisting}
 
 \section{Core Plugin}
 \label{sec:CorePlugin}
@@ -1313,9 +1314,9 @@ transformation will terminate.
 % \vspace*{-0.6cm}
 
 % \begin{wrapfigure}{r}{0.8\linewidth}
-  \begin{wrapfigure}{R}{1.2\linewidth}
+  \begin{wrapfigure}{R}{0.6\linewidth}
   \centering
-\resizebox{1\linewidth}{!}{
+\resizebox{0.9\linewidth}{!}{
   \begin{minipage}{\linewidth}
 \begin{align*}
   &D\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
