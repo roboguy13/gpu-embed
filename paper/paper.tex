@@ -1276,6 +1276,15 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \ttt{a}), then the marking procedure ignores it and does not wrap it with
 \ttt{externalize} (see $M$ in Figure~\ref{fig:Rewrites}).
 
+\begin{wrapfigure}{R}{0.5\linewidth}
+  % \centering
+  \resizebox{0.5\columnwidth}{7cm}{\includegraphics{Diagrams/Flowchart.pdf}}
+  % \includegraphics{Diagrams/Flowchart.pdf}
+   \caption{Control Flow of the Core Plugin}
+   \label{fig:CorePlugin}
+\end{wrapfigure}%
+
+
 In the flowchart given in Figure~\ref{fig:CorePlugin}, the names in parentheses in a node refer
 to the names of transformations given in the rewrite rules in Figure~\ref{fig:Rewrites}. In Figure~\ref{fig:Rewrites},
 $\varepsilon$ represents an empty term (in the context of the term rewriting system used in that Figure). Calls
@@ -1293,13 +1302,6 @@ transformation will terminate.
 \end{itemize}
 
 % \clearpage
-\begin{wrapfigure}{r}{0.5\linewidth}
-  \centering 
-  \resizebox{0.45\columnwidth}{5cm}{\includegraphics{Diagrams/Flowchart.pdf}}
-  % \includegraphics{Diagrams/Flowchart.pdf}
-   \caption{Control Flow of the Core Plugin}
-   \label{fig:CorePlugin}
-\end{wrapfigure}
 
 % \clearpage
 
@@ -1311,16 +1313,16 @@ transformation will terminate.
 % \vspace*{-0.6cm}
 
 % \begin{wrapfigure}{r}{0.8\linewidth}
-  \begin{figure}[!h]
+  \begin{wrapfigure}{R}{1.2\linewidth}
   \centering
-\resizebox{.9\linewidth}{!}{
+\resizebox{1\linewidth}{!}{
   \begin{minipage}{\linewidth}
 \begin{align*}
   &D\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
       &\quad\rewrites I(D(\ttt{f x = externalize (case s of \{ ... \})}))\\
   &D\expr{\ttt{f x = externalize (case s of \{ ... \})}}\\
       &\quad\rewrites \begin{cases}
-        \ttt{f = $C^{*}\expr{\ttt{externalize ($\lambda \eta \rarr$ runIter ($\lambda \ttt{x} \rarr \ttt{case s of \{ $T'_{\ttt{f}}\exprdots$}$ \}) $\eta$)}}$} & \text{\parbox{5cm}{if \ttt{f} occurs free in \ttt{\{ ... \}}, where $\eta$ is a fresh name}}\\
+        \ttt{f = $C^{*}\expr{\ttt{externalize ($\lambda \eta \rarr$ runIter ($\lambda \ttt{x} \rarr \ttt{case s of \{ $T'_{\ttt{f}}\exprdots$}$ \}) $\eta$)}}$} & \text{\parbox{2.4cm}{if \ttt{f} occurs free in \ttt{\{ ... \}}, where $\eta$ is a fresh name}}\\
         \\
         \ttt{f x = $C^{*}\expr{\ttt{externalize (case s of \{ ... \})}}$} & \text{otherwise}
       \end{cases}\\
@@ -1352,7 +1354,8 @@ transformation will terminate.
   &C\expr{\ttt{x + y}} \rewrites \ttt{Add $M\expr{\ttt{x}}$ $M\expr{\ttt{y}}$}\\
   &C\expr{\ttt{case scrutinee of \{ ... \}}} \rewrites \ttt{CaseExp $M\expr{\ttt{scrutinee}}$ } B\expr{\ttt{ ... }}\\
   &C\expr{\ttt{$\lambda$x $\rarr$ body}} \rewrites A\expr{\lambda \ttt{x} \rarr \ttt{body}}\\
-  &C\expr{\ttt{K x0 ... xN }} \rewrites \ttt{construct (K (unrep $M\expr{\ttt{x0}}$) ... (unrep $M\expr{\ttt{xN}}$))}\;\;\;\;\text{(Where \ttt{K} is a constructor)}\\
+  &C\expr{\ttt{K x0 ... xN }}\\
+    &\quad\rewrites \ttt{construct (K (unrep $M\expr{\ttt{x0}}$) ... (unrep $M\expr{\ttt{xN}}$))}\;\;\;\;\text{(Where \ttt{K} is a constructor)}\\
   &C\expr{\ttt{f x}} \rewrites \ttt{App $M\expr{f}$ $M\expr{x}$}\\
   % &C\expr{\ttt{f x}} \rewrites \ttt{ConstructAp $M\expr{\ttt{f}}$ $M\expr{\ttt{x}}$}\;\;\;\;\text{(Where \ttt{f} is not a primitive or an application of a primitive)}\\
   % &C\expr{\ttt{x}} \rewrites \ttt{Construct x}\;\;\;\;\text{(Where \ttt{x} is a variable which is not a primitive)}\\
@@ -1379,7 +1382,7 @@ transformation will terminate.
 \caption{Rewrite rules}
 \label{fig:Rewrites}
 % \end{wrapfigure}
-\end{figure}
+\end{wrapfigure}
 
 % \clearpage
 
