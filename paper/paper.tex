@@ -33,6 +33,7 @@
 \usepackage{tikz}
 \usepackage{tkz-graph}
 \usepackage{stmaryrd}
+\usepackage{wrapfig}
 % \usepackage{amsmath}
 
 % \lstset{basicstyle=\ttfamily}
@@ -1292,13 +1293,13 @@ transformation will terminate.
 \end{itemize}
 
 % \clearpage
-\begin{figure*}
+\begin{wrapfigure}{r}{0.5\linewidth}
   \centering 
-  \resizebox{0.8\columnwidth}{10cm}{\includegraphics{Diagrams/Flowchart.pdf}}
+  \resizebox{0.45\columnwidth}{5cm}{\includegraphics{Diagrams/Flowchart.pdf}}
   % \includegraphics{Diagrams/Flowchart.pdf}
    \caption{Control Flow of the Core Plugin}
    \label{fig:CorePlugin}
-\end{figure*}
+\end{wrapfigure}
 
 % \clearpage
 
@@ -1309,9 +1310,11 @@ transformation will terminate.
 % \end{todo}
 % \vspace*{-0.6cm}
 
-
-\begin{figure*}[hp]
+% \begin{wrapfigure}{r}{0.8\linewidth}
+  \begin{figure}[!h]
   \centering
+\resizebox{.9\linewidth}{!}{
+  \begin{minipage}{\linewidth}
 \begin{align*}
   &D\expr{\ttt{f x = internalize (externalize (case s of \{ ... \}))}}\\
       &\quad\rewrites I(D(\ttt{f x = externalize (case s of \{ ... \})}))\\
@@ -1368,11 +1371,15 @@ transformation will terminate.
       \ttt{x} & \text{if}\; \exists t, a\; \typeeq E\; t
     \end{cases}
 \end{align*}
+  \end{minipage}
+}%
+% }}
 
 % \captionsetup{justification=centering}
 \caption{Rewrite rules}
 \label{fig:Rewrites}
-\end{figure*}
+% \end{wrapfigure}
+\end{figure}
 
 % \clearpage
 
