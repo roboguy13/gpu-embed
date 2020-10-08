@@ -444,10 +444,8 @@ blocks, and further deconstruction can take place on these pieces later on. For
 example, consider this type:
 
 \begin{lstlisting}
-data ComplexPair where
-  ComplexPair :: Complex Double
-                 -> Complex Double
-                 -> ComplexPair
+data ComplexPair =
+  ComplexPair (Complex Double) (Complex Double)
   deriving (Generic, Show)
 
 instance ERep ComplexPair
@@ -461,12 +459,10 @@ is an example that demonstrates why this is more useful than if it \textit{fully
 each type into \ttt{Either}, \ttt{(,)} and \ttt{()}:
 
 \begin{lstlisting}
-sumComplexPair ::
-  ComplexPair -> Complex Double
+sumComplexPair :: ComplexPair -> Complex Double
 sumComplexPair p =
   internalize (externalize
-    (case p of
-      ComplexPair a b -> a + b))
+    (case p of ComplexPair a b -> a + b))
 \end{lstlisting}
 
 If \ttt{ERepTy ComplexPair} were fully deconstructed into \ttt{((Double, Double),
@@ -483,12 +479,10 @@ with further pattern matches, since \ttt{ERepTy (Complex Double) \typeeq (Double
 \begin{lstlisting}
 realSum :: ComplexPair -> Double
 realSum p =
-  internalize (externalize
-    (case p of
+  internalize (externalize (case p of
       ComplexPair a b -> case a of
           a_real :+ _ -> case b of
-              b_real :+ _ ->
-                a_real + b_real))
+              b_real :+ _ -> a_real + b_real))
 \end{lstlisting}
 
 The above pattern matches could also be written as a single nested pattern
@@ -521,13 +515,11 @@ isEmpty t =
 intListSum :: (Int, IntList) -> Int
 intListSum p =
   internalize (externalize
-    (case p of
-       (acc, t) ->
-         case t of
-           Nil -> acc
-           Cons x xs ->
-             intListSum
-               (x+acc, xs)))
+    (case p of (acc, t) -> case t of
+       Nil -> acc
+       Cons x xs ->
+         intListSum
+           (x+acc, xs)))
 \end{lstlisting}
 
 \subsection{\ttt{E}, \ttt{ERep}, \ttt{ERepTy}}
@@ -562,9 +554,8 @@ and \ttt{(,)} values:
 \begin{lstlisting}
 data E t where
   ...
-  ConstructRep ::
-    (Typeable a, ERep a)
-    => E (ERepTy a) -> E a
+  ConstructRep :: (Typeable a, ERep a) =>
+    E (ERepTy a) -> E a
 
   LeftExp :: E a -> E (Either a b)
   RightExp :: E b -> E (Either a b)
@@ -583,11 +574,8 @@ class Typeable t => ERep t where
   construct :: t -> E (ERepTy t)
   rep :: t -> E t
 
-  default rep ::
-    (ERep (ERepTy t))
-    => t -> E t
+  default rep :: (ERep (ERepTy t)) => t -> E t
   rep x = ConstructRep (construct x)
-  {-# INLINABLE rep #-}
 
   unrep' :: ERepTy t -> t
   rep' :: t -> ERepTy t
@@ -596,9 +584,7 @@ class Typeable t => ERep t where
 The key algebraic instances mentioned before are as follows:
 
 \begin{lstlisting}
-instance (ERep a, ERep b)
-  => ERep (Either a b) where
-
+instance (ERep a, ERep b) => ERep (Either a b) where
   type ERepTy (Either a b) = Either a b
 
   rep (Left x)  = LeftExp (rep x)
@@ -606,9 +592,7 @@ instance (ERep a, ERep b)
   unrep' = id
   rep'   = id
 
-instance (ERep a, ERep b)
-  => ERep (a, b) where
-
+instance (ERep a, ERep b) => ERep (a, b) where
   type ERepTy (a, b) = (a, b)
 
   rep (x, y) = PairExp (rep x) (rep y)
@@ -626,12 +610,8 @@ Within the \ttt{E} expression language, a pattern match is represented by the
 \begin{lstlisting}
 data E t where
   ...
-  CaseExp ::
-    (ERep t,
-     ERepTy (ERepTy t) ~ ERepTy t)
-      => ERep t
-         -> E (SumMatch (ERepTy t) r)
-         -> E r
+  CaseExp :: (ERep t, ERepTy (ERepTy t) ~ ERepTy t) =>
+    E t -> E (SumMatch (ERepTy t) r) -> E r
   ...
 \end{lstlisting}
 
@@ -680,20 +660,15 @@ expression language:
 \begin{lstlisting}
 data E t where
   ...
-  SumMatchExp ::
-    (ERep a, ERep b, ERepTy b ~ b)
-      => E (ProdMatch a r)
-         -> E (SumMatch b r)
-         -> E (SumMatch (Either a b) r)
+  SumMatchExp :: (ERep a, ERep b, ERepTy b ~ b) =>
+    E (ProdMatch a r) -> E (SumMatch b r)
+      -> E (SumMatch (Either a b) r)
 
   OneSumMatch ::
-    (ERep a, ERep b, ERepTy a ~ a)
-      => E (ProdMatch a b)
-         -> E (SumMatch a b)
+    (ERep a, ERep b, ERepTy a ~ a) =>
+      E (ProdMatch a b) -> E (SumMatch a b)
 
-
-  EmptyMatch ::
-    (ERep b) => E (SumMatch Void b)
+  EmptyMatch :: (ERep b) => E (SumMatch Void b)
   ...
 \end{lstlisting}
 
@@ -711,18 +686,14 @@ equivalent to \ttt{E (a -> E (b -> E (c -> E r)))}.
 \begin{lstlisting}
 data E t where
   ...
-  ProdMatchExp ::
-    (ERep a, ERep b)
-      => E (a -> ProdMatch b r)
-         -> E (ProdMatch (a, b) r)
+  ProdMatchExp :: (ERep a, ERep b) =>
+    E (a -> ProdMatch b r) -> E (ProdMatch (a, b) r)
 
-  NullaryMatch ::
-    (ERep a)
-      => E r -> E (ProdMatch a r)
+  NullaryMatch :: (ERep a) =>
+    E r -> E (ProdMatch a r)
 
-  OneProdMatch ::
-    (ERep a)
-      => E (a -> b) -> E (ProdMatch a b)
+  OneProdMatch :: (ERep a) =>
+    E (a -> b) -> E (ProdMatch a b)
   ...
 \end{lstlisting}
 
@@ -890,8 +861,7 @@ abs :: E (SumMatch a b) -> SumMatch a b
 If we postcompose with \ttt{runSumMatch}, we get:
 
 \begin{lstlisting}
-runSumMatch . abs
-  :: E (SumMatch a b) -> (a -> b)
+runSumMatch . abs    :: E (SumMatch a b) -> (a -> b)
 \end{lstlisting}
 
 The \ttt{SumMatch a b} value which \ttt{abs} returns is exactly the function
@@ -932,11 +902,9 @@ runIter :: (ERep a, ERep b)
   => (a -> Iter b a)
      -> (a -> b)
 runIter f = go
-  where
-    go x =
-      case f x of
-        Done r  -> r
-        Step x' -> go x'
+  where go x = case f x of
+          Done r  -> r
+          Step x' -> go x'
 \end{lstlisting}
 
 % \begin{todo}
@@ -979,9 +947,8 @@ data E t where
   StepExp :: E b -> E (Iter a b)
   DoneExp :: E a -> E (Iter a b)
 
-  TailRec :: (ERep a, ERep b)
-               => E (b -> Iter a b)
-                  -> E (b -> a)
+  TailRec :: (ERep a, ERep b) =>
+    E (b -> Iter a b) -> E (b -> a)
   ...
 \end{lstlisting}
 
@@ -1023,14 +990,12 @@ isEven' :: Int -> Bool
 isEven' =
   internalize (externalize
     (\ eta ->
-      runIter (
-        \ x ->
-          case x == 0 of
-            True -> Done True
-            False -> case x == 1 of
-                True -> Done False
-                False -> Step (x - 2))
-        eta))
+      runIter (\ x -> case x == 0 of
+                        True -> Done True
+                        False -> case x == 1 of
+                            True -> Done False
+                            False -> Step (x - 2))
+              eta))
 \end{lstlisting}
 
 After this initial tail recursion transformation, the rest of the plugin brings this
@@ -1045,17 +1010,13 @@ isEven'' :: Int -> Bool
 isEven'' =
   internalize (
     (Lam (Var 1)
-      (App
-        (TailRec (Lam (Var 2)
-          (IfThenElseExp (Equal (Var 2)
-                                (rep 0))
-            (DoneExp TrueExp)
-            (IfThenElseExp (Equal (Var 1)
-                                  (rep 1))
-              (DoneExp FalseExp)
-              (StepExp (Sub (Var 2)
-                            (rep 2)))))))
-        (Var 1))))
+      (App (TailRec (Lam (Var 2)
+             (IfThenElseExp (Equal (Var 2) (rep 0))
+               (DoneExp TrueExp)
+               (IfThenElseExp (Equal (Var 1) (rep 1))
+                 (DoneExp FalseExp)
+                 (StepExp (Sub (Var 2) (rep 2)))))))
+           (Var 1))))
 \end{lstlisting}
 
 \section{Representing lambdas}
@@ -1068,10 +1029,7 @@ with the following constructors:
 \begin{lstlisting}
 data E t where
   ...
-  Lam ::
-    (ERep a, Typeable a)
-      => Name a -> E b -> E (a -> b)
-
+  Lam :: (ERep a, Typeable a) => Name a -> E b -> E (a -> b)
   Var :: (Typeable a) => Name a -> E a
 \end{lstlisting}
 
@@ -1082,14 +1040,10 @@ The \ttt{Name t} type represents a lambda variable identifier together with its
 type \ttt{t} (Note that the \ttt{ScopedTypeVariables} extension is enabled):
 
 \begin{lstlisting}
-newtype Name a = Name Int
-  deriving (Eq, Show)
+newtype Name a = Name Int deriving (Eq, Show)
 
-namesEq :: forall a b.
-  (Typeable a, Typeable b)
-   => Name a
-   -> Name b
-   -> Maybe (a :~: b)
+namesEq :: forall a b.  (Typeable a, Typeable b) =>
+  Name a -> Name b -> Maybe (a :~: b)
 namesEq (Name n) (Name n') =
   case eqT :: Maybe (a :~: b) of
     Just Refl
@@ -1106,9 +1060,8 @@ of typed names to expression language values:
 
 \begin{lstlisting}
 data EnvMapping where
-  (:=>) :: forall a.
-    Typeable a
-    => Name a -> E a -> EnvMapping
+  (:=>) :: forall a. Typeable a =>
+    Name a -> E a -> EnvMapping
 \end{lstlisting}
 
 This type encodes a single variable binding, with values of the form
@@ -1125,8 +1078,7 @@ emptyEnv = Env []
 extendEnv :: Env -> EnvMapping -> Env
 extendEnv (Env maps) m = Env (m:maps)
 
-envLookup :: Typeable a
-  => Env -> Name a -> Maybe (E a)
+envLookup :: Typeable a => Env -> Name a -> Maybe (E a)
 envLookup (Env maps) = go maps
   where
     go []                = Nothing
@@ -1151,19 +1103,12 @@ described in Section~\ref{sec:MatchAside}.
 abs :: forall t. E t -> t
 abs = absEnv emptyEnv
 
-sumMatchAbs ::
-  (ERepTy (ERepTy s) ~ ERepTy s, ERep s)
-  => Env
-    -> E (SumMatch (ERepTy s) t)
-    -> s
-    -> t
+sumMatchAbs :: (ERepTy (ERepTy s) ~ ERepTy s, ERep s) =>
+  Env -> E (SumMatch (ERepTy s) t) -> s -> t
 ...
 
-prodMatchAbs :: (ERep s)
-  => Env
-     -> E (ProdMatch s t)
-     -> s
-     -> t
+prodMatchAbs :: (ERep s) =>
+  Env -> E (ProdMatch s t) -> s -> t
 ...
 \end{lstlisting}
 
@@ -1179,11 +1124,9 @@ Given this, the \verb|ProdMatchExp| case of the \verb|prodMatchAbs| function can
 implemented as follows:
 
 \begin{lstlisting}
-prodMatchAbs env (ProdMatchExp f) =
-  \ pair ->
-    case pair of
-      (x, y) ->
-        runProdMatch (absEnv env f x) y
+prodMatchAbs env (ProdMatchExp f) = \ pair ->
+  case pair of (x, y) ->
+    runProdMatch (absEnv env f x) y
 \end{lstlisting}
 
 See Appendix A for implementation details of \ttt{absEnv}.
