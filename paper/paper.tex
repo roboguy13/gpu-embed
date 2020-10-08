@@ -327,14 +327,14 @@ The following contributions are made by this paper:
   into this EDSL for pattern matching, extended with tail recursion,
   lambdas and primitive operations (Section~\ref{sec:CorePlugin})
 \item An implementation of a interpreter for the "standard" semantics of the EDSL (Section~\ref{sec:StdSemantics}).
-\item An outline of a C backend for this EDSL (Section~\ref{sec:CBackend}).
+% \item An outline of a C backend for this EDSL (Section~\ref{sec:CBackend}).
 \end{itemize}
 
-In this paper, a C backend is given as an example in Section \ref{sec:CBackend}. The Core plugin will
-translate a subset of Haskell to the EDSL we have specified. The C backend will
-then take expressions written in this EDSL and translate them to C code. This C
-code can be compiled by a standard C compiler. In effect, the subset of Haskell
-represented in the EDSL is compiled to C.
+% In this paper, a C backend is given as an example in Section \ref{sec:CBackend}. The Core plugin will
+% translate a subset of Haskell to the EDSL we have specified. The C backend will
+% then take expressions written in this EDSL and translate them to C code. This C
+% code can be compiled by a standard C compiler. In effect, the subset of Haskell
+% represented in the EDSL is compiled to C.
 
 Readers who are primarily interested only in the encoding of pattern matching itself can direct
 most of their attention to Sections~\ref{sec:ADTRep},~\ref{sec:PatRep} and~\ref{sec:StdSemantics}. Most of the technical aspects of
@@ -363,8 +363,8 @@ Haskell EDSLs that support powerful language features like pattern matching
 allow these advantages to be brought to problem domains where it is currently
 either difficult or impossible to use a language that has these benefits.
 
-A C backend is described in Section \ref{sec:CBackend}. However, other backends
-could be constructed, targeting different architectures.
+% A C backend is described in Section \ref{sec:CBackend}. However, other backends
+% could be constructed, targeting different architectures.
 
 \begin{todont}
   % Cite examples where Haskell implementations have been derived specifications.  Conal Elliott's latest two papers (as of May 2020), \cite{Elliott-2018-ad-icfp} and \cite{Elliott2019-convolution-extended}, would be good examples of this. (This is now cited)
@@ -953,7 +953,7 @@ data E t where
 \end{lstlisting}
 
 The process of transforming a tail recursive function in the DSL to a 
-representation which could be passed into the C backend and used
+representation which could be passed into a backend and used
 to generate a traditional iterative loop goes as follows.
 
 Starting with the tail recursive function  \ttt{isEven}:
@@ -1207,6 +1207,15 @@ See Appendix A for implementation details of \ttt{absEnv}.
 \section{Core Plugin}
 \label{sec:CorePlugin}
 
+\begin{wrapfigure}{r}{0.5\linewidth}
+  % \centering
+  \resizebox{0.5\columnwidth}{7cm}{\includegraphics{Diagrams/Flowchart.pdf}}
+  % \includegraphics{Diagrams/Flowchart.pdf}
+   \caption{Control Flow of the Core Plugin}
+   \label{fig:CorePlugin}
+\end{wrapfigure}%
+
+
 The Core plugin translates marked expressions. Expressions are marked by
 the \ttt{externalize} function:
 
@@ -1219,15 +1228,6 @@ For example, \ttt{externalize x} marks the expression \ttt{x}.
 If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \ttt{a}), then the marking procedure ignores it and does not wrap it with
 \ttt{externalize} (see $M$ in Figure~\ref{fig:Rewrites}).
-
-\begin{wrapfigure}{R}{0.5\linewidth}
-  % \centering
-  \resizebox{0.5\columnwidth}{7cm}{\includegraphics{Diagrams/Flowchart.pdf}}
-  % \includegraphics{Diagrams/Flowchart.pdf}
-   \caption{Control Flow of the Core Plugin}
-   \label{fig:CorePlugin}
-\end{wrapfigure}%
-
 
 In the flowchart given in Figure~\ref{fig:CorePlugin}, the names in parentheses in a node refer
 to the names of transformations given in the rewrite rules in Figure~\ref{fig:Rewrites}. In Figure~\ref{fig:Rewrites},
@@ -1257,7 +1257,7 @@ transformation will terminate.
 % \vspace*{-0.6cm}
 
 % \begin{wrapfigure}{r}{0.8\linewidth}
-  \begin{wrapfigure}{R}{1.2\linewidth}
+  \begin{wrapfigure}{r}{0.6\linewidth}
   \centering
 \resizebox{1\linewidth}{!}{
   \begin{minipage}{\linewidth}
@@ -1403,15 +1403,17 @@ Should some of this go into the introduction?
 In this paper:
 \begin{itemize}
   \item We address the goal of translating Haskell pattern matching into an
-    EDSL. An example usage of this mechanism is given in Section
-    \ref{sec:CBackend} in the form of a transformation of a subset of Haskell
-    into an EDSL that is then used to generate C code, effectively compiling
-    that subset of Haskell into C.
+    EDSL.
 
-  \item A representation of pattern matching via a deep embedding of Church
-    encodings of products and coproducts presented in Section \ref{sec:Church}.
-    This encoding relies on having a uniform representation of algebraic data
-    types.
+    % An example usage of this mechanism is given in Section
+    % \ref{sec:CBackend} in the form of a transformation of a subset of Haskell
+    % into an EDSL that is then used to generate C code, effectively compiling
+    % that subset of Haskell into C.
+
+  % \item A representation of pattern matching via a deep embedding of Church
+  %   encodings of products and coproducts presented in Section \ref{sec:Church}.
+  %   This encoding relies on having a uniform representation of algebraic data
+  %   types.
 
   \item To provide the uniform representation of algebraic data types mentioned
     in the previous point, we describe a mechanism for automatically encoding
