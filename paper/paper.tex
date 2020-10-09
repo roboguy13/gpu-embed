@@ -1029,7 +1029,8 @@ with the following constructors:
 \begin{lstlisting}
 data E t where
   ...
-  Lam :: (ERep a, Typeable a) => Name a -> E b -> E (a -> b)
+  Lam :: (ERep a, Typeable a) =>
+    Name a -> E b -> E (a -> b)
   Var :: (Typeable a) => Name a -> E a
 \end{lstlisting}
 
@@ -1103,8 +1104,8 @@ described in Section~\ref{sec:MatchAside}.
 abs :: forall t. E t -> t
 abs = absEnv emptyEnv
 
-sumMatchAbs :: (ERepTy (ERepTy s) ~ ERepTy s, ERep s) =>
-  Env -> E (SumMatch (ERepTy s) t) -> s -> t
+sumMatchAbs :: (ERepTy (ERepTy s) ~ ERepTy s, ERep s)
+  => Env -> E (SumMatch (ERepTy s) t) -> s -> t
 ...
 
 prodMatchAbs :: (ERep s) =>
