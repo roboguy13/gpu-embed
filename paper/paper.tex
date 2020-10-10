@@ -346,7 +346,7 @@ the transformation performed by the Core plugin are described in Section~\ref{se
   Expand?
 \end{todont}
 
-A major benefit of the Haskell language is that it is frequently possible derive
+A major benefit of the Haskell language is that it is frequently possible to derive
 a Haskell implementation from a specification, either partially or fully.  This
 technique is used extensively, for example, in \cite{Bird:2010:Pearls} and
 \cite{Gibbons:2002:Calc}.  Recent examples of this technique include the work in
@@ -451,8 +451,8 @@ data ComplexPair =
 instance ERep ComplexPair
 \end{lstlisting}
 
-Note that the instance definition is automatically generated from the
-\ttt{Generic} instance.
+Note the instance definition is automatically generated from the \ttt{Generic}
+instance.
 
 Given this code, \ttt{ERepTy ComplexPair \typeeq (Complex Double, Complex Double)}. Here
 is an example that demonstrates why this is more useful than if it \textit{fully} deconstructed
