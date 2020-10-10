@@ -190,7 +190,7 @@
   the builtin control flow mechanisms, artificial control flow combinators
   are used instead.
 % Say why it is an interesting problem
-  However, capturing traditional control flow in an deeply embedded domain specific language
+  However, capturing traditional control flow in a deeply embedded domain specific language
   would support the writing of programs in a natural style by allowing the programmer to use the
   constructs that are already builtin to the base language, such as pattern
   matching and recursion.
@@ -420,9 +420,10 @@ example =
   externalize (case x of Left c -> ord c; Right i -> i)
 
 example' :: E Int
-example' = CaseExp (LeftExp 'a') (SumMatchExp
-  (OneProdMatch (Lam 1 (Ord (Var 1))))
-  (OneSumMatch (OneProdMatch (Lam 2 (Var 2)))))
+example' = CaseExp (LeftExp (CharLit 'a'))
+  (SumMatchExp
+    (OneProdMatch (Lam 1 (Ord (Var 1))))
+    (OneSumMatch (OneProdMatch (Lam 2 (Var 2)))))
 
 example'' :: Int
 example'' = abs example'
@@ -438,7 +439,7 @@ example'' = abs example'
 Briefly, a algebraic type \ttt{T} with an automatically generated \ttt{ERep}
 instance is given a representation in terms of \ttt{Either}, \ttt{(,)}, \ttt{()}
 and \ttt{Void}.  This "standardized" type representation is given by \ttt{ERepTy
-T}. \ttt{ERepTy} is an type family associated to the type class \ttt{ERep}. This
+T}. \ttt{ERepTy} is a type family associated to the type class \ttt{ERep}. This
 type will be called the \textit{canonical type} of \ttt{T}.
 
 Only the "outermost" type will be deconstructed into these fundamental building
@@ -612,7 +613,7 @@ instance (ERep a, ERep b) => ERep (a, b) where
 \end{lstlisting}
 
 
-\section{Representing pattern matches}
+\section{Representing pattern matching}
 \label{sec:PatRep}
 
 Within the \ttt{E} expression language, a pattern match is represented by the
