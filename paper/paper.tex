@@ -456,8 +456,13 @@ instance ERep ComplexPair
 Note the instance definition is automatically generated from the \ttt{Generic}
 instance.
 
-Given this code, \ttt{ERepTy ComplexPair \typeeq (Complex Double, Complex Double)}. Here
-is an example that demonstrates why this is more useful than if it \textit{fully} deconstructed
+Given this code, the following type equality holds:
+\\
+
+\ttt{ERepTy ComplexPair \typeeq (Complex Double, Complex Double)}
+\\
+
+Here is an example that demonstrates why this is more useful than if it \textit{fully} deconstructed
 each type into \ttt{Either}, \ttt{(,)} and \ttt{()}:
 
 \begin{lstlisting}
@@ -481,10 +486,14 @@ with further pattern matches, since \ttt{ERepTy (Complex Double) \typeeq (Double
 \begin{lstlisting}
 realSum :: ComplexPair -> Double
 realSum p =
-  internalize (externalize (case p of
-      ComplexPair a b -> case a of
-          a_real :+ _ -> case b of
-              b_real :+ _ -> a_real + b_real))
+  internalize (externalize
+    (case p of
+      ComplexPair a b ->
+        case a of
+          a_real :+ _ ->
+            case b of
+              b_real :+ _ ->
+                a_real + b_real))
 \end{lstlisting}
 
 The above pattern matches could also be written as a single nested pattern
@@ -665,13 +674,10 @@ data E t where
   SumMatchExp :: (ERep a, ERep b, ERepTy b ~ b) =>
     E (ProdMatch a r) -> E (SumMatch b r)
       -> E (SumMatch (Either a b) r)
-
   OneSumMatch ::
     (ERep a, ERep b, ERepTy a ~ a) =>
       E (ProdMatch a b) -> E (SumMatch a b)
-
   EmptyMatch :: (ERep b) => E (SumMatch Void b)
-  ...
 \end{lstlisting}
 
 Note the \ttt{ERepTy a \typeeq a} constraints. This constraint ensures that the type
@@ -901,8 +907,7 @@ function representing a tail recursive function:
 
 \begin{lstlisting}
 runIter :: (ERep a, ERep b)
-  => (a -> Iter b a)
-     -> (a -> b)
+  => (a -> Iter b a) -> (a -> b)
 runIter f = go
   where go x = case f x of
           Done r  -> r
@@ -1212,17 +1217,6 @@ See Appendix A for implementation details of \ttt{absEnv}.
 \section{Core Plugin}
 \label{sec:CorePlugin}
 
-\begin{wrapfigure}{r}{0.5\linewidth}
-  % \centering
-  \vspace{-1cm}
-  \resizebox{0.5\columnwidth}{7cm}{\includegraphics{Diagrams/Flowchart.pdf}}
-  % \includegraphics{Diagrams/Flowchart.pdf}
-   \caption{Control Flow of the Core Plugin}
-   \label{fig:CorePlugin}
-  \vspace{-1cm}
-\end{wrapfigure}%
-
-
 The Core plugin translates marked expressions. Expressions are marked by
 the \ttt{externalize} function:
 
@@ -1242,6 +1236,18 @@ $\varepsilon$ represents an empty term (in the context of the term rewriting sys
 to \ttt{unrep :: E a -> a} are only used internally and will not exist in
 the final result of the transformation.
 
+% \begin{wrapfigure}{r}{0.5\linewidth}
+\begin{figure}
+  \centering
+  % \vspace{-1cm}
+  \resizebox{0.8\columnwidth}{8.2cm}{\includegraphics{Diagrams/Flowchart.pdf}}
+  % \includegraphics{Diagrams/Flowchart.pdf}
+   \caption{Control Flow of the Core Plugin}
+   \label{fig:CorePlugin}
+  % \vspace{-0.1cm}
+\end{figure}%
+
+\pagebreak
 Note that:
 \begin{itemize}
   \item The tail recursion transformation given by $D$, $T'_{\ttt{f}}$ and $T_{\ttt{f}}$ is completely independent of the \ttt{E} type and the transformations associated to the \ttt{E} type. As a result, the tail recursion transformation can be used on its own.
@@ -1267,6 +1273,7 @@ transformation will terminate.
   % \begin{wrapfigure}{r}{0.59\linewidth}
 \begin{figure}
   \centering
+  % \vspace{-0.9cm}
 \resizebox{1\linewidth}{!}{
   \begin{minipage}{\linewidth}
 \begin{align*}
@@ -1335,6 +1342,9 @@ transformation will terminate.
 \label{fig:Rewrites}
 % \end{wrapfigure}
 % \end{wrapfigure}
+
+% \vspace{-1cm}
+
 \end{figure}
 
 % \clearpage
