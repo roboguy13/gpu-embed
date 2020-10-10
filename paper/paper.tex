@@ -179,7 +179,9 @@
 %%
 %% The abstract is a short summary of the work to be presented in the
 %% article.
-\linenumbers
+
+% \linenumbers
+
 \begin{abstract}
 % Say what problem is
   Capturing control flow is the Achilles heel of Haskell-based
@@ -964,7 +966,8 @@ isEven x =
   internalize (externalize (
     case x == 0 of
       True -> True
-      False -> case x == 1 of
+      False ->
+        case x == 1 of
           True -> False
           False -> isEven (x - 2)))
 \end{lstlisting}
@@ -1031,6 +1034,7 @@ data E t where
   ...
   Lam :: (ERep a, Typeable a) =>
     Name a -> E b -> E (a -> b)
+
   Var :: (Typeable a) => Name a -> E a
 \end{lstlisting}
 
