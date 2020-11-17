@@ -598,10 +598,8 @@ The key algebraic instances mentioned before are as follows:
 \begin{lstlisting}
 instance (ERep a, ERep b) => ERep (Either a b) where
   type ERepTy (Either a b) = Either a b
-
   construct (Left x)  = LeftExp (rep x)
   construct (Right y) = RightExp (rep y)
-
   rep (Left x)  = LeftExp (rep x)
   rep (Right y) = RightExp (rep y)
   unrep' = id
@@ -609,13 +607,12 @@ instance (ERep a, ERep b) => ERep (Either a b) where
 
 instance (ERep a, ERep b) => ERep (a, b) where
   type ERepTy (a, b) = (a, b)
-
   construct (x, y) = PairExp (rep x) (rep y)
-
   rep (x, y) = PairExp (rep x) (rep y)
   unrep' = id
   rep'   = id
 \end{lstlisting}
+
 
 
 \section{Representing pattern matching}
