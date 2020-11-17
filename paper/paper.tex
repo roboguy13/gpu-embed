@@ -325,10 +325,10 @@ The following contributions are made by this paper:
   \item A representation of lambdas (Section~\ref{sec:LamRep}) in the EDSL, taking advantage of
   the fact that both pattern matching and tail recursion are already captured in
   the EDSL.
-\item A GHC Core plugin which transforms a subset of standard Haskell code
+  \item A GHC Core plugin which transforms a subset of standard Haskell code
   into this EDSL for pattern matching, extended with tail recursion,
   lambdas and primitive operations (Section~\ref{sec:CorePlugin})
-\item An implementation of a interpreter for the "standard" semantics of the EDSL (Section~\ref{sec:StdSemantics}).
+  \item An implementation of an interpreter for the "standard" semantics of the EDSL (Section~\ref{sec:StdSemantics}).
 % \item An outline of a C backend for this EDSL (Section~\ref{sec:CBackend}).
 \end{itemize}
 
@@ -436,7 +436,7 @@ example'' = abs example'
 %   Look into \ttt{generic-sop} and compare then cite corresponding paper.
 % \end{todo}
 
-Briefly, a algebraic type \ttt{T} with an automatically generated \ttt{ERep}
+Briefly, an algebraic type \ttt{T} with an automatically generated \ttt{ERep}
 instance is given a representation in terms of \ttt{Either}, \ttt{(,)}, \ttt{()}
 and \ttt{Void}.  This "standardized" type representation is given by \ttt{ERepTy
 T}. \ttt{ERepTy} is a type family associated to the type class \ttt{ERep}. This
