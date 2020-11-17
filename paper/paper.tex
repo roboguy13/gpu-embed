@@ -304,7 +304,7 @@ frequently a desirable feature for many EDSLs.
 
 Additionally, lambdas can also be difficult to implement in EDSLs. A major reason
 for this is that control flow constructs which are typically \textit{outside} the EDSL,
-such as pattern matching and tail recursion, can make it challenging to "look inside"
+such as pattern matching and tail recursion, can make it challenging to ``look inside''
 the lambda. When these control structures are reified within the EDSL, it is
 easier to also reify lambdas using the dummy argument technique described in~\cite{Elliott:03:CompileDSEL-JFP}.
 
@@ -315,7 +315,7 @@ easier to also reify lambdas using the dummy argument technique described in~\ci
 \begin{todo}
   Make it more clear how to integrate these concepts with other EDSLs. Maybe we should
   add a feature to the underlying implementation that allows an existing EDSL to be
-  "enriched" with pattern matching support.
+  ``enriched'' with pattern matching support.
 \end{todo}
 
 The following contributions are made by this paper:
@@ -328,7 +328,7 @@ The following contributions are made by this paper:
   \item A GHC Core plugin which transforms a subset of standard Haskell code
   into this EDSL for pattern matching, extended with tail recursion,
   lambdas and primitive operations (Section~\ref{sec:CorePlugin})
-  \item An implementation of an interpreter for the "standard" semantics of the EDSL (Section~\ref{sec:StdSemantics}).
+  \item An implementation of an interpreter for the ``standard'' semantics of the EDSL (Section~\ref{sec:StdSemantics}).
 % \item An outline of a C backend for this EDSL (Section~\ref{sec:CBackend}).
 \end{itemize}
 
@@ -438,11 +438,11 @@ example'' = abs example'
 
 Briefly, an algebraic type \ttt{T} with an automatically generated \ttt{ERep}
 instance is given a representation in terms of \ttt{Either}, \ttt{(,)}, \ttt{()}
-and \ttt{Void}.  This "standardized" type representation is given by \ttt{ERepTy
+and \ttt{Void}.  This ``standardized'' type representation is given by \ttt{ERepTy
 T}. \ttt{ERepTy} is a type family associated to the type class \ttt{ERep}. This
 type will be called the \textit{canonical type} of \ttt{T}.
 
-Only the "outermost" type will be deconstructed into these fundamental building
+Only the ``outermost'' type will be deconstructed into these fundamental building
 blocks, and further deconstruction can take place on these pieces later on. For
 example, consider this type:
 
@@ -511,7 +511,7 @@ instance ERep IntList
 \end{lstlisting}
 
 Note that \ttt{ERepTy IntList \typeeq Either () (Int, IntList)}. If \ttt{ERepTy}
-attempted to "fully deconstruct" \ttt{IntList}, it would send the compiler
+attempted to ``fully deconstruct'' \ttt{IntList}, it would send the compiler
 into an infinite loop.
 
 This allows us to implement functions on such recursive types:
@@ -540,7 +540,7 @@ There are three interconnected foundational parts: \ttt{E}, \ttt{ERep} and
 \ttt{ERepTy}. \ttt{E} is the deep embedding of the EDSL (a GADT~\cite{Vytiniotis:2006:Simple} that encodes
 expressions in the DSL language). \ttt{ERep} is a type class which represents
 all Haskell types which can be represented in the DSL. \ttt{ERepTy} is a type
-family associated to the \ttt{ERep} type class, which represents a "canonical form"
+family associated to the \ttt{ERep} type class, which represents a ``canonical form''
 of the given type. This canonical form can be immediately constructed in the EDSL.
 Canonical form types crucially include \ttt{Either} and \ttt{(,)}, which
 allow all combinations of basic sum types and product types to be encoded, in the
@@ -641,7 +641,7 @@ The equality constraint ensures that a canonical type is its own canonical type.
 % \end{todo}
 
 (The above code block is a slight simplification of the actual implementation,
-which has an additional type variable which is used at an "intermediate" point.
+which has an additional type variable which is used at an ``intermediate'' point.
 The expanded form is in place to simplify the Core transformation.)
 
 The type \ttt{SumMatch} is defined as
@@ -885,13 +885,13 @@ Tail recursion is given a direct-style representation using a simple sum type,
 using the technique described in~\cite{Grebe:2017:RSD:3136040.3136048}.
 
 Consider a tail recursive function of the type \ttt{f :: a -> b}. Each recursive
-call can be seen as a simple "update" of the values of the arguments, since
+call can be seen as a simple ``update'' of the values of the arguments, since
 these calls are all in tail position. This is why tail recursive functions
 can be easily compiled to simple loops or conditional jumps.
 
 We can take advantage of this view by transforming a tail recursive function
 \ttt{f :: a -> b} into a function \ttt{f' :: a -> Iter b a}. \ttt{Iter b a} is a
-type which can either correspond to an argument "update" (in the sense mentioned
+type which can either correspond to an argument ``update'' (in the sense mentioned
 previously) or a final result. This type is implemented as a sum of the types
 \ttt{a} and \ttt{b}. Recursive calls are transformed to \ttt{Step} applications
 and non-recursive branches are wrapped in \ttt{Done} applications.
