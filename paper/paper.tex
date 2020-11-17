@@ -415,7 +415,7 @@ used by the EDSL interpreter function \verb|abs| to produce the final result,
 x :: Either Char Int
 x = Left 'a'
 
-example :: Int
+example :: E Int
 example =
   externalize (case x of Left c -> ord c; Right i -> i)
 
