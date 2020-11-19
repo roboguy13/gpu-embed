@@ -1117,8 +1117,10 @@ genExp (NullaryMatch _) _ = error "genExp: NullaryMatch"
 genExp (OneSumMatch _) _ = error "genExp: OneSumMatch"
 genExp EmptyMatch _ = error "genExp: EmptyMatch"
 
-genCdr :: GPUExp a -> CName -> CodeGen CCode
-genCdr x@(PairExp {}) resultName = genExp x resultName
+genCdr :: forall a. GPUExp a -> CName -> CodeGen CCode
+genCdr x@(PairExp {}) resultName
+  | Nothing <- eqT :: Maybe (a :~: Complex Double)
+      = genExp x resultName
 genCdr x resultName = do
   xName <- freshCName
 
