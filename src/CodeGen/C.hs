@@ -367,7 +367,7 @@ prelude varCount =
     , ", EXPR_UNIT"
     , ", EXPR_STEP"
     , ", EXPR_DONE"
-    , ", EXPR_UNBOXED"
+    -- , ", EXPR_UNBOXED"
     , ", EXPR_NIL"
     , "} var_type_tag;"
     , ""
@@ -388,6 +388,51 @@ prelude varCount =
     , "  var_t* fv_env;"
     , "  var_t (*fn)(var_t, struct closure_t*);"
     , "} closure_t;"
+    , ""
+    , "void copyVar(var_t* dest, var_t* src) {"
+    , "  dest->tag = src->tag;"
+    , "  dest->semantic_tag = src->semantic_tag;"
+    , "  if (src->tag == EXPR_PAIR) {"
+    , "    dest->value = malloc(2*sizeof(var_t));"
+    , "    copyVar(&((var_t*)dest->value)[0], &((var_t*)src->value)[0]);"
+    , "    copyVar(&((var_t*)dest->value)[1], &((var_t*)src->value)[1]);"
+    , "  } else {"
+    , "    switch (src->tag) {"
+    , "      case EXPR_INT:"
+    , "       dest->value = malloc(sizeof(int));"
+    , "       break;"
+    , "      case EXPR_FLOAT:"
+    , "       dest->value = malloc(sizeof(float));"
+    , "       break;"
+    , "      case EXPR_DOUBLE:"
+    , "       dest->value = malloc(sizeof(double));"
+    , "       break;"
+    , "      case EXPR_CHAR:"
+    , "       dest->value = malloc(sizeof(char));"
+    , "       break;"
+    , "      case EXPR_CLOSURE:"
+    , "       dest->value = malloc(sizeof(closure_t));"
+    , "       break;"
+    , "      case EXPR_EITHER_LEFT:"
+    , "      case EXPR_EITHER_RIGHT:"
+    , "      case EXPR_STEP:"
+    , "      case EXPR_DONE:"
+    , "      case EXPR_UNIT:"
+    , "      case EXPR_NIL:"
+    , "       dest->value = malloc(sizeof(var_t));"
+    , "       break;"
+    , "      default:"
+    , "        assert(0 && \"invalid tag\");"
+    , "    }"
+    , "  }"
+    , "}"
+    , ""
+    , "var_t car(var_t v) {"
+    , "  return ((var_t*)v.value)[0];"
+    , "}"
+    , "var_t cdr(var_t v) {"
+    , "  return ((var_t*)v.value)[1];"
+    , "}"
     , ""
     , "var_t vars[" <> show varCount <> "];"
     , ""
@@ -486,6 +531,7 @@ prelude varCount =
     , "    (result).semantic_tag = EXPR_COMPLEX;\\"
     , "    (result).tag = EXPR_PAIR;\\"
     , "    (result).value = malloc(2*sizeof(var_t));\\"
+    , "    ((var_t*)((result).value))[1].value = malloc(2*sizeof(var_t));\\"
     , "  } while (0);"
     , ""
     , "#define INIT_COMPLEX(a, type, eTag)\\"
@@ -515,24 +561,31 @@ prelude varCount =
     , "#define PAIR_FST(result, p)\\"
     , "  do {\\"
     , "    assert((p).tag == EXPR_PAIR);\\"
-    , "    (result) = ((var_t*)((p).value))[0];\\"
+    , "    " <> stmt (cCall "copyVar" [addrOf "result", addrOf (cCast "var_t*" ("(p)" # "value") ! 0)]) <> "\\"
+    -- , "    (result) = ((var_t*)((p).value))[0];\\"
     , "  } while(0);"
     , ""
     , "#define PAIR_SND(result, p)\\"
     , "  do {\\"
     , "    assert((p).tag == EXPR_PAIR);\\"
-    , "    (result) = ((var_t*)((p).value))[1];\\"
+    , "    " <> stmt (cCall "copyVar" [addrOf "result", addrOf (cCast "var_t*" ((cCast "var_t*" ("(p)" # "value") ! 1) # "value") ! 0)]) <> "\\"
+    -- , "    (result) = ((var_t*)((var_t*)((result).value))[1].value)[0];\\"
     , "  } while(0);"
     , ""
     , "#define PAIR_ASSIGN_FST(result, x)\\"
     , "  do {\\"
-    , "    ((var_t*)((result).value))[0] = (x);\\"
+    , "    " <> stmt (cCall "copyVar" [addrOf (cCast "var_t*" ("(result)" # "value") ! 0), addrOf "x"]) <> "\\"
+    -- , "    ((var_t*)((result).value))[0] = (x);\\"
     , "  } while(0);"
     , ""
     , "#define PAIR_ASSIGN_SND(result, x)\\"
     , "  do {\\"
-    , "    ((var_t*)((result).value))[1] = (x);\\"
+    , "    " <> stmt (cCall "copyVar" [addrOf (cCast "var_t*" ((cCast "var_t*" ("(result)" # "value") ! 1) # "value") ! 0), addrOf "x"]) <> "\\"
+    -- , "    ((var_t*)((var_t*)((result).value))[1].value)[0] = (x); \\"
     , "  } while(0);"
+    , ""
+    , "#define GET_COMPLEX_REAL(c) ((var_t*)((c).value))[0]"
+    , "#define GET_COMPLEX_IMAG(c) ((var_t*)((var_t*)((c).value))[1].value)[0]"
     , ""
     , "#define COMPLEX_REAL(result, c)\\"
     , "  do {\\"
@@ -595,11 +648,19 @@ genExp (ConstructRep x :: GPUExp t) resultName =
         , cCall "INIT_COMPLEX" [resultName, ty, tag]
         , resultName <> ".semantic_tag = EXPR_COMPLEX;"
         , resultName <> ".tag = EXPR_PAIR;"
-        , cCall "COMPLEX_ASSIGN_REAL" [resultName, (cCast "var_t*" (pairName # "value")) ! 0]
-        , cCall "COMPLEX_ASSIGN_IMAG" [resultName, (cCast "var_t*" (pairName # "value")) ! 1]
+        , cCall "COMPLEX_ASSIGN_REAL" [resultName, cCall "GET_COMPLEX_REAL" [pairName]]
+        , cCall "COMPLEX_ASSIGN_IMAG" [resultName, cCall "GET_COMPLEX_IMAG" [pairName]]
+
+        -- , cCall "COMPLEX_ASSIGN_REAL" [resultName, (cCast "var_t*" (pairName # "value")) ! 0]
+        -- , cCall "COMPLEX_ASSIGN_IMAG" [resultName, (cCast "var_t*" (pairName # "value")) ! 1]
+
         -- , "COMPLEX_ASSIGN_REAL(" <> resultName <> ", " <> pairName <> "
         -- , resultName <> ".value = malloc(sizeof(var_t));"
-        , "*((var_t*)(" <> resultName <> ".value)) = " <> pairName <> ";"
+
+        -- , stmt $ cCall "copyVar" [cCast "var_t*" (resultName # "value"), addrOf pairName]
+
+        -- , "*((var_t*)(" <> resultName <> ".value)) = " <> pairName <> ";"
+
         ]
 
 genExp (Var name@(Name n)) resultName = do
@@ -608,10 +669,16 @@ genExp (Var name@(Name n)) resultName = do
   return $ unlines
     [ "  // Var with Name id " <> show n <> " and Haskell type " <> show (typeRep name)
     , "if (isIterTag(" <> nCName <> ".tag)) {"
-    , resultName <> " = " <> "*(var_t*)(" <> nCName <> ".value);"
+    , stmt $ cCall "copyVar" [addrOf resultName, cCast "var_t*" (nCName # "value")]
     , "} else {"
-    , resultName <> " = " <> nCName <> ";"
+    , stmt $ cCall "copyVar" [addrOf resultName, addrOf nCName]
     , "}"
+
+    -- , "if (isIterTag(" <> nCName <> ".tag)) {"
+    -- , resultName <> " = " <> "*(var_t*)(" <> nCName <> ".value);"
+    -- , "} else {"
+    -- , resultName <> " = " <> nCName <> ";"
+    -- , "}"
     ]
 
 genExp (CaseExp s body) resultName = do
@@ -791,8 +858,9 @@ genExp (Sub x y) resultName = do -- TODO: Fix complex number support (see Add)
     , ""
     , "if (" <> xName <> ".semantic_tag == EXPR_COMPLEX) {"
     , "  INIT_COMPLEX_PAIR(" <> resultName <> ");"
-    , "  MATH_OP(SUB, ((var_t*)(" <> resultName <> ".value))[0], ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value)[0]); "
-    , "  MATH_OP(SUB, ((var_t*)(" <> resultName <> ".value))[1], ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value)[1]); "
+    , "  MATH_OP(SUB, GET_COMPLEX_REAL(" <> resultName <> "), GET_COMPLEX_REAL(" <> xName <> "), GET_COMPLEX_REAL(" <> yName <> "));"
+    , "  MATH_OP(SUB, GET_COMPLEX_IMAG(" <> resultName <> "), GET_COMPLEX_IMAG(" <> xName <> "), GET_COMPLEX_IMAG(" <> yName <> "));"
+    -- , "  MATH_OP(SUB, GET_COMPLEX_IMAG(" <> resultName <> "), ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value)[1]); "
     , "} else {"
     , "  MATHOP(SUB, " <> resultName <> ", " <> xName <> ", " <> yName <> ");"
     , "}"
@@ -829,10 +897,14 @@ genExp (Mul x y) resultName = do
     , "  var_t " <> realName <> ";"
     , "  var_t " <> imagName <> ";"
     , ""
-    , "  MATH_OP(MUL, " <> x0y0Name <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[0]);"
-    , "  MATH_OP(MUL, " <> x0y1Name <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[1]);"
-    , "  MATH_OP(MUL, " <> x1y0Name <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[0]);"
-    , "  MATH_OP(MUL, " <> x1y1Name <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[1]);"
+    , "  MATH_OP(MUL, " <> x0y0Name <> ", GET_COMPLEX_REAL(" <> xName <> "), GET_COMPLEX_REAL(" <> yName <> "));"
+    , "  MATH_OP(MUL, " <> x0y1Name <> ", GET_COMPLEX_REAL(" <> xName <> "), GET_COMPLEX_IMAG(" <> yName <> "));"
+    , "  MATH_OP(MUL, " <> x1y0Name <> ", GET_COMPLEX_IMAG(" <> xName <> "), GET_COMPLEX_REAL(" <> yName <> "));"
+    , "  MATH_OP(MUL, " <> x1y1Name <> ", GET_COMPLEX_IMAG(" <> xName <> "), GET_COMPLEX_IMAG(" <> yName <> "));"
+    -- , "  MATH_OP(MUL, " <> x0y0Name <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[0]);"
+    -- , "  MATH_OP(MUL, " <> x0y1Name <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[1]);"
+    -- , "  MATH_OP(MUL, " <> x1y0Name <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[0]);"
+    -- , "  MATH_OP(MUL, " <> x1y1Name <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[1]);"
     , ""
     , "  MATH_OP(SUB, " <> realName <> ", " <> x0y0Name <> ", " <> x1y1Name <> ");"
     , "  MATH_OP(ADD, " <> imagName <> ", " <> x0y1Name <> ", " <> x1y0Name <> ");"
@@ -875,8 +947,10 @@ genExp (Add x y) resultName = do
     , "if (" <> xName <> ".semantic_tag == EXPR_COMPLEX) {"
     , "  INIT_COMPLEX_PAIR(" <> resultName <> ");"
     , ""
-    , "  MATH_OP(ADD, " <> realResultName <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[0]);"
-    , "  MATH_OP(ADD, " <> imagResultName <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[1]);"
+    -- , "  MATH_OP(ADD, " <> realResultName <> ", ((var_t*)(" <> xName <> ".value))[0], ((var_t*)(" <> yName <> ".value))[0]);"
+    -- , "  MATH_OP(ADD, " <> imagResultName <> ", ((var_t*)(" <> xName <> ".value))[1], ((var_t*)(" <> yName <> ".value))[1]);"
+    , "  MATH_OP(SUB, " <> realResultName <> ", GET_COMPLEX_REAL(" <> xName <> "), GET_COMPLEX_REAL(" <> yName <> "));"
+    , "  MATH_OP(SUB, " <> imagResultName <> ", GET_COMPLEX_IMAG(" <> xName <> "), GET_COMPLEX_IMAG(" <> yName <> "));"
     , ""
     , "  COMPLEX_ASSIGN_REAL(" <> resultName <> ", " <> realResultName <> ");"
     , "  COMPLEX_ASSIGN_IMAG(" <> resultName <> ", " <> imagResultName <> ");"
@@ -1047,8 +1121,10 @@ genExp (PairExp x y) resultName = do
     , resultName <> ".tag = EXPR_PAIR;"
     , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(var_t)*2);"
-    , "((var_t*)(" <> resultName <> ".value))[0] = " <> xName <> ";"
-    , "((var_t*)(" <> resultName <> ".value))[1] = " <> yName <> ";"
+    , stmt $ cCall "copyVar" [addrOf (cCast "var_t*" (resultName # "value") ! 0), addrOf xName]
+    , stmt $ cCall "copyVar" [addrOf (cCast "var_t*" (resultName # "value") ! 1), addrOf yName]
+    -- , "((var_t*)(" <> resultName <> ".value))[0] = " <> xName <> ";"
+    -- , "((var_t*)(" <> resultName <> ".value))[1] = " <> yName <> ";"
     ]
 
 genExp (Repped x) resultName = error "genExp: Repped" --genExp (rep x) resultName
@@ -1173,14 +1249,14 @@ genProdMatch s p resultName = do
       let lastArg = last argUniqs0
           argUniqs = init argUniqs0
 
-      let itemNames = map (\i -> pairCar i s) [0..length argUniqs0-1]
+      let itemNames = map (\i -> pairCar i s <> "/* item #" <> show i <> " */") [0..length argUniqs0-1]
 
       -- TODO: Should the enivronment be saved and restored?
       -- cg_modifyNames (zip argUniqs itemNames)
 
       le <- fmap cg_le get
       withLocalEnv (le_modifyNames le (zip argUniqs itemNames))
-        $ buildAndCall innerLam (pairCar (length argUniqs0-1) s) resultName
+        $ buildAndCall innerLam (pairCar (length argUniqs0-1) s <> "/* item #" <> show (length argUniqs0-1) <> " */") resultName
 
 pairCar :: Int -> CName -> CCode
 pairCar 0 p = "((var_t*)" <> p <> ".value)[0]"
@@ -1252,15 +1328,20 @@ genLambda sc@(SomeLambda c) = do
               [ rName <> ".tag = EXPR_STEP;"
               , rName <> ".semantic_tag = NO_SEMANTIC_TAG;"
               , rName <> ".value = malloc(sizeof(var_t));"
-              , "*(var_t*)(" <> rName <> ".value) = arg;"
+              -- , "*(var_t*)(" <> rName <> ".value) = arg;"
+              , stmt $ cCall "copyVar" [cCast "var_t*" (rName # "value"), addrOf "arg"]
               , "while (" <> rName <> ".tag != EXPR_DONE) {"
               , body
               , "}"
               , ""
-              , "var_t " <> tempName <> " = *(var_t*)(" <> rName <> ".value);"
+              , "var_t " <> tempName <> ";"
+              , stmt $ cCall "copyVar"
+                          [addrOf tempName, cCast "var_t*" (rName # "value")]
+              -- , "var_t " <> tempName <> " = *(var_t*)(" <> rName <> ".value);"
               , rName <> ".tag = " <> tempName <> ".tag;"
               , rName <> ".semantic_tag = " <> tempName <> ".semantic_tag;"
-              , rName <> ".value = " <> tempName <> ".value;"
+              , stmt $ cCall "copyVar" [cCast "var_t*" (rName # "value"), cCast "var_t*" (tempName # "value")]
+              -- , rName <> ".value = " <> tempName <> ".value;"
               ]
         | otherwise = body
 
@@ -1305,7 +1386,8 @@ buildClosure sc@(SomeLambda c) closureVarName = do
   traceM $ "////////// fvs = " ++ show fvs
   init_fvEnv <- forM (zip [0..] fvs) (\(i, n@(SomeName fv)) -> do
                             fvName <- cg_lookup (getNameUniq fv)
-                            return (closureVarName <> ".fv_env[" <> show i <> "] = " <> fvName <> ";  // For FV with id " <> (show (getNameUniq fv) <> " with Haskell type " <> showNameType n)))
+                            return (cCall "copyVar" [addrOf ((closureVarName # "fv_env") ! i), addrOf fvName] <> ";  // For FV with id " <> (show (getNameUniq fv) <> " with Haskell type " <> showNameType n)))
+                            -- return (closureVarName <> ".fv_env[" <> show i <> "] = " <> fvName <> ";  // For FV with id " <> (show (getNameUniq fv) <> " with Haskell type " <> showNameType n)))
 
   return $
     unlines

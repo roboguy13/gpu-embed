@@ -15,6 +15,9 @@ cCall fnName args =
 derefPtr :: CCode -> CCode
 derefPtr x = "*(" <> x <> ")"
 
+addrOf :: CCode -> CCode
+addrOf x = "&(" <> x <> ")"
+
 cCast :: CCode -> CCode -> CCode
 cCast toType x = "((" <> toType <> ")" <> x <> ")"
 
