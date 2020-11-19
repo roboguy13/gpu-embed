@@ -368,6 +368,7 @@ prelude varCount =
     , ", EXPR_STEP"
     , ", EXPR_DONE"
     , ", EXPR_UNBOXED"
+    , ", EXPR_NIL"
     , "} var_type_tag;"
     , ""
     , "typedef enum semantic_type_tag {"
@@ -401,9 +402,11 @@ prelude varCount =
     , "#define GET_COMPARE_OP_GT >"
     , "#define GET_COMPARE_OP_EQUAL =="
     , ""
+    , "#define assert_msg(cond, msg) do { if (!(cond)) { printf msg; assert(0 && #cond); } } while(0)"
+    , ""
     , "#define MATH_OP(op, result, a, b)\\"
     , "  do {\\"
-    , "    assert((a).tag == (b).tag);\\"
+    , "    assert_msg((a).tag == (b).tag, (\"(a,b).tag = (%i,%i)\\n\", (int)(a).tag, (int)(b).tag));\\"
     , "    (result).semantic_tag = (a).semantic_tag;\\"
     , "    (result).tag = (a).tag;\\"
     , "    switch ((a).tag) {\\"
@@ -477,7 +480,7 @@ prelude varCount =
     , "        *((double*)(result).value) = sqrt(*(double*)((a).value));\\"
     , "        break;\\"
     , "  } while(0);"
-    , ""  -- 
+    , ""
     , "#define INIT_COMPLEX_PAIR(result)\\"
     , "  do {\\"
     , "    (result).semantic_tag = EXPR_COMPLEX;\\"
@@ -492,8 +495,21 @@ prelude varCount =
     , "    (a).value = malloc(2*sizeof(var_t));\\"
     , "    ((var_t*)((a).value))[0].tag = eTag;\\"
     , "    ((var_t*)((a).value))[0].value = malloc(sizeof(var_t));\\"
-    , "    ((var_t*)((a).value))[1].tag = eTag;\\"
-    , "    ((var_t*)((a).value))[1].value = malloc(sizeof(var_t));\\"
+
+    , "    ((var_t*)((a).value))[1].tag = EXPR_PAIR;\\"
+    , "    ((var_t*)((a).value))[1].semantic_tag = NO_SEMANTIC_TAG;\\"
+    , "    ((var_t*)((a).value))[1].value = malloc(2*sizeof(var_t));\\"
+
+    , "    ((var_t*)((var_t*)((a).value))[1].value)[0].tag = eTag;\\"
+    , "    ((var_t*)((var_t*)((a).value))[1].value)[0].semantic_tag = NO_SEMANTIC_TAG;\\"
+    , "    ((var_t*)((var_t*)((a).value))[1].value)[0].value = malloc(sizeof(var_t));\\"
+
+    , "    ((var_t*)((var_t*)((a).value))[1].value)[1].tag = EXPR_NIL;\\"
+    , "    ((var_t*)((var_t*)((a).value))[1].value)[1].semantic_tag = NO_SEMANTIC_TAG;\\"
+    , "    ((var_t*)((var_t*)((a).value))[1].value)[1].value = NULL;\\"
+
+    -- , "    ((var_t*)((a).value))[1].tag = eTag;\\"
+    -- , "    ((var_t*)((a).value))[1].value = malloc(sizeof(var_t));\\"
     , "  } while (0);"
     , ""
     , "#define PAIR_FST(result, p)\\"
@@ -566,7 +582,7 @@ genExp (ConstructRep x :: GPUExp t) resultName =
         , r
         ]
 
-    Just _ -> do
+    Just (ty, tag) -> do
       pairName <- freshCName
       pairCode <- genExp x pairName
 
@@ -575,7 +591,8 @@ genExp (ConstructRep x :: GPUExp t) resultName =
         , "var_t " <> pairName <> ";"
         , pairCode
 
-        , (resultName#"value") =: cCall "malloc" ["2*sizeof(var_t)"]
+        -- , (resultName#"value") =: cCall "malloc" ["2*sizeof(var_t)"]
+        , cCall "INIT_COMPLEX" [resultName, ty, tag]
         , resultName <> ".semantic_tag = EXPR_COMPLEX;"
         , resultName <> ".tag = EXPR_PAIR;"
         , cCall "COMPLEX_ASSIGN_REAL" [resultName, (cCast "var_t*" (pairName # "value")) ! 0]
@@ -888,10 +905,12 @@ genExp (FromIntegral (x :: GPUExp a) :: GPUExp b) resultName = do
         , "var_t " <> castedXName <> ";"
         , "var_t " <> zeroName <> ";"
         , zeroName <> ".tag = " <> tag <> ";"
+        , zeroName <> ".semantic_tag = NO_SEMANTIC_TAG;"
         , zeroName <> ".value = malloc(sizeof(" <> ty <> "));"
         , "*((" <> ty <> "*)(" <> zeroName <> ".value)) = 0;"
         , xCode
         , castedXName <> ".tag = " <> tag <> ";"
+        , castedXName <> ".semantic_tag = NO_SEMANTIC_TAG;"
         , castedXName <> ".value = malloc(sizeof(" <> ty <> "));"
         , "CAST_TO(" <> castedXName <> ", " <> ty <> ", " <> xName <> ");"
         -- , "*(" <> ty <> "*)(" <> castedXName <> ".value) = *(" <> ty <> "*)(" <> xName <> ".value);"
@@ -949,7 +968,7 @@ genExp (Gt x y) resultName = do
 
   xCode <- genExp x xName
   yCode <- genExp y yName
-  
+
   return $ unlines
     [ "var_t " <> xName <> ";"
     , "var_t " <> yName <> ";"
@@ -1018,7 +1037,7 @@ genExp (PairExp x y) resultName = do
   yName <- freshCName
 
   xCode <- genExp x xName
-  yCode <- genExp y yName
+  yCode <- genCdr y yName
 
   return $ unlines
     [ "var_t " <> xName <> ";"
@@ -1098,6 +1117,25 @@ genExp (NullaryMatch _) _ = error "genExp: NullaryMatch"
 genExp (OneSumMatch _) _ = error "genExp: OneSumMatch"
 genExp EmptyMatch _ = error "genExp: EmptyMatch"
 
+genCdr :: GPUExp a -> CName -> CodeGen CCode
+genCdr x@(PairExp {}) resultName = genExp x resultName
+genCdr x resultName = do
+  xName <- freshCName
+
+  xCode <- genExp x xName
+
+  return $ unlines
+    [ "var_t " <> xName <> ";"
+    , xCode
+    , resultName <> ".tag = EXPR_PAIR;"
+    , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
+    , resultName <> ".value = malloc(sizeof(var_t)*2);"
+    , "((var_t*)(" <> resultName <> ".value))[0] = " <> xName <> ";"
+    , "((var_t*)(" <> resultName <> ".value))[1].tag = EXPR_NIL;"
+    , "((var_t*)(" <> resultName <> ".value))[1].semantic_tag = NO_SEMANTIC_TAG;"
+    , "((var_t*)(" <> resultName <> ".value))[1].value = NULL;"
+    ]
+
 
 genCaseExp :: CName -> GPUExp (SumMatch a r) -> CName -> CodeGen CCode
 genCaseExp s (CastExp x) resultName = genCaseExp s x resultName
@@ -1144,9 +1182,9 @@ genProdMatch s p resultName = do
 
 pairCar :: Int -> CName -> CCode
 pairCar 0 p = "((var_t*)" <> p <> ".value)[0]"
-pairCar 1 p = "((var_t*)" <> p <> ".value)[1]"
+pairCar 1 p = "((var_t*)" <> pairCdr 0 p <> ".value)[0]"
 pairCar depth p =
-  "((var_t*)(" <> (pairCdr (depth-2) p) <> ").value)[1]"
+  "((var_t*)(" <> (pairCdr (depth-1) p) <> ").value)[0]"
 
 pairCdr :: Int -> CName -> CCode
 pairCdr 0 p = "((var_t*)" <> p <> ".value)[1]"
