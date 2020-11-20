@@ -400,26 +400,35 @@ prelude varCount =
     , "    switch (src->tag) {"
     , "      case EXPR_INT:"
     , "       dest->value = malloc(sizeof(int));"
+    , "       *(int*)(dest->value) = *(int*)(src->value);"
     , "       break;"
     , "      case EXPR_FLOAT:"
     , "       dest->value = malloc(sizeof(float));"
+    , "       *(float*)(dest->value) = *(float*)(src->value);"
     , "       break;"
     , "      case EXPR_DOUBLE:"
     , "       dest->value = malloc(sizeof(double));"
+    , "       *(double*)(dest->value) = *(double*)(src->value);"
     , "       break;"
     , "      case EXPR_CHAR:"
     , "       dest->value = malloc(sizeof(char));"
+    , "       *(char*)(dest->value) = *(char*)(src->value);"
     , "       break;"
     , "      case EXPR_CLOSURE:"
     , "       dest->value = malloc(sizeof(closure_t));"
+    , "       *(closure_t*)(dest->value) = *(closure_t*)(src->value);"
     , "       break;"
     , "      case EXPR_EITHER_LEFT:"
     , "      case EXPR_EITHER_RIGHT:"
     , "      case EXPR_STEP:"
     , "      case EXPR_DONE:"
     , "      case EXPR_UNIT:"
-    , "      case EXPR_NIL:"
     , "       dest->value = malloc(sizeof(var_t));"
+    , "       copyVar((var_t*)(dest->value), (var_t*)(src->value));"
+    -- , "       *(var_t*)(dest->value) = *(var_t*)(src->value);"
+    , "       break;"
+    , "      case EXPR_NIL:"
+    , "       dest->value = NULL;"
     , "       break;"
     , "      default:"
     , "        assert(0 && \"invalid tag\");"
@@ -824,7 +833,8 @@ genExp (DoneExp x) resultName = do
     , resultName <> ".tag = EXPR_DONE;"
     , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(var_t));"
-    , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
+    , stmt $ cCall "copyVar" [cCast "var_t*" (resultName # "value"), addrOf xName]
+    -- , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
     ]
 
 genExp (StepExp x) resultName = do
@@ -838,7 +848,8 @@ genExp (StepExp x) resultName = do
     , resultName <> ".tag = EXPR_STEP;"
     , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(var_t));"
-    , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
+    , stmt $ cCall "copyVar" [cCast "var_t*" (resultName # "value"), addrOf xName]
+    -- , "*(var_t*)(" <> resultName <> ".value) = " <> xName <> ";"
     ]
 
 genExp (Sub x y) resultName = do -- TODO: Fix complex number support (see Add)
@@ -1208,7 +1219,8 @@ genCdr x resultName = do
     , resultName <> ".tag = EXPR_PAIR;"
     , resultName <> ".semantic_tag = NO_SEMANTIC_TAG;"
     , resultName <> ".value = malloc(sizeof(var_t)*2);"
-    , "((var_t*)(" <> resultName <> ".value))[0] = " <> xName <> ";"
+    -- , "((var_t*)(" <> resultName <> ".value))[0] = " <> xName <> ";"
+    , stmt $ cCall "copyVar" [addrOf (cCast "var_t*" (resultName # "value") ! 0), addrOf xName]
     , "((var_t*)(" <> resultName <> ".value))[1].tag = EXPR_NIL;"
     , "((var_t*)(" <> resultName <> ".value))[1].semantic_tag = NO_SEMANTIC_TAG;"
     , "((var_t*)(" <> resultName <> ".value))[1].value = NULL;"
@@ -1226,7 +1238,9 @@ genCaseExp s (SumMatchExp x y) resultName = do
 
   return $ unlines
     [ "assert(" <> s <> ".tag == EXPR_EITHER_LEFT || " <> s <> ".tag == EXPR_EITHER_RIGHT);"
-    , "var_t " <> s' <> " = *(var_t*)(" <> s <> ".value);"
+    -- , "var_t " <> s' <> " = *(var_t*)(" <> s <> ".value);"
+    , "var_t " <> s' <> ";"
+    , stmt $ cCall "copyVar" [addrOf s', cCast "var_t*" (s # "value")]
 
     , "if (" <> s <> ".tag == EXPR_EITHER_LEFT) {"
     , thenPart
@@ -1399,9 +1413,13 @@ buildClosure sc@(SomeLambda c) closureVarName = do
     fvCount = length (lambda_fvs c)
 
 callClosure :: SomeLambda -> CName -> CName -> CName -> CodeGen CCode
-callClosure (SomeLambda (Lambda { lambda_name })) closureName argName resultName =
+callClosure (SomeLambda (Lambda { lambda_name })) closureName argName resultName = do
+  r <- freshCName
   return $
-    resultName <> " = " <> closureName <> ".fn(" <> argName <> ", &" <> closureName <> ");"
+    unlines
+      [ "var_t " <> r <> " = " <> closureName <> ".fn(" <> argName <> ", &" <> closureName <> ");"
+      , stmt $ cCall "copyVar" [addrOf resultName, addrOf r]
+      ]
 
 showNameType :: SomeName -> String
 showNameType (SomeName n) = show (typeRep n)
