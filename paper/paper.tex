@@ -1233,8 +1233,17 @@ If an expression already has an EDSL type (a type of the form \ttt{E a} for some
 \ttt{a}), then the marking procedure ignores it and does not wrap it with
 \ttt{externalize} (see $M$ in Figure~\ref{fig:Rewrites}).
 
-In the flowchart given in Figure~\ref{fig:CorePlugin}, the names in parentheses in a node refer
-to the names of transformations given in the rewrite rules in Figure~\ref{fig:Rewrites}. In Figure~\ref{fig:Rewrites},
+The plugin's control flow is described in Figure~\ref{fig:CorePlugin}. When control
+flow reaches a node, the rewrite rules listed in parentheses are performed. These rewrite
+rule names correspond to the rules given in Figure~\ref{fig:Rewrites}.
+
+% In the flowchart given in Figure~\ref{fig:CorePlugin}, the names in parentheses
+% in a node refer to the names of transformations given in the rewrite rules in
+% Figure~\ref{fig:Rewrites}. The control flow of the plugin is described by the
+% flowchart and the rewrites performed when control reaches a node is given by the list of
+% rule names in parentheses in that node.
+
+In Figure~\ref{fig:Rewrites},
 $\varepsilon$ represents an empty term (in the context of the term rewriting system used in that Figure). Calls
 to \ttt{unrep :: E a -> a} are only used internally and will not exist in
 the final result of the transformation.
