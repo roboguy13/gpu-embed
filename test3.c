@@ -35,9 +35,12 @@ typedef struct var_t {
 } var_t;
 
 typedef struct closure_t {
+  int env_size;
   var_t* fv_env;
   var_t (*fn)(var_t, struct closure_t*);
 } closure_t;
+
+void copyClosure(closure_t*, closure_t*);
 
 void copyVar(var_t* dest, var_t* src) {
   dest->tag = src->tag;
@@ -66,7 +69,8 @@ void copyVar(var_t* dest, var_t* src) {
        break;
       case EXPR_CLOSURE:
        dest->value = malloc(sizeof(closure_t));
-       *(closure_t*)(dest->value) = *(closure_t*)(src->value);
+       copyClosure((closure_t*)dest->value, (closure_t*)src->value);
+       // *(closure_t*)(dest->value) = *(closure_t*)(src->value);
        break;
       case EXPR_EITHER_LEFT:
       case EXPR_EITHER_RIGHT:
@@ -82,6 +86,15 @@ void copyVar(var_t* dest, var_t* src) {
       default:
         assert(0 && "invalid tag");
     }
+  }
+}
+
+void copyClosure(closure_t* dest, closure_t* src) {
+  dest->env_size = src->env_size;
+  dest->fn = src->fn;
+  dest->fv_env = malloc(src->env_size * sizeof(var_t));
+  for (int i = 0; i < src->env_size; ++i) {
+    copyVar(&(dest->fv_env[i]), &(src->fv_env[i]));
   }
 }
 
@@ -287,6 +300,7 @@ copyVar(&(x2), &(arg));
 
 closure_t* x5 = malloc(sizeof(closure_t));
 (*x5).fv_env = malloc(sizeof(var_t)*0);
+(*x5).env_size = 0;
 (*x5).fn = &lam_80;
 
 
@@ -295,7 +309,7 @@ x4.tag = EXPR_CLOSURE;
 x4.semantic_tag = NO_SEMANTIC_TAG;
 x4.value = (void*)x5;
 
-memcpy(&x3, (closure_t*)(x4.value), sizeof(closure_t));
+copyClosure(&x3, (closure_t*)(x4.value));
 var_t x6 = x3.fn(x2, &x3);
 copyVar(&(x1), &(x6));
 
@@ -320,6 +334,7 @@ copyVar(&(x9), &(x8));
 
 closure_t x10;
 x10.fv_env = malloc(sizeof(var_t)*2);
+x10.env_size = 2;
 x10.fn = &lam_81;
 copyVar(&((x10.fv_env)[0]), &(((var_t*)((var_t*)x9.value)[1].value)[0]/* item #1 */));  // For FV with id 82 with Haskell type Complex Double
 copyVar(&((x10.fv_env)[1]), &(((var_t*)x9.value)[0]/* item #0 */));  // For FV with id 83 with Haskell type Int
@@ -345,6 +360,7 @@ var_t lam_83(var_t arg, struct closure_t* self) {
   var_t x13;
 closure_t* x14 = malloc(sizeof(closure_t));
 (*x14).fv_env = malloc(sizeof(var_t)*1);
+(*x14).env_size = 1;
 (*x14).fn = &lam_82;
 copyVar(&(((*x14).fv_env)[0]), &(arg));  // For FV with id 83 with Haskell type Int
 
@@ -361,6 +377,7 @@ var_t lam_82(var_t arg, struct closure_t* self) {
   var_t x16;
 closure_t* x17 = malloc(sizeof(closure_t));
 (*x17).fv_env = malloc(sizeof(var_t)*2);
+(*x17).env_size = 2;
 (*x17).fn = &lam_81;
 copyVar(&(((*x17).fv_env)[0]), &(arg));  // For FV with id 82 with Haskell type Complex Double
 copyVar(&(((*x17).fv_env)[1]), &(self->fv_env[0]));  // For FV with id 83 with Haskell type Int
@@ -438,6 +455,7 @@ copyVar(&(x27), &(arg));
 
 closure_t x28;
 x28.fv_env = malloc(sizeof(var_t)*4);
+x28.env_size = 4;
 x28.fn = &lam_84;
 copyVar(&((x28.fv_env)[0]), &(arg));  // For FV with id 81 with Haskell type Complex Double
 copyVar(&((x28.fv_env)[1]), &(self->fv_env[0]));  // For FV with id 82 with Haskell type Complex Double
@@ -459,6 +477,7 @@ var_t lam_85(var_t arg, struct closure_t* self) {
   var_t x31;
 closure_t* x32 = malloc(sizeof(closure_t));
 (*x32).fv_env = malloc(sizeof(var_t)*4);
+(*x32).env_size = 4;
 (*x32).fn = &lam_84;
 copyVar(&(((*x32).fv_env)[0]), &(self->fv_env[0]));  // For FV with id 81 with Haskell type Complex Double
 copyVar(&(((*x32).fv_env)[1]), &(self->fv_env[1]));  // For FV with id 82 with Haskell type Complex Double
@@ -701,6 +720,7 @@ copyVar(&((((var_t*)x76.value))[1]), &(x78));
 
 closure_t x80;
 x80.fv_env = malloc(sizeof(var_t)*1);
+x80.env_size = 1;
 x80.fn = &lam_86;
 copyVar(&((x80.fv_env)[0]), &(((var_t*)x76.value)[0]/* item #0 */));  // For FV with id 87 with Haskell type Complex Double
 
@@ -745,6 +765,7 @@ var_t lam_87(var_t arg, struct closure_t* self) {
   var_t x83;
 closure_t* x84 = malloc(sizeof(closure_t));
 (*x84).fv_env = malloc(sizeof(var_t)*1);
+(*x84).env_size = 1;
 (*x84).fn = &lam_86;
 copyVar(&(((*x84).fv_env)[0]), &(arg));  // For FV with id 87 with Haskell type Complex Double
 
@@ -931,6 +952,7 @@ copyVar(&((((var_t*)x102.value))[1]), &(x104));
 
 closure_t* x117 = malloc(sizeof(closure_t));
 (*x117).fv_env = malloc(sizeof(var_t)*0);
+(*x117).env_size = 0;
 (*x117).fn = &lam_79;
 
 
@@ -939,7 +961,7 @@ x116.tag = EXPR_CLOSURE;
 x116.semantic_tag = NO_SEMANTIC_TAG;
 x116.value = (void*)x117;
 
-memcpy(&x115, (closure_t*)(x116.value), sizeof(closure_t));
+copyClosure(&x115, (closure_t*)(x116.value));
 var_t x118 = x115.fn(x102, &x115);
 copyVar(&(x0), &(x118));
 

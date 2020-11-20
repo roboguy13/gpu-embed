@@ -385,9 +385,12 @@ prelude varCount =
     , "} var_t;"
     , ""
     , "typedef struct closure_t {"
+    , "  int env_size;"
     , "  var_t* fv_env;"
     , "  var_t (*fn)(var_t, struct closure_t*);"
     , "} closure_t;"
+    , ""
+    , "void copyClosure(closure_t*, closure_t*);"
     , ""
     , "void copyVar(var_t* dest, var_t* src) {"
     , "  dest->tag = src->tag;"
@@ -416,7 +419,8 @@ prelude varCount =
     , "       break;"
     , "      case EXPR_CLOSURE:"
     , "       dest->value = malloc(sizeof(closure_t));"
-    , "       *(closure_t*)(dest->value) = *(closure_t*)(src->value);"
+    -- , "       *(closure_t*)(dest->value) = *(closure_t*)(src->value);"
+    , "       copyClosure((closure_t*)dest->value, (closure_t*)src->value);"
     , "       break;"
     , "      case EXPR_EITHER_LEFT:"
     , "      case EXPR_EITHER_RIGHT:"
@@ -433,6 +437,15 @@ prelude varCount =
     , "      default:"
     , "        assert(0 && \"invalid tag\");"
     , "    }"
+    , "  }"
+    , "}"
+    , ""
+    , "void copyClosure(closure_t* dest, closure_t* src) {"
+    , "  dest->env_size = src->env_size;"
+    , "  dest->fn = src->fn;"
+    , "  dest->fv_env = malloc(src->env_size * sizeof(var_t));"
+    , "  for (int i = 0; i < src->env_size; ++i) {"
+    , "    copyVar(&(dest->fv_env[i]), &(src->fv_env[i]));"
     , "  }"
     , "}"
     , ""
@@ -748,7 +761,7 @@ genExp (App lamExp@(Lam (Name n) _) x) resultName = do
     , ""
     , xCode
     , closureCode
-    , "memcpy(&" <> closureName <> ", (closure_t*)(" <> closureVarName <> ".value), sizeof(closure_t));"
+    , "copyClosure(&" <> closureName <> ", (closure_t*)(" <> closureVarName <> ".value));"
     , callCode
     ]
 
@@ -1406,6 +1419,7 @@ buildClosure sc@(SomeLambda c) closureVarName = do
   return $
     unlines
       [ closureVarName <> ".fv_env = malloc(sizeof(var_t)*" <> show fvCount <> ");"
+      , closureVarName <> ".env_size = " <> show fvCount <> ";"
       , closureVarName <> ".fn = &" <> lambdaCName sc <> ";"
       , unlines init_fvEnv
       ]
