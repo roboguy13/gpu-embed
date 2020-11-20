@@ -1415,9 +1415,13 @@ buildClosure sc@(SomeLambda c) closureVarName = do
 callClosure :: SomeLambda -> CName -> CName -> CName -> CodeGen CCode
 callClosure (SomeLambda (Lambda { lambda_name })) closureName argName resultName = do
   r <- freshCName
+  -- copiedArg <- freshCName
   return $
     unlines
-      [ "var_t " <> r <> " = " <> closureName <> ".fn(" <> argName <> ", &" <> closureName <> ");"
+      [
+       -- "var_t " <> copiedArg <> ";"
+      -- , stmt $ cCall "copyVar" [addrOf copiedArg, addrOf argName]
+        "var_t " <> r <> " = " <> closureName <> ".fn(" <> argName <> ", &" <> closureName <> ");"
       , stmt $ cCall "copyVar" [addrOf resultName, addrOf r]
       ]
 
