@@ -367,7 +367,8 @@ either difficult or impossible to use a language that has these benefits.
 However, there is no support for capturing pattern matching builtin to the Haskell
 language itself. As a result, EDLs which capture pattern matching must do so
 via a plugin in a Haskell compiler such as GHC. For each such EDSL, this mechanism
-has needed to be reimplemented each time. In this paper, we descibe a \textit{reusable}
+has needed to be reimplemented each time. Additionally, the task of implementing this
+is difficult and error-prone. In this paper, we descibe a \textit{reusable}
 framework for capturing pattern matching, as well as lambdas and tail recursion.
 
 % A C backend is described in Section \ref{sec:CBackend}. However, other backends
