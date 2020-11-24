@@ -152,7 +152,7 @@
 %% Of note is the shared affiliation of the first two authors, and the
 %% "authornote" and "authornotemark" commands
 %% used to denote shared contribution to the research.
-\author{David Young\inst{1} \and Mark Grebe\inst{2} \and Andrew Gill\inst{1}}
+\author{David Young\inst{1} \and Mark Grebe\inst{2} \and Andy Gill\inst{1}}
 \institute{University of Kansas \and University of Central Missouri}
 
 \maketitle
@@ -295,13 +295,13 @@ technique for constructing reusable tools for working in a variety of
 different problem domains. Haskell is a language which is particularly
 well-suited to EDSLs due to its lazy evaluation, first-class functions and
 lexical closures.
-
+%
 Despite these advantages Haskell provides for creating EDSLs, there are a few
 constructs for which representations have proven illusive. One prominent example
 is that of a \ttt{case} expression. Pattern matching is a convenient way to
 implement control flow structures and to inspect data structures, so it is
 frequently a desirable feature for many EDSLs.
-
+%
 Additionally, lambdas can also be difficult to implement in EDSLs. A major reason
 for this is that control flow constructs which are typically \textit{outside} the EDSL,
 such as pattern matching and tail recursion, can make it challenging to ``look inside''
@@ -322,7 +322,7 @@ The following contributions are made by this paper:
 
 \begin{itemize}
   \item A representation of pattern matching in a Haskell EDSL (Section~\ref{sec:PatRep})
-  \item A representation of lambdas (Section~\ref{sec:LamRep}) in the EDSL, taking advantage of
+  \item A representation of lambdas (Section~\ref{sec:LamRep}) in the EDSL, utilizing
   the fact that both pattern matching and tail recursion are already captured in
   the EDSL.
   \item A GHC Core plugin which transforms a subset of standard Haskell code
@@ -588,13 +588,10 @@ expression language and the source Haskell language:
 \begin{lstlisting}
 class Typeable t => ERep t where
   type ERepTy t
-
   construct :: t -> E (ERepTy t)
   rep :: t -> E t
-
   default rep :: (ERep (ERepTy t)) => t -> E t
   rep x = ConstructRep (construct x)
-
   unrep' :: ERepTy t -> t
   rep' :: t -> ERepTy t
 \end{lstlisting}
@@ -646,9 +643,9 @@ The equality constraint ensures that a canonical type is its own canonical type.
 % \end{lstlisting}
 % \end{todo}
 
-(The above code block is a slight simplification of the actual implementation,
+The above code block is a slight simplification of the actual implementation,
 which has an additional type variable which is used at an ``intermediate'' point.
-The expanded form is in place to simplify the Core transformation.)
+The expanded form is in place to simplify the Core transformation.
 
 The type \ttt{SumMatch} is defined as
 
