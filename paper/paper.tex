@@ -328,7 +328,7 @@ The following contributions are made by this paper:
   \item A GHC Core plugin which transforms a subset of standard Haskell code
   into this EDSL for pattern matching, extended with tail recursion,
   lambdas and primitive operations (Section~\ref{sec:CorePlugin})
-  \item An implementation of an interpreter for the ``standard'' semantics of the EDSL (Section~\ref{sec:StdSemantics}).
+  \item An implementation of an interpreter for a reference semantics of the EDSL (Section~\ref{sec:StdSemantics}).
 % \item An outline of a C backend for this EDSL (Section~\ref{sec:CBackend}).
 \end{itemize}
 
@@ -906,7 +906,7 @@ To use the new \ttt{f'} function, we repeatedly call it until it gives a
 \ttt{Done} value. If it gives a \ttt{Step} value, we pass the the value wrapped
 in the \ttt{Step} back into \ttt{f'} and continue.
 
-The function \ttt{runIter} provides the standard semantics for executing such a
+The function \ttt{runIter} provides the reference semantics for executing such a
 function representing a tail recursive function:
 
 \begin{lstlisting}
@@ -1101,12 +1101,12 @@ envLookup (Env maps) = go maps
 \end{lstlisting}
 
 
-\section{Recovering standard semantics for pattern matches}
+\section{Recovering reference semantics for pattern matches}
 \label{sec:StdSemantics}
 
-The standard semantics for the EDSL is given by \ttt{abs}. Two helper
+The reference semantics for the EDSL is given by \ttt{abs}. Two helper
 functions, \ttt{sumMatchAbs} and \ttt{prodMatchAbs}, are used to provide
-the standard semantics for matches on sum types and matches on product
+the reference semantics for matches on sum types and matches on product
 types, respectively. These helper functions are based on the mechanism
 described in Section~\ref{sec:MatchAside}.
 
