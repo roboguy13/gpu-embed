@@ -574,10 +574,8 @@ data E t where
   ...
   ConstructRep :: (Typeable a, ERep a) =>
     E (ERepTy a) -> E a
-
   LeftExp :: E a -> E (Either a b)
   RightExp :: E b -> E (Either a b)
-
   PairExp :: E a -> E b -> E (a, b)
   ...
 \end{lstlisting}
@@ -623,7 +621,6 @@ instance (ERep a, ERep b) => ERep (a, b) where
 
 Within the \ttt{E} expression language, a pattern match is represented by the
 \ttt{CaseExp} constructor:
-
 \begin{lstlisting}
 data E t where
   ...
@@ -680,6 +677,7 @@ data E t where
   SumMatchExp :: (ERep a, ERep b, ERepTy b ~ b) =>
     E (ProdMatch a r) -> E (SumMatch b r)
       -> E (SumMatch (Either a b) r)
+
   OneSumMatch ::
     (ERep a, ERep b, ERepTy a ~ a) =>
       E (ProdMatch a b) -> E (SumMatch a b)
@@ -959,7 +957,6 @@ data E t where
   ...
   StepExp :: E b -> E (Iter a b)
   DoneExp :: E a -> E (Iter a b)
-
   TailRec :: (ERep a, ERep b) =>
     E (b -> Iter a b) -> E (b -> a)
   ...
@@ -1045,7 +1042,6 @@ data E t where
   ...
   Lam :: (ERep a, Typeable a) =>
     Name a -> E b -> E (a -> b)
-
   Var :: (Typeable a) => Name a -> E a
 \end{lstlisting}
 
@@ -1098,7 +1094,6 @@ envLookup :: Typeable a => Env -> Name a -> Maybe (E a)
 envLookup (Env maps) = go maps
   where
     go []                = Nothing
-
     go ((n' :=> e):rest) =
       case namesEq n n' of
         Just Refl -> Just e
@@ -1122,7 +1117,6 @@ abs = absEnv emptyEnv
 sumMatchAbs :: (ERepTy (ERepTy s) ~ ERepTy s, ERep s)
   => Env -> E (SumMatch (ERepTy s) t) -> s -> t
 ...
-
 prodMatchAbs :: (ERep s) =>
   Env -> E (ProdMatch s t) -> s -> t
 ...
@@ -1230,22 +1224,25 @@ the \ttt{externalize} function:
 externalize :: a -> E a
 \end{lstlisting}
 
-For example, \ttt{externalize x} marks the expression \ttt{x}.
+For example, \ttt{externalize x} marks the expression \ttt{x}.  If an expression
+already has an EDSL type (a type of the form \ttt{E a} for some \ttt{a}), then
+the marking procedure ignores it and does not wrap it with \ttt{externalize}
+(see $M$ in Figure~\ref{fig:Rewrites}).
 
-If an expression already has an EDSL type (a type of the form \ttt{E a} for some
-\ttt{a}), then the marking procedure ignores it and does not wrap it with
-\ttt{externalize} (see $M$ in Figure~\ref{fig:Rewrites}).
+These \verb|externalize| marks are pushed through the input program, starting at
+the outermost level. The plugin repeatedly runs over each newly marked node in
+the abstract syntax tree, applying the appropriate rewrite rules as it goes.
+This process pushes the marks through the program until it reaches a base case
+that has no proper subexpressions, such as a character literal.
 
 The plugin's control flow is described in Figure~\ref{fig:CorePlugin}. When control
 flow reaches a node, the rewrite rules listed in parentheses are performed. These rewrite
 rule names correspond to the rules given in Figure~\ref{fig:Rewrites}.
-
 % In the flowchart given in Figure~\ref{fig:CorePlugin}, the names in parentheses
 % in a node refer to the names of transformations given in the rewrite rules in
 % Figure~\ref{fig:Rewrites}. The control flow of the plugin is described by the
 % flowchart and the rewrites performed when control reaches a node is given by the list of
 % rule names in parentheses in that node.
-
 In Figure~\ref{fig:Rewrites},
 $\varepsilon$ represents an empty term (in the context of the term rewriting system used in that Figure). Calls
 to \ttt{unrep :: E a -> a} are only used internally and will not exist in
