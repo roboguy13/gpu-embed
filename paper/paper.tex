@@ -1,31 +1,6 @@
-
-%% This is file `sample-acmsmall.tex',
-%% generated with the docstrip utility.
-%%
-%% The original source files were:
-%%
-%% samples.dtx  (with options: `acmsmall')
-%% 
-%% IMPORTANT NOTICE:
-%% 
-%% For the copyright see the source file.
-%% 
-%% Any modified versions of this file must be renamed
-%% with new filenames distinct from sample-acmsmall.tex.
-%% 
-%% For distribution of the original source see the terms
-%% for copying and modification in the file samples.dtx.
-%% 
-%% This generated file may be distributed as long as the
-%% original source files, as listed above, are part of the
-%% same distribution. (The sources need not necessarily be
-%% in the same archive or directory.)
-%%
-%% The first command in your LaTeX source must be the \documentclass command.
 \RequirePackage{amsmath,amssymb}
-% \RequirePackage{stmaryrd}
+
 \documentclass[runningheads, a4paper]{llncs}
-% \usepackage{biblatex}
 \usepackage{lineno}
 \usepackage{booktabs}
 \usepackage{listings}
@@ -34,9 +9,7 @@
 \usepackage{tkz-graph}
 \usepackage{stmaryrd}
 \usepackage{wrapfig}
-% \usepackage{amsmath}
 
-% \lstset{basicstyle=\ttfamily}
 \usetikzlibrary{shapes.geometric, arrows}
 
 \tikzstyle{startstop} = [rectangle, rounded corners, minimum width=3cm, minimum height=1cm,text centered, draw=black, fill=red!30]
@@ -57,6 +30,7 @@
 \newcommand{\rewrites}{\Longrightarrow}
 
 % TODO: Use these:
+
 \newcommand{\exprt}[1]{\expr{\ttt{#1}}}
 \newcommand{\tdots}{\ttt{...}}
 \newcommand{\exprdots}{\expr{\tdots}}
@@ -64,8 +38,6 @@
 \newcommand{\typeeq}{\raise.17ex\hbox{$\scriptstyle\mathtt{\sim}$}\,\;}
 
 \newcommand{\ttt}{\texttt}
-
-% \newcommand{\showtodos}{}  % Comment out to hide todos
 
 \newenvironment{todo}
   {\ifthenelse{\isundefined{\showtodos}}{\comment}{\begin{tcolorbox}
@@ -75,112 +47,21 @@
 \newenvironment{todont}
                {\comment}
                {\endcomment}
-  
-% \newenvironment<>{todo}[1][]{
-%     \setbeamercolor{block body example}{fg=black,bg=blue}
-%     \setbeamercolor{block title example}{fg=white,bg=red!75!black}
-%     \setbeamertemplate{blocks}[rounded][shadow=false]
-%   \begin{todo}[]}{\end{todo}
-% }
-
-%%
-%% \BibTeX command to typeset BibTeX logo in the docs
 \AtBeginDocument{%
   \providecommand\BibTeX{{%
     \normalfont B\kern-0.5em{\scshape i\kern-0.25em b}\kern-0.8em\TeX}}}
 
-%% Rights management information.  This information is sent to you
-%% when you complete the rights form.  These commands have SAMPLE
-%% values in them; it is your responsibility as an author to replace
-%% the commands and values with those provided to you when you
-%% complete the rights form.
-
-% \setcopyright{acmcopyright}
-% \copyrightyear{2020}
-% \acmYear{2020}
-% \acmDOI{XX.XXXX/XXXXXXX}
-
-
-%% These commands are for a PROCEEDINGS abstract or paper.
-
-% \acmConference[GPCE '20]{GPCE '20: Proceedings of the 13th
-%   ACM SIGPLAN International Symposium on Haskell}{November 15 -- 20, 2020}{Chicago, Illinois, United States}
-% \acmBooktitle{Proceedings of the 19th ACM SIGPLAN International
-% Conference on Generative Programming: Concepts and Experiences (GPCE '20)
-%   November 15 -- 20, 2020, Chicago, Illinois, United States}
-% \acmPrice{15.00}
-% \acmISBN{XXX-X-XXXX-XXXX-X/XX/XX}
-
-
-% \citestyle{acmauthoryear}
-
-%%
-%% Submission ID.
-%% Use this when submitting an article to a sponsored event. You'll
-%% receive a unique submission ID from the organizers
-%% of the event, and this ID should be used as the parameter to this command.
-%%\acmSubmissionID{123-A56-BU3}
-
-%%
-%% The majority of ACM publications use numbered citations and
-%% references.  The command \citestyle{authoryear} switches to the
-%% "author year" style.
-%%
-%% If you are preparing content for an event
-%% sponsored by ACM SIGGRAPH, you must use the "author year" style of
-%% citations and references.
-%% Uncommenting
-%% the next command will enable that style.
-%%\citestyle{acmauthoryear}
-
-%%
-%% end of the preamble, start of the body of the document source.
-
 \begin{document}
 
-%%
-%% The "title" command has an optional parameter,
-%% allowing the author to define a "short title" to be used in page headers.
 \title{On Adding Pattern Matching to Haskell-based
   Deeply Embedded Domain Specific Languages}
 
 \titlerunning{On Adding Pattern Matching to Haskell-based EDSLs}
 
-%%
-%% The "author" command and its associated commands are used to define
-%% the authors and their affiliations.
-%% Of note is the shared affiliation of the first two authors, and the
-%% "authornote" and "authornotemark" commands
-%% used to denote shared contribution to the research.
 \author{David Young\inst{1} \and Mark Grebe\inst{2} \and Andy Gill\inst{1}}
 \institute{University of Kansas \and University of Central Missouri}
 
 \maketitle
-% \authornote{Both authors contributed equally to this research.}
-% \email{trovato@corporation.com}
-% \orcid{1234-5678-9012}
-
-% \author{Mark Grebe}
-% \email{grebe@ucmo.edu}
-
-% \author{Andrew Gill}
-% \email{andygill@ku.edu}
-
-%%
-%% By default, the full list of authors will be used in the page
-%% headers. Often, this list is too long, and will overlap
-%% other information printed in the page headers. This command allows
-%% the author to define a more concise list
-%% of authors' names for this purpose.
-% \renewcommand{\shortauthors}{Trovato and Tobin, et al.}
-
-% \renewcommand{\shortauthors}{Young, Grebe and Gill}
-
-%%
-%% The abstract is a short summary of the work to be presented in the
-%% article.
-
-% \linenumbers
 
 \begin{abstract}
 % Say what problem is
@@ -205,89 +86,6 @@
 
 \end{abstract}
 
-% \begin{CCSXML}
-% <ccs2012>
-%    <concept>
-%        <concept_id>10011007.10011006.10011041.10011046</concept_id>
-%        <concept_desc>Software and its engineering~Translator writing systems and compiler generators</concept_desc>
-%        <concept_significance>300</concept_significance>
-%        </concept>
-%    <concept>
-%        <concept_id>10011007.10011006.10011041.10011047</concept_id>
-%        <concept_desc>Software and its engineering~Source code generation</concept_desc>
-%        <concept_significance>300</concept_significance>
-%        </concept>
-%    <concept>
-%        <concept_id>10011007.10011006.10011050.10011017</concept_id>
-%        <concept_desc>Software and its engineering~Domain specific languages</concept_desc>
-%        <concept_significance>500</concept_significance>
-%        </concept>
-%  </ccs2012>
-% \end{CCSXML}
-
-% \ccsdesc[300]{Software and its engineering~Translator writing systems and compiler generators}
-% \ccsdesc[300]{Software and its engineering~Source code generation}
-% \ccsdesc[500]{Software and its engineering~Domain specific languages}
-
-
-% \begin{CCSXML}
-% <ccs2012>
-%    <concept>
-%        <concept_id>10011007.10011006.10011050.10011017</concept_id>
-%        <concept_desc>Software and its engineering~Domain specific languages</concept_desc>
-%        <concept_significance>500</concept_significance>
-%        </concept>
-%  </ccs2012>
-% \end{CCSXML}
-
-% \ccsdesc[500]{Software and its engineering~Domain specific languages}
-
-% \keywords{domain specific languages}
-
-%%
-%% The code below is generated by the tool at http://dl.acm.org/ccs.cfm.
-%% Please copy and paste the code instead of the example below.
-%%
-% \begin{CCSXML}
-% <ccs2012>
-%  <concept>
-%   <concept_id>10010520.10010553.10010562</concept_id>
-%   <concept_desc>Computer systems organization~Embedded systems</concept_desc>
-%   <concept_significance>500</concept_significance>
-%  </concept>
-%  <concept>
-%   <concept_id>10010520.10010575.10010755</concept_id>
-%   <concept_desc>Computer systems organization~Redundancy</concept_desc>
-%   <concept_significance>300</concept_significance>
-%  </concept>
-%  <concept>
-%   <concept_id>10010520.10010553.10010554</concept_id>
-%   <concept_desc>Computer systems organization~Robotics</concept_desc>
-%   <concept_significance>100</concept_significance>
-%  </concept>
-%  <concept>
-%   <concept_id>10003033.10003083.10003095</concept_id>
-%   <concept_desc>Networks~Network reliability</concept_desc>
-%   <concept_significance>100</concept_significance>
-%  </concept>
-% </ccs2012>
-% \end{CCSXML}
-
-% \ccsdesc[500]{Computer systems organization~Embedded systems}
-% \ccsdesc[300]{Computer systems organization~Redundancy}
-% \ccsdesc{Computer systems organization~Robotics}
-% \ccsdesc[100]{Networks~Network reliability}
-
-%%
-%% Keywords. The author(s) should pick words that accurately describe
-%% the work being presented. Separate the keywords with commas.
-% \keywords{datasets, neural networks, gaze detection, text tagging}
-
-
-%%
-%% This command processes the author and affiliation and title
-%% information and builds the first part of the formatted document.
-
 \section{Introduction}
 
 Embedded domain specific languages (EDSLs) have long been an effective
@@ -308,9 +106,6 @@ such as pattern matching and tail recursion, can make it challenging to ``look i
 the lambda. When these control structures are reified within the EDSL, it is
 easier to also reify lambdas using the dummy argument technique described in~\cite{Elliott:03:CompileDSEL-JFP}.
 
-% \begin{todo}
-%   Maybe add brief summary of relationship to lambdas?
-% \end{todo}
 
 \begin{todo}
   Make it more clear how to integrate these concepts with other EDSLs. Maybe we should
@@ -329,24 +124,13 @@ The following contributions are made by this paper:
   into this EDSL for pattern matching, extended with tail recursion,
   lambdas and primitive operations (Section~\ref{sec:CorePlugin})
   \item An implementation of an interpreter for a reference semantics of the EDSL (Section~\ref{sec:StdSemantics}).
-% \item An outline of a C backend for this EDSL (Section~\ref{sec:CBackend}).
 \end{itemize}
-
-% In this paper, a C backend is given as an example in Section \ref{sec:CBackend}. The Core plugin will
-% translate a subset of Haskell to the EDSL we have specified. The C backend will
-% then take expressions written in this EDSL and translate them to C code. This C
-% code can be compiled by a standard C compiler. In effect, the subset of Haskell
-% represented in the EDSL is compiled to C.
 
 Readers who are primarily interested only in the encoding of pattern matching itself can direct
 most of their attention to Sections~\ref{sec:ADTRep},~\ref{sec:PatRep} and~\ref{sec:StdSemantics}. Most of the technical aspects of
 the transformation performed by the Core plugin are described in Section~\ref{sec:CorePlugin}.
 
 \subsection{Motivation}
-
-\begin{todont}
-  Expand?
-\end{todont}
 
 A major benefit of the Haskell language is that it is frequently possible to derive
 a Haskell implementation from a specification, either partially or fully.  This
@@ -360,7 +144,6 @@ languages due, in part, to the management of side effects in Haskell. This is
 more difficult to do using an imperative language such as C, as they provide no
 restrictions on where side effects can occur.
 
-% \newpage
 Haskell EDSLs that support powerful language features like pattern matching
 allow these advantages to be brought to problem domains where it is currently
 either difficult or impossible to use a language that has these benefits.
@@ -370,16 +153,6 @@ via a plugin in a Haskell compiler such as GHC. For each such EDSL, this mechani
 has needed to be reimplemented each time. Additionally, the task of implementing this
 is difficult and error-prone. In this paper, we descibe a \textit{reusable}
 framework for capturing pattern matching, as well as lambdas and tail recursion.
-
-% A C backend is described in Section \ref{sec:CBackend}. However, other backends
-% could be constructed, targeting different architectures.
-
-\begin{todont}
-  % Cite examples where Haskell implementations have been derived specifications.  Conal Elliott's latest two papers (as of May 2020), \cite{Elliott-2018-ad-icfp} and \cite{Elliott2019-convolution-extended}, would be good examples of this. (This is now cited)
-
-  A paper which describes a Haskell implementation derived from an operational
-  semantics would also be a good example.
-\end{todont}
 
 \subsection{Overview}
 \label{sec:Overview}
@@ -408,10 +181,6 @@ are needed.
 
 \subsection{Translation Example}
 
-% \begin{todo}
-%   Does it make sense for this to be a subsection of the intro?
-% \end{todo}
-
 In the example below, the Core plugin transforms \verb|example| into
 \verb|example'|. Note that \verb|example'| is an EDSL expression which is then
 used by the EDSL interpreter function \verb|abs| to produce the final result,
@@ -437,10 +206,6 @@ example'' = abs example'
 
 \section{Representing Algebraic Datatypes}
 \label{sec:ADTRep}
-
-% \begin{todo}
-%   Look into \ttt{generic-sop} and compare then cite corresponding paper.
-% \end{todo}
 
 Briefly, an algebraic type \ttt{T} with an automatically generated \ttt{ERep}
 instance is given a representation in terms of \ttt{Either}, \ttt{(,)}, \ttt{()}
@@ -631,15 +396,6 @@ data E t where
 
 The equality constraint ensures that a canonical type is its own canonical type.
 
-% \begin{todo}
-%   Should we make a synonym for this constraint since it is used in
-% multiple places? Like this:
-% \begin{lstlisting}
-% type CanonicalIsIdem t =
-%   ERepTy (ERepTy t) ~ ERepTy t
-% \end{lstlisting}
-% \end{todo}
-
 The above code block is a slight simplification of the actual implementation,
 which has an additional type variable which is used at an ``intermediate'' point.
 The expanded form is in place to simplify the Core transformation.
@@ -670,7 +426,6 @@ exactly to one branch in the original \ttt{case} match.
 The following constructors generate \ttt{SumMatch}-tagged values in the
 expression language:
 
-% \newpage
 \begin{lstlisting}
 data E t where
   ...
@@ -717,133 +472,6 @@ newtype ProdMatch a b =
   MkProdMatch { runProdMatch :: a -> b }
 \end{lstlisting}
 
-% \subsection{Connection to Church encodings}
-% \label{sec:Church}
-% % \begin{todo}
-% %   Work on this subsection. Maybe this shouldn't be a separate section at all and
-% %   maybe its contents should be incorporated throughout the rest of the paper.
-% % \end{todo}
-
-% Algebraic datatypes can be represented as lambda calculus terms using
-% \textit{Church encodings}.~\cite{Boehm:1985:AutoSynth} For example, the pair constructor can be
-% represented as
-
-% \begin{lstlisting}
-% church_mkPair
-%   :: a -> b -> (a -> b -> r) -> r
-% church_mkPair x y = \ f -> f x y
-% \end{lstlisting}
-
-% Coproducts can be represented with the constructors
-
-% \begin{lstlisting}
-% church_mkLeft
-%   :: a -> (a -> r) -> (b -> r) -> r
-% church_mkLeft x = \ f g -> f x
-
-% church_mkRight
-%   :: b -> (a -> r) -> (b -> r) -> r
-% church_mkRight y = \ f g -> g y
-% \end{lstlisting}
-
-% In this representation:
-
-% \begin{itemize}
-%   \item A pair of type \ttt{A} and type \ttt{B} is represented with a value of type
-% \ttt{forall r. (A -> B -> r) -> r}.
-
-%   \item A coproduct of type \ttt{A} and type \ttt{B} is represented with a value of type
-% \ttt{forall r. (A -> r) -> (B -> r) -> r}.
-% \end{itemize}
-
-% Both of those representations represent the type as a function that performs the
-% corresponding case analysis. A deep embedding of the operations
-% \ttt{churchMkPair}, \ttt{church\_mkLeft} and \ttt{church\_mkRight} is given
-% by the type
-
-% \begin{lstlisting}
-% data Church r where
-%   ChurchPair
-%     :: a -> b -> (a -> b -> r) ->
-%        Church r
-%   ChurchLeft
-%     :: a -> (a -> r) -> (b -> r) ->
-%        Church r
-%   ChurchRight
-%     :: b -> (a -> r) -> (b -> r) ->
-%        Church r
-% \end{lstlisting}
-
-% with the evaluation function
-
-% \begin{lstlisting}
-% churchEval :: Church r -> r
-% churchEval (ChurchPair x y f) = f x y
-% churchEval (ChurchLeft x f g) = f x
-% churchEval (ChurchRight y f g) = g y
-% \end{lstlisting}
-
-% However, we only want to keep track of the functions used for elimination. By moving
-% the values actually being contained in the products and coproducts out to the
-% evaluation function, we arrive at
-
-% \begin{lstlisting}
-% data Church' t r where
-%   ChurchPair'
-%     :: (a -> b -> r) ->
-%        Church' (a, b) r
-
-%   ChurchEither'
-%     :: (a -> r) -> (b -> r) ->
-%        Church' (Either a b) r
-
-% churchEval' :: Church' t r -> t -> r
-% churchEval' (ChurchPair' f) (x, y) = f x y
-% churchEval' (ChurchEither' f g) e =
-%   case e of
-%     Left  x -> f x
-%     Right y -> g y
-% \end{lstlisting}
-
-% The \verb|Church'| type forms a large part of the foundation of the pattern
-% matching aspect of the \verb|E| type. A rough correspondence between the two
-% is given in the table below.\\
-
-% {\small
-% \noindent\begin{tabular}{|p{3.4cm}|p{4.4cm}|}
-%   \hline
-%   \ttt{Church' (a, b) r} & \ttt{E (SumMatch (a, b) r} \\
-%   \hline
-%   \ttt{Church' (Either a b) r} & \ttt{E (ProdMatch (Either a b) r)}\\
-%   \hline
-% \end{tabular}
-% }
-
-
-\begin{todo}
-  Figure out how recursive types fit into this framework. Church encodings can
-  handle recursive types and so can our representation. This is also the case
-  for Scott encodings, etc, and is the difference between Church and Scott
-  encodings.
-
-  Does our way of handling recursive types correspond to how any of
-  those encodings handle recursive types?
-
-  % Maybe this is relevant: \href{https://www.reddit.com/r/haskell/comments/hvlh6a/generalized_church_encoding_is_the_curryhoward_of/}{\color{blue}{Generalized Church encoding is the Curry-Howard of Knaster-Tarski}}
-\end{todo}
-
-% \begin{lstlisting}
-% data ChurchMatch t where
-%   ChurchCoproductMatch
-%     :: ChurchMatch ((a, b) -> r) -> ChurchMatch (Either b c -> r) ->
-%        ChurchCoproductMatch (Either
-% \end{lstlisting}
-
-
-% \begin{todo}
-%   Maybe it could make sense to essentially derive the pattern matching representation
-%   from this Church encoding. If so, this could be described around here.
-% \end{todo}
 
 \subsection{An aside on \ttt{ProdMatch} and \ttt{SumMatch} values}
 \label{sec:MatchAside}
@@ -918,28 +546,6 @@ runIter f = go
           Step x' -> go x'
 \end{lstlisting}
 
-% \begin{todo}
-%   \ttt{runIter} has the following alternate implementation. Would this be
-%   useful to use somewhere?
-
-%   \begin{lstlisting}[otherkeywords={}]
-%   runIter f = getDone . fix (f >=>)
-
-%   getDone :: Iter b a -> b
-%   getDone (Done x) = x
-%   getDone _ = error "getDone"
-%   \end{lstlisting}
-
-%   where \verb|Iter| is given a standard \verb|Monad| instance (essentially the
-%   same as the \verb|Either| \verb|Monad| instance). \\
-
-
-%   Maybe this could be useful in some proofs or derivations somewhere (in this
-%   paper or elsewhere)?
-
-%   Note that \verb|error| is never called under any circumstance in this
-%   implementation of \verb|runIter|.
-% \end{todo}
 
 This technique can be contrasted with the more traditional trampolining
 technique for implementing tail recursion. Conventional trampolining uses a
@@ -980,13 +586,6 @@ isEven x =
           False -> isEven (x - 2)))
 \end{lstlisting}
 
-% We translate this to the expression language, and then apply two of
-% the constructors we have defined.  The first of these is an initial 
-% \ttt{Done} which we then wrap with a \ttt{runIter} to provide the
-% representation of the iteration execution.
-% The transformation then proceeds by pushing the DoneExp constructor through
-% the conditionals, and the recursive call is transformed into a StepExp constructor.
-% This leaves us the the transformed example:
 
 We first transform this to use the \verb|Iter| type. The lambda is brought
 inside of the \ttt{internalize (externalize ...)} call and wrapped in a call to
@@ -1014,7 +613,6 @@ result into the expression language. \verb|TailRec| is substituted for \verb|run
 \verb|DoneExp| is substituted for \verb|Done| and \verb|StepExp| is substituted for \verb|Step|.
 Next, the pattern matching transformation occurs, producing the final result:
 
-% \break
 
 \begin{lstlisting}
 isEven'' :: Int -> Bool
@@ -1142,77 +740,6 @@ prodMatchAbs env (ProdMatchExp f) = \ pair ->
 See Appendix A for implementation details of \ttt{absEnv}.
 
 
-% \newpage
-
-% \section{C Backend}
-% \label{sec:CBackend}
-
-% \begin{todont}
-%   Should this section be expanded?
-% \end{todont}
-
-% The C backend makes use of a small EDSL for generating C code. See
-% Appendix B for implementation details of this ESDL.
-
-% The following \ttt{struct}s provide the C representation for Haskell expressions:
-
-% \begin{lstlisting}
-% typedef enum var_type_tag {
-%   EXPR_INT
-% , EXPR_PAIR
-% ...
-% , EXPR_UNIT
-% } var_type_tag;
-
-% typedef enum semantic_type_tag {
-%   NO_SEMANTIC_TAG
-% , EXPR_COMPLEX     // Complex numbers
-% } semantic_type_tag;
-
-% struct closure_t;
-
-% typedef struct var_t {
-%   var_type_tag tag;
-%   semantic_type_tag semantic_tag;
-%   void* value;
-% } var_t;
-
-% typedef struct closure_t {
-%   var_t* fv_env;
-%   var_t (*fn)(var_t, struct closure_t*);
-% } closure_t;
-% \end{lstlisting}
-
-% The \ttt{semantic\_tag} allows type information preserved by the \ttt{Typeable} constraints
-% in the EDSL to be brought over to the generated C code. In our implementation, this is
-% used to distinguish between pairs of \ttt{Double}s and \ttt{Complex Double} values. In the
-% case of a \ttt{Complex Double}, the \ttt{var\_t} would have a \ttt{tag} field with the value
-% \ttt{EXPR\_PAIR} and a \ttt{semantic\_tag} field with the value \ttt{EXPR\_COMPLEX}.
-
-% A C code generation function \ttt{genC} is implemented:
-
-% \begin{lstlisting}
-% genC :: E a -> String
-% ...
-% \end{lstlisting}
-
-% To use this, for example, with the previously mentioned \ttt{isEven} implementation we
-% can write:
-% % \newpage
-% \begin{lstlisting}
-% isEvenE :: E (Int -> Bool)
-% isEvenE =
-%   externalize (
-%     case x == 0 of
-%       True -> True
-%       False ->
-%         case x == 1 of
-%           True -> False
-%           False -> isEvenE (x - 2))
-
-% isEvenC :: String
-% isEvenC = genC isEvenE
-% \end{lstlisting}
 
 \section{Core Plugin}
 \label{sec:CorePlugin}
@@ -1238,25 +765,17 @@ that has no proper subexpressions, such as a character literal.
 The plugin's control flow is described in Figure~\ref{fig:CorePlugin}. When control
 flow reaches a node, the rewrite rules listed in parentheses are performed. These rewrite
 rule names correspond to the rules given in Figure~\ref{fig:Rewrites}.
-% In the flowchart given in Figure~\ref{fig:CorePlugin}, the names in parentheses
-% in a node refer to the names of transformations given in the rewrite rules in
-% Figure~\ref{fig:Rewrites}. The control flow of the plugin is described by the
-% flowchart and the rewrites performed when control reaches a node is given by the list of
-% rule names in parentheses in that node.
+%
 In Figure~\ref{fig:Rewrites},
 $\varepsilon$ represents an empty term (in the context of the term rewriting system used in that Figure). Calls
 to \ttt{unrep :: E a -> a} are only used internally and will not exist in
 the final result of the transformation.
 
-% \begin{wrapfigure}{r}{0.5\linewidth}
 \begin{figure}
   \centering
-  % \vspace{-1cm}
   \resizebox{0.8\columnwidth}{8.2cm}{\includegraphics{Diagrams/Flowchart.pdf}}
-  % \includegraphics{Diagrams/Flowchart.pdf}
    \caption{Control Flow of the Core Plugin}
    \label{fig:CorePlugin}
-  % \vspace{-0.1cm}
 \end{figure}%
 
 \pagebreak
@@ -1270,22 +789,8 @@ full transformation step (that is, $C$) eliminates one mark. Therefore, the
 transformation will terminate.
 \end{itemize}
 
-% \clearpage
-
-% \clearpage
-
-% \subsection{Syntactic Transformations of the Core Plugin}
-
-% \begin{todo}
-%   Should we use Oxford brackets here? Maybe a bit unusual, but we are operating syntactically and mapping from \ttt{a} to \ttt{E a} (could \ttt{E a} be considered an "intermediary" semantic domain?).
-% \end{todo}
-% \vspace*{-0.6cm}
-
-% \begin{wrapfigure}{r}{0.8\linewidth}
-  % \begin{wrapfigure}{r}{0.59\linewidth}
 \begin{figure}
   \centering
-  % \vspace{-0.9cm}
 \resizebox{1\linewidth}{!}{
   \begin{minipage}{\linewidth}
 \begin{align*}
@@ -1328,8 +833,6 @@ transformation will terminate.
   &C\expr{\ttt{K x0 ... xN }}\\
     &\quad\rewrites \ttt{construct (K (unrep $M\expr{\ttt{x0}}$) ... (unrep $M\expr{\ttt{xN}}$))}\;\;\;\;\text{(Where \ttt{K} is a constructor)}\\
   &C\expr{\ttt{f x}} \rewrites \ttt{App $M\expr{f}$ $M\expr{x}$}\\
-  % &C\expr{\ttt{f x}} \rewrites \ttt{ConstructAp $M\expr{\ttt{f}}$ $M\expr{\ttt{x}}$}\;\;\;\;\text{(Where \ttt{f} is not a primitive or an application of a primitive)}\\
-  % &C\expr{\ttt{x}} \rewrites \ttt{Construct x}\;\;\;\;\text{(Where \ttt{x} is a variable which is not a primitive)}\\
   &B\expr{\ttt{K x0 ...$_U$ xN $\rarr$ body0; ...$_V$}} \rewrites \ttt{SumMatchExp }P\expr{\ttt{x0 ...$_U$ xN $\rarr$ body0}}\; B\expr{\ttt{ ...$_V$ }}\\
   &B\expr{\ttt{K x0 ... xN $\rarr$ body}} \rewrites \ttt{OneSumMatchExp }P\expr{\ttt{x0 ... xN $\rarr$ body}}\\
   &B\expr{\ttt{$\varepsilon$}} \rewrites \ttt{EmptyMatch}\\
@@ -1347,27 +850,14 @@ transformation will terminate.
 \end{align*}
   \end{minipage}
 }%
-% }}
 
-% \captionsetup{justification=centering}
 \caption{Rewrite rules}
 \label{fig:Rewrites}
-% \end{wrapfigure}
-% \end{wrapfigure}
-
-% \vspace{-1cm}
 
 \end{figure}
 
-% \clearpage
-
-% \clearpage
-
 \section{Related Work}
 
-% \begin{todo}
-%   Does this need more fleshing out?
-% \end{todo}
 
 The basis of deep embeddings in functional languages is well understood.
 \cite{Elliott:03:CompileDSEL-JFP} explains the basic idea, and \cite{Gill:2014:DSLSynth}
@@ -1443,304 +933,15 @@ use in the previously mentioned pattern matching representation. This
 representation of ADTs is determined entirely by the structure of a type,
 allowing the pattern matching mechanism to act on the structure of values.
 
-% In this paper:
-% \begin{itemize}
-%   \item We address the goal of translating Haskell pattern matching into an
-%     EDSL.
-
-%     % An example usage of this mechanism is given in Section
-%     % \ref{sec:CBackend} in the form of a transformation of a subset of Haskell
-%     % into an EDSL that is then used to generate C code, effectively compiling
-%     % that subset of Haskell into C.
-
-%   % \item A representation of pattern matching via a deep embedding of Church
-%   %   encodings of products and coproducts presented in Section \ref{sec:Church}.
-%   %   This encoding relies on having a uniform representation of algebraic data
-%   %   types.
-
-%   \item To provide the uniform representation of algebraic data types mentioned
-%     in the previous point, we describe a mechanism for automatically encoding
-%     ADTs as compositions of \verb|(,)|, \verb|Either| and \verb|()| using
-%     \verb|ERep| and \verb|ERepTy| in Section \ref{sec:ADTRep}.
-
-%   \item A GHC plugin is outlined in Section \ref{sec:CorePlugin} which provides automation for the translation of
-%     Haskell code into these EDSL representations.
-
-% \end{itemize}
 
 \begin{todo}
 Should we have a diagram somewhere in the paper to show how these pieces all fit together?
 \end{todo}
-% \section{Citations and Bibliographies}
 
 \newpage
 \bibliographystyle{splncs04}
 \bibliography{paper}
 
-% \appendix
-% \section{Additional Code for Standard Haskell Semantics Implementation}
-% \begin{lstlisting}[basicstyle=\tiny]
-% absEnv :: forall t. Env -> E t -> t
-% absEnv env (CaseExp x f) =
-%   sumMatchAbs f (absEnv env x)
-
-% absEnv env (TailRec f) = \ x ->
-%   case absEnv env f x of
-%     Step x' -> absEnv env (TailRec f) x'
-%     Done r  -> r
-
-% absEnv env (Var v) =
-%   case envLookup env v of
-%     Just x -> absEnv env
-%     Nothing ->
-%       error
-%         ("No binding for name "
-%           ++ show v)
-
-% absEnv env (Lam (name :: Name a)
-%                 (body :: E b)) =
-%   \ (arg :: a) ->
-%     let go :: forall x. E x -> E x
-%         go expr@(Var name2 :: E a') =
-%           case namesEq name name2 of
-%             Just Refl -> rep arg
-%             _ ->
-%               case envLookup env name2 of
-%                 Just v  -> v
-%                 Nothing -> expr
-
-%         -- [... traverse rest of expression
-%         --      in go ...]
-%     in
-%     absEnv (extendEnv env
-%                       (name :=> rep arg))
-%            (go body)
-
-% absEnv env (LeftExp x) =
-%   Left (absEnv env x)
-
-% absEnv env (RightExp y) =
-%   Right (absEnv env y)
-
-% absEnv env (PairExp x y) =
-%   (absEnv env x, absEnv env y)
-
-% absEnv env (ConstructRep x) =
-%   unrep' (absEnv env x)
-
-% ...
-% \end{lstlisting}
-
-% % \vfill\break
-
-% \section{A small EDSL for C code generation used internally by the C backend}
-% \begin{lstlisting}[basicstyle=\tiny]
-% type CCode = String
-% type CName = String
-
-% stmt :: CCode -> CCode
-% stmt = (<> ";")
-
-% cCall :: CName -> [CCode] -> CCode
-% cCall fnName args =
-%   fnName
-%   <> "(" <> intercalate ", " args <> ")"
-
-% derefPtr :: CCode -> CCode
-% derefPtr x = "*(" <> x <> ")"
-
-% cCast :: CCode -> CCode -> CCode
-% cCast toType x =
-%   "((" <> toType <> ")" <> x <> ")"
-
-% cIndex :: CCode -> Int -> CCode
-% cIndex x i =
-%   "(" <> x <> ")[" <> show i <> "]"
-
-% (!) :: CCode -> Int -> CCode
-% (!) = cIndex
-
-% (=:) :: CCode -> CCode -> CCode
-% x =: y = stmt (x <> " = " <> y)
-
-% cDecl :: CName -> CName -> CCode
-% cDecl cType v = stmt (cType <> " " <> v)
-
-% (#) :: CCode -> CName -> CCode
-% x # fieldName = x <> "." <> fieldName
-
-% macroDef
-%   :: CName -> [CName] -> [CCode]
-%      -> CCode
-% macroDef name args theLines =
-%   unlines
-%     [ "#define " <> name
-%               <> "(" <>
-%                 intercalate ", " args
-%               <> ")\\"
-%     , "  do {\\"
-%     , unlines
-%         . map ("    "++)
-%         . map (++"\\")
-%         $ theLines
-%     , "  } while (0);"
-%     ]
-% \end{lstlisting}
-
-
-
-
-
-% The use of \BibTeX\ for the preparation and formatting of one's
-% references is strongly recommended. Authors' names should be complete
-% --- use full first names (``Donald E. Knuth'') not initials
-% (``D. E. Knuth'') --- and the salient identifying features of a
-% reference should be included: title, year, volume, number, pages,
-% article DOI, etc.
-
-% The bibliography is included in your source document with these two
-% commands, placed just before the \verb|\end{document}| command:
-% \begin{verbatim}
-%   \bibliographystyle{ACM-Reference-Format}
-%   \bibliography{bibfile}
-% \end{verbatim}
-% where ``\verb|bibfile|'' is the name, without the ``\verb|.bib|''
-% suffix, of the \BibTeX\ file.
-
-% Citations and references are numbered by default. A small number of
-% ACM publications have citations and references formatted in the
-% ``author year'' style; for these exceptions, please include this
-% command in the {\bfseries preamble} (before
-% ``\verb|\begin{document}|'') of your \LaTeX\ source:
-% \begin{verbatim}
-%   \citestyle{acmauthoryear}
-% \end{verbatim}
-
-%   Some examples.  A paginated journal article \cite{Abril07}, an
-%   enumerated journal article \cite{Cohen07}, a reference to an entire
-%   issue \cite{JCohen96}, a monograph (whole book) \cite{Kosiur01}, a
-%   monograph/whole book in a series (see 2a in spec. document)
-%   \cite{Harel79}, a divisible-book such as an anthology or compilation
-%   \cite{Editor00} followed by the same example, however we only output
-%   the series if the volume number is given \cite{Editor00a} (so
-%   Editor00a's series should NOT be present since it has no vol. no.),
-%   a chapter in a divisible book \cite{Spector90}, a chapter in a
-%   divisible book in a series \cite{Douglass98}, a multi-volume work as
-%   book \cite{Knuth97}, an article in a proceedings (of a conference,
-%   symposium, workshop for example) (paginated proceedings article)
-%   \cite{Andler79}, a proceedings article with all possible elements
-%   \cite{Smith10}, an example of an enumerated proceedings article
-%   \cite{VanGundy07}, an informally published work \cite{Harel78}, a
-%   doctoral dissertation \cite{Clarkson85}, a master's thesis:
-%   \cite{anisi03}, an online document / world wide web resource
-%   \cite{Thornburg01, Ablamowicz07, Poker06}, a video game (Case 1)
-%   \cite{Obama08} and (Case 2) \cite{Novak03} and \cite{Lee05} and
-%   (Case 3) a patent \cite{JoeScientist001}, work accepted for
-%   publication \cite{rous08}, 'YYYYb'-test for prolific author
-%   \cite{SaeediMEJ10} and \cite{SaeediJETC10}. Other cites might
-%   contain 'duplicate' DOI and URLs (some SIAM articles)
-%   \cite{Kirschmer:2010:AEI:1958016.1958018}. Boris / Barbara Beeton:
-%   multi-volume works as books \cite{MR781536} and \cite{MR781537}. A
-%   couple of citations with DOIs:
-%   \cite{2004:ITE:1009386.1010128,Kirschmer:2010:AEI:1958016.1958018}. Online
-%   citations: \cite{TUGInstmem, Thornburg01, CTANacmart}. Artifacts:
-%   \cite{R} and \cite{UMassCitations}.
-
-% \section{Acknowledgments}
-
-%Identification of funding sources and other support, and thanks to
-%individuals and groups that assisted in the research and the
-%preparation of the work should be included in an acknowledgment
-%section, which is placed just before the reference section in your
-%document.
-
-%This section has a special environment:
-%\begin{verbatim}
-%  \begin{acks}
-%  ...
-%  \end{acks}
-%\end{verbatim}
-%so that the information contained therein can be more easily collected
-%during the article metadata extraction phase, and to ensure
-%consistency in the spelling of the section heading.
-
-%Authors should not prepare this section as a numbered or unnumbered {\verb|\section|}; please use the ``{\verb|acks|}'' environment.
-
-%\section{Appendices}
-
-%If your work needs an appendix, add it before the
-%``\verb|\end{document}|'' command at the conclusion of your source
-%document.
-
-%Start the appendix with the ``\verb|appendix|'' command:
-%\begin{verbatim}
-%  \appendix
-%\end{verbatim}
-%and note that in the appendix, sections are lettered, not
-%numbered. This document has two appendices, demonstrating the section
-%and subsection identification method.
-
-%\section{SIGCHI Extended Abstracts}
-
-%The ``\verb|sigchi-a|'' template style (available only in \LaTeX\ and
-%not in Word) produces a landscape-orientation formatted article, with
-%a wide left margin. Three environments are available for use with the
-%``\verb|sigchi-a|'' template style, and produce formatted output in
-%the margin:
-%\begin{itemize}
-%\item {\verb|sidebar|}:  Place formatted text in the margin.
-%\item {\verb|marginfigure|}: Place a figure in the margin.
-%\item {\verb|margintable|}: Place a table in the margin.
-%\end{itemize}
-
-%%%
-%%% The acknowledgments section is defined using the "acks" environment
-%%% (and NOT an unnumbered section). This ensures the proper
-%%% identification of the section in the article metadata, and the
-%%% consistent spelling of the heading.
-%\begin{acks}
-%To Robert, for the bagels and explaining CMYK and color spaces.
-%\end{acks}
-
-%%%
-%%% The next two lines define the bibliography style to be used, and
-%%% the bibliography file.
-%\bibliographystyle{ACM-Reference-Format}
-%\bibliography{sample-base}
-
-%%%
-%%% If your work has an appendix, this is the place to put it.
-%\appendix
-
-%\section{Research Methods}
-
-%\subsection{Part One}
-
-%Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi
-%malesuada, quam in pulvinar varius, metus nunc fermentum urna, id
-%sollicitudin purus odio sit amet enim. Aliquam ullamcorper eu ipsum
-%vel mollis. Curabitur quis dictum nisl. Phasellus vel semper risus, et
-%lacinia dolor. Integer ultricies commodo sem nec semper.
-
-%\subsection{Part Two}
-
-%Etiam commodo feugiat nisl pulvinar pellentesque. Etiam auctor sodales
-%ligula, non varius nibh pulvinar semper. Suspendisse nec lectus non
-%ipsum convallis congue hendrerit vitae sapien. Donec at laoreet
-%eros. Vivamus non purus placerat, scelerisque diam eu, cursus
-%ante. Etiam aliquam tortor auctor efficitur mattis.
-
-%\section{Online Resources}
-
-%Nam id fermentum dui. Suspendisse sagittis tortor a nulla mollis, in
-%pulvinar ex pretium. Sed interdum orci quis metus euismod, et sagittis
-%enim maximus. Vestibulum gravida massa ut felis suscipit
-%congue. Quisque mattis elit a risus ultrices commodo venenatis eget
-%dui. Etiam sagittis eleifend elementum.
-
-%Nam interdum magna at lectus dignissim, ac dignissim lorem
-%rhoncus. Maecenas eu arcu ac neque placerat aliquam. Nunc pulvinar
-%massa et mattis lacinia.
 
 \end{document}
 \endinput
