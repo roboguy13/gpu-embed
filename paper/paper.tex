@@ -131,17 +131,21 @@ the transformation performed by the Core plugin are described in Section~\ref{se
 
 \subsection{Motivation}
 
-A major benefit of the Haskell language is that it is frequently possible to derive
-a Haskell implementation from a specification, either partially or fully.  This
-technique is used extensively, for example, in \cite{Bird:2010:Pearls} and
-\cite{Gibbons:2002:Calc}.  Recent examples of this technique include the work in
-\cite{Elliott-2018-ad-icfp} as well as the work in
-\cite{Elliott2019-convolution-extended}.  When it is not possible to fully
-derive an implementation from a specification, it is often easier to check a
-Haskell implementation against a specification than it is in many imperative
-languages due, in part, to the management of side effects in Haskell. This is
-more difficult to do using an imperative language such as C, as they provide no
-restrictions on where side effects can occur.
+A major benefit of the Haskell language is that it is frequently possible to
+derive a Haskell implementation from a specification, either partially or fully.
+In \cite{Bird:2010:Pearls} a collection of algorithms is presented with implementations derived in this
+manner. The work \cite{Gibbons:2002:Calc} describes many of the
+mathematical tools underlying such program derivations.
+Recent examples of this technique include the work in
+\cite{Elliott-2018-ad-icfp}, where an implementation of automatic
+differentiation is derived from a specification
+of derivatives.  Similarly, the work in
+\cite{Elliott2019-convolution-extended} derives an implementation of a
+generalized form of convolution from a specification.  When it is not possible to fully derive an implementation, it is often easier to check a Haskell implementation against a
+specification than it is in many imperative languages due, in part, to the
+management of side effects in Haskell. This is more difficult to do using an
+imperative language such as C, as they provide no restrictions on where side
+effects can occur.
 
 Haskell EDSLs that support powerful language features like pattern matching
 allow these advantages to be brought to problem domains where it is currently
@@ -653,9 +657,8 @@ namesEq :: forall a b.  (Typeable a, Typeable b) =>
 namesEq (Name n) (Name n') =
   case eqT :: Maybe (a :~: b) of
     Just Refl
-      | n == n'   -> Just Refl
-      | otherwise -> Nothing
-    Nothing       -> Nothing
+      | n == n' -> Just Refl
+    _           -> Nothing
 \end{lstlisting}
 
 \noindent In the Core transformation, each lambda is given a \ttt{Name} with a globally
@@ -686,12 +689,11 @@ extendEnv (Env maps) m = Env (m:maps)
 
 envLookup :: Typeable a => Env -> Name a -> Maybe (E a)
 envLookup (Env maps) = go maps
-  where
-    go []                = Nothing
-    go ((n' :=> e):rest) =
-      case namesEq n n' of
-        Just Refl -> Just e
-        Nothing   -> go rest
+  where go []                = Nothing
+        go ((n' :=> e):rest) =
+          case namesEq n n' of
+            Just Refl -> Just e
+            Nothing   -> go rest
 \end{lstlisting}
 
 
@@ -766,7 +768,7 @@ In Figure~\ref{fig:Rewrites},
 $\varepsilon$ represents an empty term (in the context of the term rewriting system used in that Figure). Calls
 to \ttt{unrep :: E a -> a} are only used internally and will not exist in
 the final result of the transformation.
-
+%
 \begin{figure}
   \centering
   \resizebox{0.8\columnwidth}{8.2cm}{\includegraphics{Diagrams/Flowchart.pdf}}
@@ -774,7 +776,7 @@ the final result of the transformation.
    \label{fig:CorePlugin}
 \end{figure}%
 
-\pagebreak
+% \pagebreak
 Note that:
 \begin{itemize}
   \item The tail recursion transformation given by $D$, $T'_{\ttt{f}}$ and $T_{\ttt{f}}$ is completely independent of the \ttt{E} type and the transformations associated to the \ttt{E} type. As a result, the tail recursion transformation can be used on its own.
