@@ -146,7 +146,7 @@ Haskell EDSLs that support powerful language features like pattern matching
 allow these advantages to be brought to problem domains where it is currently
 either difficult or impossible to use a language that has these benefits.
 However, there is no support for capturing pattern matching builtin to the Haskell
-language itself. As a result, EDLs which capture pattern matching must do so
+language itself. As a result, EDSLs which capture pattern matching must do so
 via a plugin in a Haskell compiler such as GHC. For each such EDSL, this mechanism
 has needed to be reimplemented each time. Additionally, the task of implementing this
 is difficult and error-prone. In this paper, we descibe a \textit{reusable}
@@ -165,7 +165,7 @@ rep :: a -> E a
 abs :: E a -> a
 \end{lstlisting}
 
-Additionally, the following functions mark the parts of the code which the Core
+\noindent Additionally, the following functions mark the parts of the code which the Core
 plugin will target:
 
 \begin{lstlisting}
@@ -173,7 +173,7 @@ internalize :: E a -> a
 externalize :: a -> E a
 \end{lstlisting}
 
-The \ttt{E} type is the type of expressions in the EDSL.  In this paper, the
+\noindent The \ttt{E} type is the type of expressions in the EDSL.  In this paper, the
 data constructors of this type will be described incrementally as they
 are needed.
 
@@ -223,7 +223,7 @@ data ComplexPair =
 instance ERep ComplexPair
 \end{lstlisting}
 
-Note the instance definition is automatically generated from the \ttt{Generic}
+\noindent Note the instance definition is automatically generated from the \ttt{Generic}
 instance.
 
 Given this code, the following type equality holds:
@@ -231,8 +231,7 @@ Given this code, the following type equality holds:
 
 \ttt{ERepTy ComplexPair \typeeq (Complex Double, Complex Double)}
 \\
-
-Here is an example that demonstrates why this is more useful than if it \textit{fully} deconstructed
+\noindent Here is an example that demonstrates why this is more useful than if it \textit{fully} deconstructed
 each type into \ttt{Either}, \ttt{(,)} and \ttt{()}:
 
 \begin{lstlisting}
@@ -242,7 +241,7 @@ sumComplexPair p =
     (case p of ComplexPair a b -> a + b))
 \end{lstlisting}
 
-If \ttt{ERepTy ComplexPair} were fully deconstructed into \ttt{((Double, Double),
+\noindent If \ttt{ERepTy ComplexPair} were fully deconstructed into \ttt{((Double, Double),
 (Double, Double))}, we would need a \ttt{Num} instance for \ttt{(Double,
 Double)}.  What we really want is to use the fact that a \ttt{Num} instance
 already exists for \ttt{Complex Double}. This is exactly what preserving this
@@ -266,7 +265,7 @@ realSum p =
                 a_real + b_real))
 \end{lstlisting}
 
-The above pattern matches could also be written as a single nested pattern
+\noindent The above pattern matches could also be written as a single nested pattern
 match. Both forms compile down to the same Core representation.
 
 An additional benefit of this is that recursive types require no special handling. For
@@ -279,7 +278,7 @@ data IntList = Nil | Cons Int IntList
 instance ERep IntList
 \end{lstlisting}
 
-Note that \ttt{ERepTy IntList \typeeq Either () (Int, IntList)}. If \ttt{ERepTy}
+\noindent Note that \ttt{ERepTy IntList \typeeq Either () (Int, IntList)}. If \ttt{ERepTy}
 attempted to ``fully deconstruct'' \ttt{IntList}, it would send the compiler
 into an infinite loop.
 
@@ -343,7 +342,7 @@ data E t where
   ...
 \end{lstlisting}
 
-\ttt{ERep} and \ttt{ERepTy} provide an interface for transferring values between the EDSL
+\noindent \ttt{ERep} and \ttt{ERepTy} provide an interface for transferring values between the EDSL
 expression language and the source Haskell language:
 
 \begin{lstlisting}
@@ -357,7 +356,7 @@ class Typeable t => ERep t where
   rep' :: t -> ERepTy t
 \end{lstlisting}
 
-The key algebraic instances mentioned before are as follows:
+\noindent The key algebraic instances mentioned before are as follows:
 
 \begin{lstlisting}
 instance (ERep a, ERep b) => ERep (Either a b) where
@@ -392,7 +391,7 @@ data E t where
   ...
 \end{lstlisting}
 
-The equality constraint ensures that a canonical type is its own canonical type.
+\noindent The equality constraint ensures that a canonical type is its own canonical type.
 
 The above code block is a slight simplification of the actual implementation,
 which has an additional type variable which is used at an ``intermediate'' point.
@@ -405,7 +404,7 @@ newtype SumMatch a b =
   MkSumMatch { runSumMatch :: a -> b }
 \end{lstlisting}
 
-For the moment, we will primarily use this type as a type tag and ignore
+\noindent For the moment, we will primarily use this type as a type tag and ignore
 the values it can take on.
 
 A value of type \ttt{E (SumMatch a b)} represents a computation within the EDSL
@@ -437,7 +436,7 @@ data E t where
   EmptyMatch :: (ERep b) => E (SumMatch Void b)
 \end{lstlisting}
 
-Note the \ttt{ERepTy a \typeeq a} constraints. This constraint ensures that the type
+\noindent Note the \ttt{ERepTy a \typeeq a} constraints. This constraint ensures that the type
 \ttt{a} is already in canonical form (that is, consists entirely of
 \ttt{Either}, \ttt{(,)} and base types).
 
@@ -489,23 +488,21 @@ Recall the previously mentioned function
 abs :: E a -> a
 \end{lstlisting}
 
-Now consider at the type of \ttt{abs} when it is specialized to take
+\noindent Now consider at the type of \ttt{abs} when it is specialized to take
 \ttt{E (SumMatch a b)} values:
 
 \begin{lstlisting}
 abs :: E (SumMatch a b) -> SumMatch a b
 \end{lstlisting}
 
-If we postcompose with \ttt{runSumMatch}, we get:
+\noindent If we postcompose with \ttt{runSumMatch}, we get:
 
 \begin{lstlisting}
 runSumMatch . abs    :: E (SumMatch a b) -> (a -> b)
 \end{lstlisting}
 
-The \ttt{SumMatch a b} value which \ttt{abs} returns is exactly the function
-which pattern matches according to its input value.
-
-Likewise for \ttt{ProdMatch a b} values.
+\noindent The \ttt{SumMatch a b} value which \ttt{abs} returns is exactly the function
+which pattern matches according to its input value. Likewise for \ttt{ProdMatch a b} values.
 
 \section{Representing tail recursion}
 Tail recursion is given a direct-style representation using a simple sum type,
@@ -528,7 +525,7 @@ data Iter a b = Step b | Done a
   deriving (Functor, Generic)
 \end{lstlisting}
 
-To use the new \ttt{f'} function, we repeatedly call it until it gives a
+\noindent To use the new \ttt{f'} function, we repeatedly call it until it gives a
 \ttt{Done} value. If it gives a \ttt{Step} value, we pass the the value wrapped
 in the \ttt{Step} back into \ttt{f'} and continue.
 
@@ -545,7 +542,7 @@ runIter f = go
 \end{lstlisting}
 
 
-This technique can be contrasted with the more traditional trampolining
+\noindent This technique can be contrasted with the more traditional trampolining
 technique for implementing tail recursion. Conventional trampolining uses a
 sum type of the result type and a thunk with the code necessary to continue
 execution.~\cite{Ganz:99:Trampolined}
@@ -566,7 +563,7 @@ data E t where
   ...
 \end{lstlisting}
 
-The process of transforming a tail recursive function in the DSL to a 
+\noindent The process of transforming a tail recursive function in the DSL to a 
 representation which could be passed into a backend and used
 to generate a traditional iterative loop goes as follows.
 
@@ -585,7 +582,7 @@ isEven x =
 \end{lstlisting}
 
 
-We first transform this to use the \verb|Iter| type. The lambda is brought
+\noindent We first transform this to use the \verb|Iter| type. The lambda is brought
 inside of the \ttt{internalize (externalize ...)} call and wrapped in a call to
 \ttt{runIter}. This inner expression is then eta expanded. Finally, each \verb|case|
 branch which does not contain a recursive call is wrapped in a \verb|Done| and
@@ -606,7 +603,7 @@ isEven' =
               eta))
 \end{lstlisting}
 
-After this initial tail recursion transformation, the rest of the plugin brings this
+\noindent After this initial tail recursion transformation, the rest of the plugin brings this
 result into the expression language. \verb|TailRec| is substituted for \verb|runIter|,
 \verb|DoneExp| is substituted for \verb|Done| and \verb|StepExp| is substituted for \verb|Step|.
 Next, the pattern matching transformation occurs, producing the final result:
@@ -641,7 +638,7 @@ data E t where
   Var :: (Typeable a) => Name a -> E a
 \end{lstlisting}
 
-The \ttt{Typeable} constraints are necessary to lookup correctly typed
+\noindent The \ttt{Typeable} constraints are necessary to lookup correctly typed
 values in the variable binding environment later on.
 
 The \ttt{Name t} type represents a lambda variable identifier together with its
@@ -660,7 +657,7 @@ namesEq (Name n) (Name n') =
     Nothing       -> Nothing
 \end{lstlisting}
 
-In the Core transformation, each lambda is given a \ttt{Name} with a globally
+\noindent In the Core transformation, each lambda is given a \ttt{Name} with a globally
 unique \ttt{Int}, sidestepping any name capture issues.
 
 The following datatypes are used to represent a variable binding environment
@@ -672,7 +669,7 @@ data EnvMapping where
     Name a -> E a -> EnvMapping
 \end{lstlisting}
 
-This type encodes a single variable binding, with values of the form
+\noindent This type encodes a single variable binding, with values of the form
 \ttt{n :=> v}, where \ttt{n} is a typed name and \ttt{v} is the value it is bound to.
 
 These bindings are grouped together in the \ttt{Env} type:
@@ -718,7 +715,7 @@ prodMatchAbs :: (ERep s) =>
 ...
 \end{lstlisting}
 
-Recall that the internal representations of \verb|SumMatch a b| and \verb|ProdMatch a b|
+\noindent Recall that the internal representations of \verb|SumMatch a b| and \verb|ProdMatch a b|
 are functions of type \verb|a -> b|. These types are unwrapped by the functions
 
 \begin{lstlisting}
@@ -726,7 +723,7 @@ runSumMatch :: SumMatch a b -> (a -> b)
 runProdMatch :: ProdMatch a b -> (a -> b)
 \end{lstlisting}
 
-Given this, the \verb|ProdMatchExp| case of the \verb|prodMatchAbs| function can be
+\noindent Given this, the \verb|ProdMatchExp| case of the \verb|prodMatchAbs| function can be
 implemented as follows:
 
 \begin{lstlisting}
@@ -735,7 +732,7 @@ prodMatchAbs env (ProdMatchExp f) = \ pair ->
     runProdMatch (absEnv env f x) y
 \end{lstlisting}
 
-See Appendix A for implementation details of \ttt{absEnv}.
+\noindent See Appendix A for implementation details of \ttt{absEnv}.
 
 
 
@@ -749,7 +746,7 @@ the \ttt{externalize} function:
 externalize :: a -> E a
 \end{lstlisting}
 
-For example, \ttt{externalize x} marks the expression \ttt{x}.  If an expression
+\noindent For example, \ttt{externalize x} marks the expression \ttt{x}.  If an expression
 already has an EDSL type (a type of the form \ttt{E a} for some \ttt{a}), then
 the marking procedure ignores it and does not wrap it with \ttt{externalize}
 (see $M$ in Figure~\ref{fig:Rewrites}).
