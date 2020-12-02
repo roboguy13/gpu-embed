@@ -32,6 +32,7 @@
 \newcommand{\exprdots}{\expr{\tdots}}
 
 \newcommand{\typeeq}{\raise.17ex\hbox{$\scriptstyle\mathtt{\sim}$}\,\;}
+\newcommand{\typeeqb}{\raise.17ex\hbox{$\scriptstyle\mathtt{\sim}$}}
 
 \newcommand{\ttt}{\texttt}
 
@@ -391,7 +392,7 @@ data E t where
   ...
 \end{lstlisting}
 
-\noindent The equality constraint ensures that a canonical type is its own canonical type.
+\noindent The equality constraint \ttt{(\typeeqb)} ensures that a canonical type is its own canonical type.
 
 The above code block is a slight simplification of the actual implementation,
 which has an additional type variable which is used at an ``intermediate'' point.
