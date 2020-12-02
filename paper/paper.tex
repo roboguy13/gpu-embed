@@ -419,7 +419,7 @@ a value of type \ttt{E (ERepTy t)} and produces a value of type \ttt{E r}.
 
 
 
-\subsection{\ttt{E (SumMatch a b)}}
+\subsection{Lists of branches}
 
 The overall structure of a \ttt{E (SumMatch a b)} value is a (heterogeneous)
 list of \ttt{E (ProdMatch x b)} values.  Each item of this list corresponds
@@ -445,7 +445,7 @@ data E t where
 \ttt{a} is already in canonical form (that is, consists entirely of
 \ttt{Either}, \ttt{(,)} and base types).
 
-\subsection{\ttt{E (ProdMatch s t)}}
+\subsection{Product matches}
 
 \ttt{E (ProdMatch s t)} is equivalent to a function from \ttt{s} to
 \ttt{t} in the expression language where \ttt{s} is a (potentially
