@@ -268,6 +268,11 @@ isEmpty t =
       Nil -> True
       Cons x xs -> False))
 
+-- total :: (Int, IntList) -> GPUExp Int
+total = externalize (\p -> case p of
+  (acc, Nil) -> acc
+  (acc, Cons x xs) -> total (acc + x, xs))
+
 intListLength_helper :: (Int, IntList) -> Int
 intListLength_helper p =
   internalize (externalize
